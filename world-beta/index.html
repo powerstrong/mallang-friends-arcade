@@ -30,8 +30,15 @@
     <!-- World (post-join) -->
     <section id="world-panel" class="panel hidden">
       <header class="world-header">
-        <span id="world-id-label">lounge-1</span>
-        <span id="conn-status" class="conn ok">연결됨</span>
+        <div class="brand">
+          <img id="brand-logo" class="brand-logo" src="./assets/logo_mallang.png" alt=""
+               onerror="this.style.display='none'" />
+          <span class="brand-title">말랑프렌즈</span>
+        </div>
+        <div class="world-meta">
+          <span id="world-id-label">lounge-1</span>
+          <span id="conn-status" class="conn ok">연결됨</span>
+        </div>
       </header>
       <div class="canvas-wrap">
         <canvas id="world-canvas" width="960" height="540"></canvas>
@@ -45,7 +52,6 @@
         <button type="submit">전송</button>
       </form>
 
-      <p class="hint">방향키 또는 WASD로 이동 · 같은 광장의 다른 플레이어가 함께 보입니다</p>
     </section>
 
     <div id="match-modal" class="modal hidden" aria-hidden="true" role="dialog">

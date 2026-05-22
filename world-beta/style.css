@@ -166,9 +166,42 @@ h1 {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 10px;
   margin-bottom: 12px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #2b3c63, #233152);
   font-size: 0.85rem;
   color: var(--text-dim);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+
+.brand-logo {
+  width: 34px;
+  height: 34px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.brand-title {
+  font-size: 1.15rem;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  color: #ffd9a3;
+  white-space: nowrap;
+}
+
+.world-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
 .conn {
