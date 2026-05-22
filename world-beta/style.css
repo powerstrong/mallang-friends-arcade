@@ -228,6 +228,34 @@ h1 {
   touch-action: none;
 }
 
+/* Persistent chat history — overlaid on the bottom-left of the world. */
+.chat-log {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  width: 38%;
+  max-width: 280px;
+  max-height: 44%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 10px;
+  background: rgba(16, 22, 38, 0.62);
+  border-radius: 10px;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  color: #e8edff;
+  pointer-events: none;
+  scrollbar-width: thin;
+}
+
+.chat-log:empty { display: none; }
+
+.chat-line { word-break: break-word; }
+.chat-line b { color: #ffd9a3; margin-right: 3px; }
+.chat-line.me b { color: #ffb96b; }
+
 .hint {
   margin: 12px 0 0;
   color: var(--text-dim);

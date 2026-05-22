@@ -86,6 +86,7 @@
   const reactionBar = document.getElementById('reaction-bar');
   const chatForm = document.getElementById('chat-form');
   const chatInput = document.getElementById('chat-input');
+  const chatLog = document.getElementById('chat-log');
   const matchModal = document.getElementById('match-modal');
   const matchTitle = document.getElementById('match-title');
   const matchStatus = document.getElementById('match-status');
@@ -475,7 +476,24 @@
 
   function handleChat(d) {
     if (!d?.id || typeof d.text !== 'string') return;
-    bubbles.set(d.id, { text: d.text.slice(0, 120), until: performance.now() + CHAT_BUBBLE_MS });
+    const text = d.text.slice(0, 120);
+    // Instant bubble above the head — fades out after a few seconds.
+    bubbles.set(d.id, { text, until: performance.now() + CHAT_BUBBLE_MS });
+    // Persistent log on the side — stays visible.
+    appendChatLog(d.name || '익명', text, !!(me && d.id === me.id));
+  }
+
+  function appendChatLog(name, text, isYou) {
+    if (!chatLog) return;
+    const line = document.createElement('div');
+    line.className = isYou ? 'chat-line me' : 'chat-line';
+    const who = document.createElement('b');
+    who.textContent = name;
+    line.appendChild(who);
+    line.appendChild(document.createTextNode(text));
+    chatLog.appendChild(line);
+    while (chatLog.childElementCount > 60) chatLog.removeChild(chatLog.firstChild);
+    chatLog.scrollTop = chatLog.scrollHeight;
   }
 
   function handleReaction(d) {
@@ -1035,7 +1053,7 @@
       const row = dir === 'down' ? 0 : dir === 'up' ? 2 : 1; // left/right -> side
       const col = p.moving ? (Math.floor(performance.now() / WALK_FRAME_MS) % 2) + 1 : 0;
       const fw = SPRITE_FRAME.width, fh = SPRITE_FRAME.height;
-      const drawW = 44, drawH = 44;
+      const drawW = 60, drawH = 60;
       const destX = -drawW / 2;
       const destY = (r + 5) - drawH * (31 / 32); // feet rest near the shadow
       nameTagY = destY - 6;
