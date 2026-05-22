@@ -11,32 +11,37 @@
 window.CHARACTERS = [
   {
     worldId: 'latte_puppy',
-    label: '라떼강아지',
+    label: '라떼 강아지',
     sheet: '/world-beta/assets/latte_puppy_sheet_3x3.png',
+    portrait: '/world-beta/assets/latte_puppy_portrait.png',
     gameIds: { 'jump-climber': 'latte-puppy', 'mallang-quiz-battle': 'latte-puppy', 'mallang-tug-war': null },
   },
   {
     worldId: 'mochi_rabbit',
-    label: '토끼',
+    label: '모찌 토끼',
     sheet: '/world-beta/assets/mochi_rabbit_sheet_3x3.png',
+    portrait: '/world-beta/assets/mochi_rabbit_portrait.png',
     gameIds: { 'jump-climber': 'mochi-rabbit', 'mallang-quiz-battle': 'mochi-rabbit', 'mallang-tug-war': 'mochi-rabbit' },
   },
   {
     worldId: 'pudding_hamster',
-    label: '햄스터',
+    label: '푸딩 햄스터',
     sheet: '/world-beta/assets/pudding_hamster_sheet_3x3.png',
+    portrait: '/world-beta/assets/pudding_hamster_portrait.png',
     gameIds: { 'jump-climber': 'pudding-hamster', 'mallang-quiz-battle': 'pudding-hamster', 'mallang-tug-war': 'pudding-hamster' },
   },
   {
     worldId: 'mint_kitten',
-    label: '고양이',
+    label: '민트 고양이',
     sheet: '/world-beta/assets/mint_kitten_sheet_3x3.png',
+    portrait: '/world-beta/assets/mint_kitten_portrait.png',
     gameIds: { 'jump-climber': 'mint-kitten', 'mallang-quiz-battle': 'mint-kitten', 'mallang-tug-war': null },
   },
   {
     worldId: 'peach_chick',
-    label: '병아리',
+    label: '말랑 병아리',
     sheet: '/world-beta/assets/peach_chick_sheet_3x3.png',
+    portrait: '/world-beta/assets/peach_chick_portrait.png',
     gameIds: { 'jump-climber': 'peach-chick', 'mallang-quiz-battle': 'peach-chick', 'mallang-tug-war': 'peach-chick' },
   },
 ];

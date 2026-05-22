@@ -51,6 +51,27 @@
     return s;
   }
 
+  // ── World background ──────────────────────────────────────────────────────
+  const worldBg = new Image();
+  let worldBgReady = false;
+  worldBg.onload = () => { worldBgReady = true; };
+  worldBg.src = './assets/world_bg.png';
+
+  // ── Game booth illustrations ──────────────────────────────────────────────
+  const boothImages = {};
+  function getBoothImage(gameId) {
+    const file = gameId === 'jump-climber' ? 'booth_jump.png'
+               : gameId === 'mallang-quiz-battle' ? 'booth_quiz.png' : null;
+    if (!file) return null;
+    let entry = boothImages[gameId];
+    if (entry) return entry;
+    entry = { img: new Image(), ready: false };
+    entry.img.onload = () => { entry.ready = true; };
+    entry.img.src = './assets/' + file;
+    boothImages[gameId] = entry;
+    return entry;
+  }
+
   // ── DOM references ──────────────────────────────────────────────────────────
   const joinPanel = document.getElementById('join-panel');
   const worldPanel = document.getElementById('world-panel');
@@ -172,6 +193,11 @@
 
   // ── World state ─────────────────────────────────────────────────────────────
   let ws = null;
+  let joinParams = null;   // { name, characterId } — kept so we can re-join on reconnect
+  let worldStarted = false; // true once the first `welcome` set up the world
+  let reconnectTimer = null;
+  let reconnectAttempts = 0;
+  const MAX_RECONNECT_ATTEMPTS = 8;
   let me = null;        // { id, name, characterId, x, y, dir, moving }
   let peers = new Map(); // id -> { id, name, characterId, x, y, dir, moving }
   let zonesCatalog = []; // [{ id, gameId, title, rect, minPlayers, maxPlayers, holdMs }]
@@ -206,8 +232,11 @@
       btn.type = 'button';
       btn.className = 'character-card';
       btn.dataset.worldId = c.worldId;
+      const preview = c.portrait
+        ? `<img class="preview-img" src="${c.portrait}" alt="" />`
+        : characterEmoji(c.worldId);
       btn.innerHTML = `
-        <div class="preview" aria-hidden="true">${characterEmoji(c.worldId)}</div>
+        <div class="preview" aria-hidden="true">${preview}</div>
         <span class="label">${escapeHtml(c.label)}</span>
       `;
       btn.addEventListener('click', () => selectCharacter(c.worldId));
@@ -250,22 +279,50 @@
     const name = nameInput.value.trim().slice(0, 16);
     try { localStorage.setItem('world_name', name); } catch { /* ignore */ }
 
+    joinParams = { name, characterId: selectedCharacterId };
+    openSocket();
+  }
+
+  function openSocket() {
     const base = (window.WORKER_URL || window.location.origin).replace(/^http/, 'ws');
     const url = `${base}/api/world/${encodeURIComponent(LOUNGE_ID)}`;
 
     try {
       ws = new WebSocket(url);
     } catch (err) {
-      showJoinError(`연결 실패: ${err.message}`);
+      if (worldStarted) scheduleReconnect();
+      else showJoinError(`연결 실패: ${err.message}`);
       return;
     }
 
     ws.addEventListener('open', () => {
-      send({ t: 'join_world', d: { name, characterId: selectedCharacterId } });
+      send({ t: 'join_world', d: joinParams });
     });
     ws.addEventListener('message', onMessage);
     ws.addEventListener('close', onClose);
-    ws.addEventListener('error', () => showJoinError('연결 오류가 발생했습니다.'));
+    ws.addEventListener('error', () => {
+      // The `close` event fires right after and drives reconnect; only the
+      // pre-join attempt needs to surface an error to the join panel.
+      if (!worldStarted) showJoinError('연결 오류가 발생했습니다.');
+    });
+  }
+
+  // Auto-reconnect: if the socket drops after we're already in the world, keep
+  // the render loop alive and silently re-connect + re-join with backoff.
+  function scheduleReconnect() {
+    if (reconnectTimer) return;
+    reconnectAttempts += 1;
+    if (reconnectAttempts > MAX_RECONNECT_ATTEMPTS) {
+      connStatus.textContent = '연결 끊김 — 새로고침 해주세요';
+      connStatus.classList.add('bad');
+      return;
+    }
+    connStatus.textContent = `재접속 중... (${reconnectAttempts})`;
+    const delay = Math.min(1000 * 2 ** (reconnectAttempts - 1), 8000);
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
+      openSocket();
+    }, delay);
   }
 
   function showJoinError(msg) {
@@ -326,17 +383,22 @@
     }]));
     myZoneProgress = null;
 
-    joinPanel.classList.add('hidden');
-    worldPanel.classList.remove('hidden');
     setConnStatus(true);
-
-    buildReactionBar();
-    bindChatForm();
-    bindMatchModal();
-    setupJoystick();
-
+    reconnectAttempts = 0;
     startHeartbeat();
-    startRenderLoop();
+
+    // One-time world setup — guarded so a reconnect doesn't double-bind
+    // listeners or spin up a second render loop.
+    if (!worldStarted) {
+      worldStarted = true;
+      joinPanel.classList.add('hidden');
+      worldPanel.classList.remove('hidden');
+      buildReactionBar();
+      bindChatForm();
+      bindMatchModal();
+      setupJoystick();
+      startRenderLoop();
+    }
   }
 
   function buildReactionBar() {
@@ -601,14 +663,15 @@
     stopHeartbeat();
     // Tear down any open match proposal so its card + countdown don't linger.
     if (activeProposal) closeMatchModal();
-    if (rafHandle) {
-      cancelAnimationFrame(rafHandle);
-      rafHandle = null;
-    }
-    if (!me) {
-      showJoinError('서버 연결이 끊겼습니다.');
+
+    if (worldStarted) {
+      // Already in the world — keep the render loop running so the canvas
+      // never freezes, and reconnect + re-join in the background.
+      scheduleReconnect();
     } else {
-      joinStatus.textContent = '서버 연결이 끊겼습니다. 새로고침 해주세요.';
+      // Dropped before the first welcome — nothing to keep alive.
+      if (rafHandle) { cancelAnimationFrame(rafHandle); rafHandle = null; }
+      showJoinError('서버 연결이 끊겼습니다.');
     }
   }
 
@@ -699,17 +762,11 @@
   }
 
   function draw() {
-    ctx.fillStyle = '#1f2c47';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    // Grid for visual reference.
-    ctx.strokeStyle = 'rgba(255,255,255,0.05)';
-    ctx.lineWidth = 1;
-    for (let x = 0; x <= canvas.width; x += 60) {
-      ctx.beginPath(); ctx.moveTo(x + 0.5, 0); ctx.lineTo(x + 0.5, canvas.height); ctx.stroke();
-    }
-    for (let y = 0; y <= canvas.height; y += 60) {
-      ctx.beginPath(); ctx.moveTo(0, y + 0.5); ctx.lineTo(canvas.width, y + 0.5); ctx.stroke();
+    if (worldBgReady) {
+      ctx.drawImage(worldBg, 0, 0, canvas.width, canvas.height);
+    } else {
+      ctx.fillStyle = '#bfe09a';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
 
     drawZones();
@@ -763,68 +820,50 @@
       ctx.restore();
     }
 
-    // Back panel.
-    ctx.fillStyle = hexA(t.color, inHere ? 0.22 : 0.12);
-    roundRect(r.x + 3, r.y + 12, r.w - 6, r.h - 18, 14);
-    ctx.fill();
-
-    // Entrance pad — the floor avatars stand on.
-    const padY = r.y + r.h - 32;
-    ctx.fillStyle = hexA(t.color, inHere ? 0.6 : 0.32);
-    roundRect(r.x + 12, padY, r.w - 24, 26, 12);
+    // Entrance pad — subtle "stand here" marker at the booth base.
+    const padY = r.y + r.h - 28;
+    ctx.fillStyle = hexA(t.color, inHere ? 0.55 : 0.28);
+    roundRect(r.x + 14, padY, r.w - 28, 22, 11);
     ctx.fill();
     ctx.fillStyle = 'rgba(255,255,255,0.22)';
-    roundRect(r.x + 16, padY + 3, r.w - 32, 7, 4);
+    roundRect(r.x + 18, padY + 3, r.w - 36, 6, 3);
     ctx.fill();
 
-    // Striped awning.
-    const awH = 24, awTop = r.y + 2;
-    ctx.save();
-    roundRect(r.x + 1, awTop, r.w - 2, awH, 8);
-    ctx.clip();
-    const stripeW = (r.w - 2) / 7;
-    for (let i = 0; i < 7; i++) {
-      ctx.fillStyle = i % 2 === 0 ? t.color : '#fff6ec';
-      ctx.fillRect(r.x + 1 + i * stripeW, awTop, stripeW + 1, awH);
-    }
-    ctx.restore();
-    // Scalloped lower edge of the awning.
-    const sc = 7, scR = (r.w - 2) / sc / 2;
-    for (let i = 0; i < sc; i++) {
-      ctx.fillStyle = i % 2 === 0 ? t.color : '#fff6ec';
-      ctx.beginPath();
-      ctx.arc(r.x + 1 + scR + i * scR * 2, awTop + awH, scR, 0, Math.PI);
-      ctx.fill();
+    // Booth illustration.
+    const booth = getBoothImage(z.gameId);
+    if (booth && booth.ready) {
+      const drawW = r.w + 84;
+      const drawH = drawW * booth.img.height / booth.img.width;
+      ctx.drawImage(booth.img, cx - drawW / 2, (r.y + r.h) - drawH + 6, drawW, drawH);
     }
 
-    // Game icon.
-    ctx.font = '28px serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(t.icon, cx, awTop + awH + 24);
-
-    // Title.
+    // Title — below the booth, dark halo for readability on grass.
     ctx.font = 'bold 14px -apple-system, system-ui, sans-serif';
+    ctx.textAlign = 'center';
     ctx.textBaseline = 'alphabetic';
-    ctx.fillStyle = '#0e1828';
-    ctx.fillText(z.title, cx + 1, awTop + awH + 49);
-    ctx.fillStyle = '#f6fbff';
-    ctx.fillText(z.title, cx, awTop + awH + 48);
+    ctx.lineWidth = 3;
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = 'rgba(20,30,16,0.85)';
+    ctx.strokeText(z.title, cx, r.y + r.h + 16);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(z.title, cx, r.y + r.h + 16);
 
     // Status line / countdown.
     if (inHere && myZoneProgress && myZoneProgress.zoneId === z.id) {
       drawZoneCountdown(z, r);
     } else {
       const enough = st.count >= z.minPlayers;
+      const statusText = enough
+        ? `대기 ${st.count}/${z.maxPlayers} · 곧 시작!`
+        : `대기 ${st.count}/${z.maxPlayers} · ${z.minPlayers}명 모이면 시작`;
       ctx.font = '11px -apple-system, system-ui, sans-serif';
-      ctx.fillStyle = enough ? '#bff3d5' : '#cfd8f7';
       ctx.textAlign = 'center';
-      ctx.fillText(
-        enough
-          ? `대기 ${st.count}/${z.maxPlayers} · 곧 시작!`
-          : `대기 ${st.count}/${z.maxPlayers} · ${z.minPlayers}명 모이면 시작`,
-        cx, r.y + r.h - 9,
-      );
+      ctx.lineWidth = 3;
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = 'rgba(20,30,16,0.8)';
+      ctx.strokeText(statusText, cx, r.y + r.h + 33);
+      ctx.fillStyle = enough ? '#d6ffe6' : '#eef2ff';
+      ctx.fillText(statusText, cx, r.y + r.h + 33);
     }
     ctx.restore();
 
@@ -839,7 +878,7 @@
     ctx.font = 'bold 11px -apple-system, system-ui, sans-serif';
     const w = ctx.measureText(text).width + 18;
     const cx = r.x + r.w / 2;
-    const y = r.y - 13;
+    const y = r.y - 66;
     ctx.fillStyle = t.dark;
     roundRect(cx - w / 2, y - 11, w, 22, 8);
     ctx.fill();
@@ -866,13 +905,17 @@
 
     ctx.font = 'bold 11px -apple-system, system-ui, sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillStyle = myZoneProgress.ready ? '#bff3d5' : '#ffffff';
     const status = myZoneProgress.ready ? '준비 완료 — 모이는 중...' : `참가 준비 ${(remain / 1000).toFixed(1)}초`;
-    ctx.fillText(status, cx, r.y + r.h - 20);
+    ctx.lineWidth = 3;
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = 'rgba(20,30,16,0.8)';
+    ctx.strokeText(status, cx, r.y + r.h + 33);
+    ctx.fillStyle = myZoneProgress.ready ? '#d6ffe6' : '#ffffff';
+    ctx.fillText(status, cx, r.y + r.h + 33);
 
     // Progress bar.
     const padX = 18, barW = r.w - padX * 2, barH = 6;
-    const barX = r.x + padX, barY = r.y + r.h - 14;
+    const barX = r.x + padX, barY = r.y + r.h + 39;
     ctx.fillStyle = 'rgba(0,0,0,0.3)';
     roundRect(barX, barY, barW, barH, 3);
     ctx.fill();
