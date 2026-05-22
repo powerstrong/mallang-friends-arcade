@@ -30,6 +30,27 @@
   ];
   const REACTION_GLYPHS = Object.fromEntries(REACTIONS.map((r) => [r.key, r.glyph]));
 
+  // ── Character sprite sheets ───────────────────────────────────────────────
+  // 3x3 grid of 32px frames. row: 0=down 1=side(right) 2=up. col: 0=idle 1=stepA 2=stepB.
+  // The `left` direction reuses the side row, mirrored horizontally.
+  const SPRITE_FRAME = window.CHARACTER_FRAME || { width: 32, height: 32 };
+  const WALK_FRAME_MS = 150;
+  const spriteCache = new Map(); // worldId -> { img, ready }
+  function getSprite(worldId) {
+    let s = spriteCache.get(worldId);
+    if (s) return s;
+    s = { img: null, ready: false };
+    spriteCache.set(worldId, s);
+    const meta = Array.isArray(window.CHARACTERS)
+      ? window.CHARACTERS.find((c) => c.worldId === worldId) : null;
+    if (meta && meta.sheet) {
+      const img = new Image();
+      img.onload = () => { s.img = img; s.ready = true; };
+      img.src = meta.sheet;
+    }
+    return s;
+  }
+
   // ── DOM references ──────────────────────────────────────────────────────────
   const joinPanel = document.getElementById('join-panel');
   const worldPanel = document.getElementById('world-panel');
@@ -57,6 +78,7 @@
   // shared/input.js only binds arrow keys. Add WASD locally so this page
   // matches the on-screen hint without touching shared input used by games.
   const wasd = { up: false, down: false, left: false, right: false };
+  const joy  = { up: false, down: false, left: false, right: false };
   function isTypingTarget(t) {
     if (!t) return false;
     const tag = t.tagName;
@@ -79,7 +101,62 @@
     if (k === 'd') wasd.right = false;
   });
   function isHeld(dir) {
-    return wasd[dir] || (window.InputManager && window.InputManager.isHeld(dir));
+    return wasd[dir] || joy[dir] || (window.InputManager && window.InputManager.isHeld(dir));
+  }
+
+  // ── On-screen joystick (touch) ──────────────────────────────────────────────
+  // Fixed virtual stick overlaid on the canvas. CSS hides it on fine pointers.
+  let joystickEl = null;
+  function setupJoystick() {
+    if (joystickEl) return;
+    const wrap = document.querySelector('.canvas-wrap');
+    if (!wrap) return;
+
+    const base = document.createElement('div');
+    base.className = 'vjoy';
+    const thumb = document.createElement('div');
+    thumb.className = 'vjoy-thumb';
+    base.appendChild(thumb);
+    wrap.appendChild(base);
+    joystickEl = base;
+
+    const TRAVEL = 42; // max thumb offset in px
+    const DEADZONE = 0.34;
+    let active = false, cx = 0, cy = 0;
+
+    const reset = () => {
+      joy.up = joy.down = joy.left = joy.right = false;
+      thumb.style.transform = 'translate(-50%, -50%)';
+    };
+    const apply = (e) => {
+      let dx = e.clientX - cx, dy = e.clientY - cy;
+      const len = Math.hypot(dx, dy);
+      if (len > TRAVEL) { dx = dx / len * TRAVEL; dy = dy / len * TRAVEL; }
+      thumb.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+      const nx = dx / TRAVEL, ny = dy / TRAVEL;
+      joy.left = nx < -DEADZONE; joy.right = nx > DEADZONE;
+      joy.up   = ny < -DEADZONE; joy.down  = ny > DEADZONE;
+    };
+    const start = (e) => {
+      active = true;
+      const r = base.getBoundingClientRect();
+      cx = r.left + r.width / 2; cy = r.top + r.height / 2;
+      try { base.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+      apply(e);
+    };
+    const end = () => { if (active) { active = false; reset(); } };
+
+    base.addEventListener('pointerdown', (e) => { e.preventDefault(); start(e); });
+    base.addEventListener('pointermove', (e) => { if (active) apply(e); });
+    base.addEventListener('pointerup', end);
+    base.addEventListener('pointercancel', end);
+    // If the OS yanks pointer capture, treat it as a release so movement
+    // input can't get stuck "held" after the finger leaves the stick.
+    base.addEventListener('lostpointercapture', end);
+    // Stop touch events from also reaching the window-level swipe handler.
+    for (const ev of ['touchstart', 'touchmove', 'touchend']) {
+      base.addEventListener(ev, (e) => e.stopPropagation());
+    }
   }
 
   // ── Picker state ────────────────────────────────────────────────────────────
@@ -114,6 +191,7 @@
   // Active match proposal awaiting our response.
   let activeProposal = null; // { matchId, gameId, title, members, deadline, responded }
   let matchCountdownTimer = null;
+  let matchCloseTimer = null; // delayed closeMatchModal handle (cancellation flow)
 
   // ── Picker UI ───────────────────────────────────────────────────────────────
   function buildPicker() {
@@ -255,6 +333,7 @@
     buildReactionBar();
     bindChatForm();
     bindMatchModal();
+    setupJoystick();
 
     startHeartbeat();
     startRenderLoop();
@@ -410,11 +489,16 @@
     matchDeclineBtn.disabled = true;
     matchCountdown.textContent = '';
     stopMatchCountdown();
-    setTimeout(closeMatchModal, 1200);
+    if (matchCloseTimer) clearTimeout(matchCloseTimer);
+    matchCloseTimer = setTimeout(() => { matchCloseTimer = null; closeMatchModal(); }, 1200);
   }
 
   function openMatchModal() {
     if (!activeProposal) return;
+    // A pending cancel-close from a previous proposal must not fire now.
+    if (matchCloseTimer) { clearTimeout(matchCloseTimer); matchCloseTimer = null; }
+    // The bottom card would otherwise overlap the joystick on mobile.
+    if (joystickEl) joystickEl.style.visibility = 'hidden';
     matchTitle.textContent = activeProposal.title;
     matchStatus.textContent = '참가하시겠어요?';
     matchAcceptBtn.disabled = false;
@@ -442,6 +526,8 @@
     matchModal.classList.add('hidden');
     matchModal.setAttribute('aria-hidden', 'true');
     stopMatchCountdown();
+    if (matchCloseTimer) { clearTimeout(matchCloseTimer); matchCloseTimer = null; }
+    if (joystickEl) joystickEl.style.visibility = '';
     activeProposal = null;
   }
 
@@ -513,6 +599,8 @@
   function onClose() {
     setConnStatus(false);
     stopHeartbeat();
+    // Tear down any open match proposal so its card + countdown don't linger.
+    if (activeProposal) closeMatchModal();
     if (rafHandle) {
       cancelAnimationFrame(rafHandle);
       rafHandle = null;
@@ -635,34 +723,135 @@
     drawOverlays(now);
   }
 
+  // Per-game booth theme — accent colour + a playful icon.
+  const ZONE_THEME = {
+    'jump-climber':        { color: '#ff9f4d', dark: '#d9791c', icon: '🧗' },
+    'mallang-tug-war':     { color: '#5fd3a0', dark: '#33ab78', icon: '🪢' },
+    'mallang-quiz-battle': { color: '#7db4ff', dark: '#4d83d9', icon: '🧠' },
+  };
+  function zoneTheme(z) {
+    return ZONE_THEME[z.gameId] || ZONE_THEME[z.id] ||
+           { color: '#7db4ff', dark: '#4d83d9', icon: '🎮' };
+  }
+
   function drawZones() {
     for (const z of zonesCatalog) {
       const st = zoneStates.get(z.id) || { count: 0, ready: 0 };
       const r = z.rect;
-      const inHere = me && myZoneProgress && myZoneProgress.zoneId === z.id;
+      const inHere = !!(me && pointInRect(me.x, me.y, r));
+      const near = !!(me && !inHere && nearRect(me.x, me.y, r, 52));
+      drawBooth(z, r, st, inHere, near);
+    }
+  }
 
+  // A carnival-style game booth: striped awning, signboard, entrance pad.
+  function drawBooth(z, r, st, inHere, near) {
+    const t = zoneTheme(z);
+    const cx = r.x + r.w / 2;
+    ctx.save();
+
+    // Proximity glow — soft rings while approaching or standing inside.
+    if (near || inHere) {
       ctx.save();
-      ctx.fillStyle = inHere ? 'rgba(255,185,107,0.18)' : 'rgba(107,188,255,0.10)';
-      ctx.strokeStyle = inHere ? 'rgba(255,185,107,0.85)' : 'rgba(107,188,255,0.55)';
-      ctx.lineWidth = 2;
-      ctx.setLineDash(inHere ? [] : [6, 4]);
-      ctx.fillRect(r.x, r.y, r.w, r.h);
-      ctx.strokeRect(r.x + 1, r.y + 1, r.w - 2, r.h - 2);
-      ctx.setLineDash([]);
-
-      ctx.fillStyle = '#f0f4ff';
-      ctx.font = 'bold 14px -apple-system, system-ui, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'top';
-      ctx.fillText(z.title, r.x + r.w / 2, r.y + 8);
-
-      ctx.font = '12px -apple-system, system-ui, sans-serif';
-      ctx.fillStyle = '#cfd8f7';
-      ctx.fillText(`${st.count}/${z.maxPlayers} (최소 ${z.minPlayers})`, r.x + r.w / 2, r.y + 26);
-
-      if (inHere) drawZoneCountdown(z, r);
+      ctx.strokeStyle = t.color;
+      for (let i = 0; i < 3; i++) {
+        ctx.globalAlpha = (inHere ? 0.38 : 0.24) - i * 0.08;
+        ctx.lineWidth = 2;
+        roundRect(r.x - 3 - i * 3, r.y - 3 - i * 3, r.w + 6 + i * 6, r.h + 6 + i * 6, 16 + i * 3);
+        ctx.stroke();
+      }
       ctx.restore();
     }
+
+    // Back panel.
+    ctx.fillStyle = hexA(t.color, inHere ? 0.22 : 0.12);
+    roundRect(r.x + 3, r.y + 12, r.w - 6, r.h - 18, 14);
+    ctx.fill();
+
+    // Entrance pad — the floor avatars stand on.
+    const padY = r.y + r.h - 32;
+    ctx.fillStyle = hexA(t.color, inHere ? 0.6 : 0.32);
+    roundRect(r.x + 12, padY, r.w - 24, 26, 12);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.22)';
+    roundRect(r.x + 16, padY + 3, r.w - 32, 7, 4);
+    ctx.fill();
+
+    // Striped awning.
+    const awH = 24, awTop = r.y + 2;
+    ctx.save();
+    roundRect(r.x + 1, awTop, r.w - 2, awH, 8);
+    ctx.clip();
+    const stripeW = (r.w - 2) / 7;
+    for (let i = 0; i < 7; i++) {
+      ctx.fillStyle = i % 2 === 0 ? t.color : '#fff6ec';
+      ctx.fillRect(r.x + 1 + i * stripeW, awTop, stripeW + 1, awH);
+    }
+    ctx.restore();
+    // Scalloped lower edge of the awning.
+    const sc = 7, scR = (r.w - 2) / sc / 2;
+    for (let i = 0; i < sc; i++) {
+      ctx.fillStyle = i % 2 === 0 ? t.color : '#fff6ec';
+      ctx.beginPath();
+      ctx.arc(r.x + 1 + scR + i * scR * 2, awTop + awH, scR, 0, Math.PI);
+      ctx.fill();
+    }
+
+    // Game icon.
+    ctx.font = '28px serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(t.icon, cx, awTop + awH + 24);
+
+    // Title.
+    ctx.font = 'bold 14px -apple-system, system-ui, sans-serif';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = '#0e1828';
+    ctx.fillText(z.title, cx + 1, awTop + awH + 49);
+    ctx.fillStyle = '#f6fbff';
+    ctx.fillText(z.title, cx, awTop + awH + 48);
+
+    // Status line / countdown.
+    if (inHere && myZoneProgress && myZoneProgress.zoneId === z.id) {
+      drawZoneCountdown(z, r);
+    } else {
+      const enough = st.count >= z.minPlayers;
+      ctx.font = '11px -apple-system, system-ui, sans-serif';
+      ctx.fillStyle = enough ? '#bff3d5' : '#cfd8f7';
+      ctx.textAlign = 'center';
+      ctx.fillText(
+        enough
+          ? `대기 ${st.count}/${z.maxPlayers} · 곧 시작!`
+          : `대기 ${st.count}/${z.maxPlayers} · ${z.minPlayers}명 모이면 시작`,
+        cx, r.y + r.h - 9,
+      );
+    }
+    ctx.restore();
+
+    // Proximity tooltip floats above the booth.
+    if (near) drawZoneTip(z, r, t);
+  }
+
+  function drawZoneTip(z, r, t) {
+    const sec = Math.round((z.holdMs || 3000) / 1000);
+    const text = `들어가서 ${sec}초 → 시작!`;
+    ctx.save();
+    ctx.font = 'bold 11px -apple-system, system-ui, sans-serif';
+    const w = ctx.measureText(text).width + 18;
+    const cx = r.x + r.w / 2;
+    const y = r.y - 13;
+    ctx.fillStyle = t.dark;
+    roundRect(cx - w / 2, y - 11, w, 22, 8);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(cx - 5, y + 11); ctx.lineTo(cx, y + 16); ctx.lineTo(cx + 5, y + 11);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, cx, y);
+    ctx.restore();
   }
 
   function drawZoneCountdown(zone, r) {
@@ -673,22 +862,23 @@
     const elapsed = baseElapsed + elapsedClient;
     const remain = Math.max(0, myZoneProgress.holdMs - elapsed);
     const ratio = clamp(elapsed / myZoneProgress.holdMs, 0, 1);
+    const cx = r.x + r.w / 2;
 
-    ctx.fillStyle = '#1a1410';
-    ctx.font = 'bold 13px -apple-system, system-ui, sans-serif';
+    ctx.font = 'bold 11px -apple-system, system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = myZoneProgress.ready ? '#bff3d5' : '#ffffff';
     const status = myZoneProgress.ready ? '준비 완료 — 모이는 중...' : `참가 준비 ${(remain / 1000).toFixed(1)}초`;
-    ctx.fillText(status, r.x + r.w / 2, r.y + r.h - 32);
+    ctx.fillText(status, cx, r.y + r.h - 20);
 
-    // Progress bar
-    const padX = 14;
-    const barW = r.w - padX * 2;
-    const barH = 6;
-    const barX = r.x + padX;
-    const barY = r.y + r.h - 14;
-    ctx.fillStyle = 'rgba(0,0,0,0.25)';
-    ctx.fillRect(barX, barY, barW, barH);
-    ctx.fillStyle = myZoneProgress.ready ? '#6bdfa1' : '#ffb96b';
-    ctx.fillRect(barX, barY, barW * ratio, barH);
+    // Progress bar.
+    const padX = 18, barW = r.w - padX * 2, barH = 6;
+    const barX = r.x + padX, barY = r.y + r.h - 14;
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    roundRect(barX, barY, barW, barH, 3);
+    ctx.fill();
+    ctx.fillStyle = myZoneProgress.ready ? '#6bdfa1' : '#ffd27a';
+    roundRect(barX, barY, barW * ratio, barH, 3);
+    ctx.fill();
   }
 
   function drawOverlays(now) {
@@ -785,36 +975,76 @@
     ctx.ellipse(0, r + 4, r * 0.9, r * 0.35, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    // Body — emoji-on-disk placeholder until sprite sheets land.
-    ctx.fillStyle = isYou ? '#ffb96b' : '#6bbcff';
-    ctx.beginPath();
-    ctx.arc(0, 0, r, 0, Math.PI * 2);
-    ctx.fill();
+    // Accent ring marks your own avatar.
+    if (isYou) {
+      ctx.strokeStyle = '#ffb96b';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.ellipse(0, r + 4, r * 1.05, r * 0.45, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
 
-    ctx.font = '22px serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillStyle = '#1a1410';
-    ctx.fillText(characterEmoji(p.characterId), 0, 1);
+    const sprite = getSprite(p.characterId);
+    let nameTagY = -r - 8;
 
-    // Direction arrow indicator.
-    const arrowOffset = { up: [0, -r - 6], down: [0, r + 6], left: [-r - 6, 0], right: [r + 6, 0] }[p.dir] || [0, r + 6];
-    ctx.fillStyle = isYou ? '#ffb96b' : '#6bbcff';
-    ctx.beginPath();
-    ctx.arc(arrowOffset[0], arrowOffset[1], 3, 0, Math.PI * 2);
-    ctx.fill();
+    if (sprite.ready) {
+      const dir = p.dir || 'down';
+      const row = dir === 'down' ? 0 : dir === 'up' ? 2 : 1; // left/right -> side
+      const col = p.moving ? (Math.floor(performance.now() / WALK_FRAME_MS) % 2) + 1 : 0;
+      const fw = SPRITE_FRAME.width, fh = SPRITE_FRAME.height;
+      const drawW = 44, drawH = 44;
+      const destX = -drawW / 2;
+      const destY = (r + 5) - drawH * (31 / 32); // feet rest near the shadow
+      nameTagY = destY - 6;
+
+      ctx.imageSmoothingEnabled = false;
+      ctx.save();
+      if (dir === 'left') ctx.scale(-1, 1);
+      ctx.drawImage(sprite.img, col * fw, row * fh, fw, fh, destX, destY, drawW, drawH);
+      ctx.restore();
+    } else {
+      // Emoji-on-disk fallback for avatars without a sprite sheet.
+      ctx.fillStyle = isYou ? '#ffb96b' : '#6bbcff';
+      ctx.beginPath();
+      ctx.arc(0, 0, r, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.font = '22px serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#1a1410';
+      ctx.fillText(characterEmoji(p.characterId), 0, 1);
+
+      const arrowOffset = { up: [0, -r - 6], down: [0, r + 6], left: [-r - 6, 0], right: [r + 6, 0] }[p.dir] || [0, r + 6];
+      ctx.fillStyle = isYou ? '#ffb96b' : '#6bbcff';
+      ctx.beginPath();
+      ctx.arc(arrowOffset[0], arrowOffset[1], 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
 
     // Name tag.
     ctx.font = '12px -apple-system, system-ui, sans-serif';
-    ctx.fillStyle = '#f0f4ff';
+    ctx.textAlign = 'center';
     ctx.textBaseline = 'bottom';
-    ctx.fillText(p.name || '', 0, -r - 8);
+    ctx.fillStyle = '#f0f4ff';
+    ctx.fillText(p.name || '', 0, nameTagY);
 
     ctx.restore();
   }
 
   // ── Helpers ─────────────────────────────────────────────────────────────────
   function clamp(v, lo, hi) { return Math.min(hi, Math.max(lo, v)); }
+
+  function pointInRect(x, y, r) {
+    return x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h;
+  }
+  function nearRect(x, y, r, m) {
+    return x >= r.x - m && x < r.x + r.w + m && y >= r.y - m && y < r.y + r.h + m;
+  }
+  function hexA(hex, a) {
+    const n = parseInt(hex.slice(1), 16);
+    return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
+  }
 
   function readLoungeId() {
     const raw = new URLSearchParams(window.location.search).get('worldId');
