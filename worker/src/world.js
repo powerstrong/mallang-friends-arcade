@@ -14,7 +14,7 @@
 
 import { GAME_ZONES, getZone, findZoneAt } from './worldZones.js';
 import { CHARACTERS, isValidCharacterId, randomCharacterId } from './characters.js';
-import { applyZonePresence, tryFormMatch, resolveProposal, PLAYER_STATUS } from './matcher.js';
+import { applyZonePresence, tryFormMatch, resolveProposal, compareReadyForSeat, PLAYER_STATUS } from './matcher.js';
 import { toGameCharacterId } from './characters.js';
 
 // Mirrors GAME_PATHS in worker/src/room.js — keep these aligned so a new
@@ -463,14 +463,11 @@ export class WorldChannel {
         memberSockets.push({ ws, attach: a });
       }
     }
-    // Deterministic seating order: primary by candidateSince (earliest first),
-    // tie-break by sessionId so ordering doesn't depend on WebSocket iteration.
-    memberSockets.sort((a, b) => {
-      const sa = a.attach.candidateSince ?? Number.MAX_SAFE_INTEGER;
-      const sb = b.attach.candidateSince ?? Number.MAX_SAFE_INTEGER;
-      if (sa !== sb) return sa - sb;
-      return String(a.attach.sessionId).localeCompare(String(b.attach.sessionId));
-    });
+    // Deterministic seating order via the shared matcher comparator.
+    memberSockets.sort((a, b) => compareReadyForSeat(
+      { id: a.attach.sessionId, candidateSince: a.attach.candidateSince },
+      { id: b.attach.sessionId, candidateSince: b.attach.candidateSince },
+    ));
 
     // Enforce maxPlayers — earliest arrivals fill the seats. Anyone over
     // capacity stays INTENT_READY in the zone but is not broadcast as a
@@ -574,17 +571,19 @@ export class WorldChannel {
     if (!zone) return this._cancelProposal(proposal, 'invalid');
 
     // Collect with candidateSince so we can cap at maxPlayers fairly
-    // (earliest arrivals get the seats).
+    // (earliest arrivals get the seats). Comparator MUST match the one used
+    // by `_syncProposalForZone` so the host's modal view and the launch set
+    // are identical when candidateSince ties occur.
     const ready = [];
     for (const w of this.state.getWebSockets()) {
       const a = w.deserializeAttachment();
       if (a?.sessionId
           && a.status === PLAYER_STATUS.INTENT_READY
           && a.currentZoneId === proposal.zoneId) {
-        ready.push({ id: a.sessionId, since: a.candidateSince ?? 0 });
+        ready.push({ id: a.sessionId, candidateSince: a.candidateSince });
       }
     }
-    ready.sort((a, b) => a.since - b.since);
+    ready.sort(compareReadyForSeat);
     const seatedIds = ready.slice(0, zone.maxPlayers).map((r) => r.id);
 
     if (seatedIds.length < zone.minPlayers) {

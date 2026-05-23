@@ -117,6 +117,18 @@ test('tryFormMatch ignores candidates and players in other zones', () => {
   assert.deepEqual(m.players, ['a']);
 });
 
+test('tryFormMatch tie-breaks ties on candidateSince by id (deterministic seating)', () => {
+  // Three players all became INTENT_READY at the exact same ms — comparator
+  // must fall back to id so the modal view and the launch set agree.
+  const players = [
+    { id: 'b', status: PLAYER_STATUS.INTENT_READY, currentZoneId: 'mallang-quiz-battle', candidateSince: 1000 },
+    { id: 'a', status: PLAYER_STATUS.INTENT_READY, currentZoneId: 'mallang-quiz-battle', candidateSince: 1000 },
+    { id: 'c', status: PLAYER_STATUS.INTENT_READY, currentZoneId: 'mallang-quiz-battle', candidateSince: 1000 },
+  ];
+  const m = tryFormMatch(players, QUIZ);
+  assert.deepEqual(m.players, ['a', 'b', 'c']);
+});
+
 test('tryFormMatch caps at maxPlayers and leaves the rest queued', () => {
   // QUIZ maxPlayers = 6. Provide 8 to verify cap.
   const players = Array.from({ length: 8 }, (_, i) => ({

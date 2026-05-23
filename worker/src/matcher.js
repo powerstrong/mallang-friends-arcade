@@ -80,6 +80,18 @@ export function clearProposed(prev, zone, now) {
   return { ...prev, status: PLAYER_STATUS.ROAM, currentZoneId: null, candidateSince: null };
 }
 
+/* Deterministic seat ordering: earliest candidateSince wins; ties broken by
+ * id so iteration order can't shuffle membership between two equivalent
+ * resolutions. Exported so the runtime WorldChannel paths can use the SAME
+ * comparator and the proposal view stays consistent with the launch set.
+ */
+export function compareReadyForSeat(a, b) {
+  const sa = a.candidateSince ?? Number.MAX_SAFE_INTEGER;
+  const sb = b.candidateSince ?? Number.MAX_SAFE_INTEGER;
+  if (sa !== sb) return sa - sb;
+  return String(a.id).localeCompare(String(b.id));
+}
+
 /* Pull a single match group out of the players currently intent_ready in a
  * zone. Returns null if not enough players, otherwise an object describing
  * the group (caller is responsible for transitioning the players to PROPOSED
@@ -91,7 +103,7 @@ export function clearProposed(prev, zone, now) {
 export function tryFormMatch(players, zone) {
   const ready = players
     .filter((p) => p.status === PLAYER_STATUS.INTENT_READY && p.currentZoneId === zone.id)
-    .sort((a, b) => (a.candidateSince ?? 0) - (b.candidateSince ?? 0));
+    .sort(compareReadyForSeat);
 
   if (ready.length < zone.minPlayers) return null;
   const take = Math.min(ready.length, zone.maxPlayers);
