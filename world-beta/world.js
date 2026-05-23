@@ -134,8 +134,10 @@
     if (lk === 'a' || k === 'ArrowLeft')  { wasd.left  = true; e.preventDefault(); }
     if (lk === 'd' || k === 'ArrowRight') { wasd.right = true; e.preventDefault(); }
   });
+  // keyup is intentionally NOT gated by isTypingTarget — if a movement key
+  // was held when focus moved into an input, we still want the release to
+  // clear the latched state.
   window.addEventListener('keyup', (e) => {
-    if (isTypingTarget(e.target)) return;
     const k = e.key;
     const lk = k.toLowerCase();
     if (lk === 'w' || k === 'ArrowUp')    wasd.up    = false;
@@ -144,9 +146,11 @@
     if (lk === 'd' || k === 'ArrowRight') wasd.right = false;
   });
   // Lose any "held" state when the tab/window loses focus — otherwise a
-  // keydown without matching keyup leaves the player drifting.
+  // keydown without matching keyup leaves the player drifting. Clear the
+  // touch joystick too in case backgrounding skipped pointercancel.
   window.addEventListener('blur', () => {
     wasd.up = wasd.down = wasd.left = wasd.right = false;
+    joy.up = joy.down = joy.left = joy.right = false;
   });
   function isHeld(dir) {
     return wasd[dir] || joy[dir];

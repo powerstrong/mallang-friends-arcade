@@ -91,27 +91,49 @@ export class WorldChannel {
         const px = clamp(Number.isFinite(a.x) ? a.x : SPAWN_POINT.x, 16, WORLD_BOUNDS.width - 16);
         const py = clamp(Number.isFinite(a.y) ? a.y : SPAWN_POINT.y, 16, WORLD_BOUNDS.height - 16);
         const zoneNow = findZoneAt(px, py);
-        const next = applyZonePresence(
-          { status: PLAYER_STATUS.ROAM, currentZoneId: null, candidateSince: null },
-          zoneNow,
-          now,
-        );
+        const zoneNowId = zoneNow?.id ?? null;
 
-        const needsClamp = px !== a.x || py !== a.y;
-        const isOrphanProposed = a.status === PLAYER_STATUS.PROPOSED;
-        const isZoneMismatch = a.currentZoneId !== next.currentZoneId;
+        // Decide whether status needs touching. The earlier version reset
+        // every INTENT_READY back to CANDIDATE which lost ready state for
+        // anyone standing in place across a deploy/hibernation. Keep the
+        // existing dwell state when the player is still validly inside the
+        // same zone; only reset on mismatch or orphan PROPOSED.
+        let nextStatus = a.status;
+        let nextCurrentZoneId = a.currentZoneId ?? null;
+        let nextCandidateSince = a.candidateSince ?? null;
 
-        if (needsClamp || isOrphanProposed || isZoneMismatch) {
+        if (a.status === PLAYER_STATUS.PROPOSED || zoneNowId !== a.currentZoneId) {
+          if (zoneNow) {
+            nextStatus = PLAYER_STATUS.CANDIDATE;
+            nextCurrentZoneId = zoneNowId;
+            nextCandidateSince = now;
+          } else {
+            nextStatus = PLAYER_STATUS.ROAM;
+            nextCurrentZoneId = null;
+            nextCandidateSince = null;
+          }
+        }
+
+        const dirty =
+          px !== a.x ||
+          py !== a.y ||
+          nextStatus !== a.status ||
+          nextCurrentZoneId !== (a.currentZoneId ?? null) ||
+          nextCandidateSince !== (a.candidateSince ?? null);
+
+        if (dirty) {
           ws.serializeAttachment({
             ...a,
             x: px,
             y: py,
-            status: next.status,
-            currentZoneId: next.currentZoneId,
-            candidateSince: next.candidateSince,
+            status: nextStatus,
+            currentZoneId: nextCurrentZoneId,
+            candidateSince: nextCandidateSince,
           });
         }
       }
+      // Re-arm alarm so any reset CANDIDATE still gets promoted on schedule.
+      await this._scheduleZoneAlarm();
     });
   }
 
@@ -432,14 +454,19 @@ export class WorldChannel {
     memberSockets.sort((a, b) =>
       (a.attach.candidateSince ?? 0) - (b.attach.candidateSince ?? 0));
 
+    // Enforce maxPlayers — earliest arrivals fill the seats. Anyone over
+    // capacity stays INTENT_READY in the zone but is not broadcast as a
+    // member; once a seated player leaves they slide in on the next sync.
+    const seated = memberSockets.slice(0, zone.maxPlayers);
+
     const existing = [...this.proposals.values()].find((p) => p.zoneId === zoneId);
 
-    if (memberSockets.length === 0) {
+    if (seated.length === 0) {
       if (existing) this.proposals.delete(existing.matchId);
       return;
     }
 
-    const memberInfo = memberSockets.map(({ attach }) => ({
+    const memberInfo = seated.map(({ attach }) => ({
       id: attach.sessionId,
       name: attach.name,
       characterId: attach.characterId,
@@ -489,7 +516,7 @@ export class WorldChannel {
       },
     };
 
-    for (const { ws, attach } of memberSockets) {
+    for (const { ws, attach } of seated) {
       if (proposal.lastMemberIds.has(attach.sessionId)) {
         this._send(ws, updateMsg);
       } else {
@@ -511,23 +538,28 @@ export class WorldChannel {
     const zone = getZone(proposal.zoneId);
     if (!zone) return this._cancelProposal(proposal, 'invalid');
 
-    const memberIds = [];
+    // Collect with candidateSince so we can cap at maxPlayers fairly
+    // (earliest arrivals get the seats).
+    const ready = [];
     for (const w of this.state.getWebSockets()) {
       const a = w.deserializeAttachment();
       if (a?.sessionId
           && a.status === PLAYER_STATUS.INTENT_READY
           && a.currentZoneId === proposal.zoneId) {
-        memberIds.push(a.sessionId);
+        ready.push({ id: a.sessionId, since: a.candidateSince ?? 0 });
       }
     }
-    if (memberIds.length < zone.minPlayers) {
+    ready.sort((a, b) => a.since - b.since);
+    const seatedIds = ready.slice(0, zone.maxPlayers).map((r) => r.id);
+
+    if (seatedIds.length < zone.minPlayers) {
       this._send(ws, {
         t: 'error',
         d: { code: 'MIN_PLAYERS', message: `최소 ${zone.minPlayers}명이 필요합니다.` },
       });
       return;
     }
-    proposal.players = memberIds;
+    proposal.players = seatedIds;
     await this._launchProposal(proposal);
   }
 
