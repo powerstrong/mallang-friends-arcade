@@ -87,6 +87,7 @@
   const chatForm = document.getElementById('chat-form');
   const chatInput = document.getElementById('chat-input');
   const chatLog = document.getElementById('chat-log');
+  const leaveBtn = document.getElementById('leave-btn');
   const matchModal = document.getElementById('match-modal');
   const matchTitle = document.getElementById('match-title');
   const matchStatus = document.getElementById('match-status');
@@ -188,6 +189,7 @@
 
   nameInput.addEventListener('input', updateJoinButton);
   joinBtn.addEventListener('click', tryJoin);
+  if (leaveBtn) leaveBtn.addEventListener('click', leaveWorld);
   nameInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !joinBtn.disabled) tryJoin();
   });
@@ -198,6 +200,7 @@
   let worldStarted = false; // true once the first `welcome` set up the world
   let reconnectTimer = null;
   let reconnectAttempts = 0;
+  let leaving = false;     // set true while the user is intentionally leaving the world
   const MAX_RECONNECT_ATTEMPTS = 8;
   let me = null;        // { id, name, characterId, x, y, dir, moving }
   let peers = new Map(); // id -> { id, name, characterId, x, y, dir, moving }
@@ -326,6 +329,35 @@
     }, delay);
   }
 
+  // Return to the character picker. Closes the socket cleanly, clears
+  // session state, and re-shows the join panel without tearing down the
+  // one-time wiring (chat form, reaction bar, render loop, joystick) so
+  // re-joining is instant.
+  function leaveWorld() {
+    leaving = true;
+    stopHeartbeat();
+    if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+    reconnectAttempts = 0;
+    if (ws) { try { ws.close(); } catch { /* ignore */ } ws = null; }
+
+    me = null;
+    peers = new Map();
+    bubbles.clear();
+    reactions.clear();
+    myZoneProgress = null;
+    zoneStates = new Map();
+    zonesCatalog = [];
+    if (activeProposal) closeMatchModal();
+    if (chatLog) chatLog.innerHTML = '';
+
+    worldPanel.classList.add('hidden');
+    joinPanel.classList.remove('hidden');
+    joinStatus.textContent = '';
+    joinStatus.classList.remove('error');
+    setConnStatus(false);
+    updateJoinButton();
+  }
+
   function showJoinError(msg) {
     joinStatus.textContent = msg;
     joinStatus.classList.add('error');
@@ -388,12 +420,15 @@
     reconnectAttempts = 0;
     startHeartbeat();
 
-    // One-time world setup — guarded so a reconnect doesn't double-bind
-    // listeners or spin up a second render loop.
+    // Always show the world panel — handles both first join and re-join
+    // after the user returned to the character picker.
+    joinPanel.classList.add('hidden');
+    worldPanel.classList.remove('hidden');
+
+    // One-time wiring — guarded so re-joins don't double-bind listeners
+    // or spin up a second render loop.
     if (!worldStarted) {
       worldStarted = true;
-      joinPanel.classList.add('hidden');
-      worldPanel.classList.remove('hidden');
       buildReactionBar();
       bindChatForm();
       bindMatchModal();
@@ -681,6 +716,9 @@
     stopHeartbeat();
     // Tear down any open match proposal so its card + countdown don't linger.
     if (activeProposal) closeMatchModal();
+
+    // Intentional leave — leaveWorld already swapped panels; don't reconnect.
+    if (leaving) { leaving = false; return; }
 
     if (worldStarted) {
       // Already in the world — keep the render loop running so the canvas
