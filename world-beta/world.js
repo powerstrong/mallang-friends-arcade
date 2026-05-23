@@ -1198,36 +1198,51 @@
   function drawBubble(cx, cy, text, alpha) {
     ctx.save();
     ctx.globalAlpha = alpha;
-    ctx.font = '13px -apple-system, system-ui, sans-serif';
-    const padX = 9, padY = 6, lineH = 16;
+    ctx.font = 'bold 14px -apple-system, system-ui, sans-serif';
+    const padX = 11, padY = 7, lineH = 18;
     const lines = wrapText(text, 220);
     const w = Math.max(...lines.map((l) => ctx.measureText(l).width)) + padX * 2;
     const h = lines.length * lineH + padY * 2;
-    // Sit above the sprite + name pill so the bubble doesn't overlap the
-    // character head. Derived from current drawH(100) + name pill(~22) +
-    // gap(~8) ≈ 130. Clamp to keep it inside the canvas top.
-    const top = Math.max(8, cy - 130 - h);
+    // Sit just above the name pill so the tail visually connects to the
+    // character. Clamp to keep the bubble inside the canvas.
+    const top = Math.max(8, cy - 118 - h);
+    const tailH = 12;
+    const tailHalfW = 8;
 
-    // Soft drop shadow for contrast over the grass.
-    ctx.shadowColor = 'rgba(0,0,0,0.32)';
-    ctx.shadowBlur = 8;
-    ctx.shadowOffsetY = 2;
-    ctx.fillStyle = 'rgba(255,255,255,0.98)';
-    roundRect(cx - w / 2, top, w, h, 10);
-    ctx.fill();
+    // Drop shadow for contrast over the grass.
+    ctx.shadowColor = 'rgba(0,0,0,0.38)';
+    ctx.shadowBlur = 10;
+    ctx.shadowOffsetY = 3;
 
-    // Tail
+    // Body + tail as a single path so the dark outline is continuous.
+    const x = cx - w / 2, y = top, r = 10;
     ctx.beginPath();
-    ctx.moveTo(cx - 6, top + h);
-    ctx.lineTo(cx, top + h + 8);
-    ctx.lineTo(cx + 6, top + h);
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    // 오른쪽 가장자리 → tail 시작점
+    ctx.lineTo(cx + tailHalfW, y + h);
+    ctx.lineTo(cx, y + h + tailH);   // 뾰족한 끝
+    ctx.lineTo(cx - tailHalfW, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
     ctx.closePath();
+
+    ctx.fillStyle = '#ffffff';
     ctx.fill();
 
-    // Reset shadow before drawing text so the text stays crisp.
+    // 외곽선 (그림자 끄고 깔끔하게).
     ctx.shadowColor = 'transparent';
     ctx.shadowBlur = 0;
     ctx.shadowOffsetY = 0;
+    ctx.strokeStyle = 'rgba(20,30,16,0.8)';
+    ctx.lineWidth = 1.5;
+    ctx.lineJoin = 'round';
+    ctx.stroke();
 
     ctx.fillStyle = '#1a1410';
     ctx.textAlign = 'center';
