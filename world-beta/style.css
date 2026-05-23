@@ -286,22 +286,18 @@ h1 {
   touch-action: none;
 }
 
-/* Persistent chat history — overlaid on the bottom-left of the world. */
+/* Persistent chat history — placed below the canvas as its own panel so it
+   never overlaps booth artwork. */
 .chat-log {
-  position: absolute;
-  left: 10px;
-  bottom: 10px;
-  width: 38%;
-  max-width: 280px;
-  max-height: 44%;
+  margin: 10px 0 0;
   display: flex;
   flex-direction: column;
-  background: rgba(16, 22, 38, 0.68);
+  max-height: 150px;
+  background: rgba(16, 22, 38, 0.78);
   border-radius: 10px;
-  font-size: 0.78rem;
+  font-size: 0.82rem;
   line-height: 1.35;
   color: #e8edff;
-  pointer-events: auto;
   overflow: hidden;
 }
 
@@ -370,10 +366,8 @@ h1 {
   .leave-btn { padding: 3px 8px; font-size: 0.7rem; }
 
   .chat-log {
-    width: calc(100% - 16px);
-    max-width: none;
-    max-height: 26%;
-    font-size: 0.74rem;
+    max-height: 110px;
+    font-size: 0.76rem;
   }
 }
 

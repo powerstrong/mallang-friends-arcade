@@ -1199,7 +1199,7 @@
   }
 
   function drawAvatar(p, isYou) {
-    const r = 20;
+    const r = 18;
     ctx.save();
     ctx.translate(p.x, p.y);
 
@@ -1226,7 +1226,7 @@
       const row = dir === 'down' ? 0 : dir === 'up' ? 2 : 1; // left/right -> side
       const col = p.moving ? (Math.floor(performance.now() / WALK_FRAME_MS) % 2) + 1 : 0;
       const fw = SPRITE_FRAME.width, fh = SPRITE_FRAME.height;
-      const drawW = 120, drawH = 120;
+      const drawW = 100, drawH = 100;
       const destX = -drawW / 2;
       // Cells render the character at ~95% of cell height with ~5% bottom padding.
       // Anchor the visible bottom of the sprite onto the shadow center to kill
