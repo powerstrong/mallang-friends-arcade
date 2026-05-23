@@ -56,9 +56,9 @@ window.GameBoot = (function () {
 
   function exit() {
     // World-launched games carry from=world&worldId=... so we return players
-    // to the lounge they came from instead of dumping them into the lobby.
-    // We also tag from=game so the world client triggers a random spawn +
-    // landing effect instead of placing the player at the fixed SPAWN_POINT.
+    // to the lounge they came from. Also tag from=game so the world client
+    // triggers a random spawn + landing effect instead of placing the player
+    // at the fixed SPAWN_POINT.
     if (from === 'world') {
       const worldId = params.get('worldId');
       const out = new URLSearchParams();
@@ -67,13 +67,10 @@ window.GameBoot = (function () {
       window.location.href = '/world/?' + out.toString();
       return;
     }
-    if (isMultiplayer && code) {
-      window.location.href =
-        '/lobby/room.html?code=' + encodeURIComponent(code) +
-        '&name=' + encodeURIComponent(name || '');
-    } else {
-      window.location.href = '/';
-    }
+    // Solo / direct-link sessions fall back to the brand landing page.
+    // The legacy /lobby/room.html?code=... return path was removed when the
+    // room-code lobby was retired.
+    window.location.href = '/';
   }
 
   return { code, name, gameId, gameType, playerId, isMultiplayer, from, submitResult, exit };
