@@ -25,7 +25,7 @@ window.GameBoot = (function () {
   const gameType = gameMeta ? gameMeta.type : 'SOLO';
 
   // 'world' when the game was launched from the world lounge (= round trip
-  // back through /world-beta on exit). Useful for the result screen to drop
+  // back through /world on exit). Useful for the result screen to drop
   // the "한 판 더" affordance — world lobbies don't support instant restart.
   const from = params.get('from') || null;
 
@@ -64,7 +64,7 @@ window.GameBoot = (function () {
       const out = new URLSearchParams();
       if (worldId) out.set('worldId', worldId);
       out.set('from', 'game');
-      window.location.href = '/world-beta/?' + out.toString();
+      window.location.href = '/world/?' + out.toString();
       return;
     }
     if (isMultiplayer && code) {
