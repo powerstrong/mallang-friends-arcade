@@ -800,8 +800,12 @@ function showNetworkResultsOverlay(results) {
   resultsOverlay.classList.add("is-active");
 }
 
-// 결과 화면 버튼 레이블/표시 결정. 월드에서 들어왔으면 '한 판 더' 같은
-// 선택지는 의미가 없으니 단일 '월드로 돌아가기' 만 노출한다.
+// 결과 화면 버튼 레이블/표시 결정.
+//   - 월드에서 들어왔으면 '한 판 더' 라는 선택지는 의미가 없으니 단일
+//     '월드로 돌아가기' 만 노출한다.
+//   - 그 외(솔로 또는 직접 진입)는 다시 시작 / 메인으로 나가기.
+//   레거시 lobby(`?code=` 만 있고 `from=world` 가 없는 케이스)는 진입점이
+//   사라졌으므로 별도 분기하지 않는다.
 function applyResultButtonLabels() {
   const fromWorld = !!(gameBoot && gameBoot.from === 'world');
   if (fromWorld) {
@@ -810,8 +814,8 @@ function applyResultButtonLabels() {
     return;
   }
   restartFromResultsButton.hidden = false;
-  restartFromResultsButton.textContent = isRoomSession ? '대기실로 복귀' : '한 판 더 하기';
-  exitAfterResultsButton.textContent = isRoomSession ? '광장으로 가기' : '메인으로 나가기';
+  restartFromResultsButton.textContent = '한 판 더 하기';
+  exitAfterResultsButton.textContent = '메인으로 나가기';
 }
 
 let lastHudSignature = "";

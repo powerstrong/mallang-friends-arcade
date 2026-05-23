@@ -45,7 +45,10 @@ self.addEventListener('fetch', e => {
           }
           return res;
         })
-        .catch(() => caches.match(e.request).then(cached => cached || caches.match('/')))
+        // 오프라인 fallback: 쿼리스트링 무시하고 precache 시도 (특히 게임 복귀
+        // URL /world/?worldId=...&from=game), 그래도 실패하면 / 로.
+        .catch(() => caches.match(e.request, { ignoreSearch: true })
+          .then(cached => cached || caches.match('/')))
     );
     return;
   }
