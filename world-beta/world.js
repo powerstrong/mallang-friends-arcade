@@ -1096,7 +1096,8 @@
       const destY = (r + 5) - drawH * (31 / 32); // feet rest near the shadow
       nameTagY = destY - 6;
 
-      ctx.imageSmoothingEnabled = false;
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
       ctx.save();
       if (dir === 'left') ctx.scale(-1, 1);
       ctx.drawImage(sprite.img, col * fw, row * fh, fw, fh, destX, destY, drawW, drawH);

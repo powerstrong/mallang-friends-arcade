@@ -46,4 +46,4 @@ window.CHARACTERS = [
   },
 ];
 
-window.CHARACTER_FRAME = { width: 32, height: 32, cols: 3, rows: 3 };
+window.CHARACTER_FRAME = { width: 96, height: 96, cols: 3, rows: 3 };
