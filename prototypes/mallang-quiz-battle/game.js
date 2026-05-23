@@ -790,7 +790,7 @@ function showChatBriefly() {
   }
 }
 
-/* ── 로비로 돌아가기 ─────────────────────────────────── */
+/* ── 광장으로 돌아가기 ─────────────────────────────────── */
 document.getElementById('exitBtn').addEventListener('click', () => {
   window.GameBoot.exit();
 });
@@ -809,6 +809,6 @@ if (code) {
   connect();
 } else {
   document.querySelector('.setup-copy').textContent =
-    '방 코드 없이 실행 중입니다. 로비에서 입장해 주세요.';
+    '방 코드 없이 실행 중입니다. 광장에서 입장해 주세요.';
   readyBtn.disabled = true;
 }
