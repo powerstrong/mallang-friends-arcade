@@ -112,7 +112,6 @@
   const matchMembers = document.getElementById('match-members');
   const matchAcceptBtn = document.getElementById('match-accept');
   const matchDeclineBtn = document.getElementById('match-decline');
-  const matchCountdown = document.getElementById('match-countdown');
 
   // shared/input.js only binds arrow keys. Add WASD locally so this page
   // matches the on-screen hint without touching shared input used by games.
@@ -245,7 +244,6 @@
 
   // Active match proposal awaiting our response.
   let activeProposal = null; // { matchId, gameId, title, members, deadline, responded }
-  let matchCountdownTimer = null;
   let matchCloseTimer = null; // delayed closeMatchModal handle (cancellation flow)
 
   // ── Picker UI ───────────────────────────────────────────────────────────────
@@ -409,6 +407,7 @@
       case 'zone_state': return handleZoneState(env.d);
       case 'zone_progress': return handleZoneProgress(env.d);
       case 'match_proposal': return handleMatchProposal(env.d);
+      case 'match_members_updated': return handleMatchMembersUpdated(env.d);
       case 'match_confirmed': return handleMatchConfirmed(env.d);
       case 'match_cancelled': return handleMatchCancelled(env.d);
       case 'go_to_game': return handleGoToGame(env.d);
@@ -480,8 +479,8 @@
   }
 
   function bindMatchModal() {
-    matchAcceptBtn.addEventListener('click', () => respondToMatch(true));
-    matchDeclineBtn.addEventListener('click', () => respondToMatch(false));
+    matchAcceptBtn.addEventListener('click', sendMatchStart);
+    matchDeclineBtn.addEventListener('click', sendMatchLeave);
   }
 
   function bindChatForm() {
@@ -609,17 +608,37 @@
     });
   }
 
+  // Build a map worldId -> portrait URL so the modal members list can show
+  // each player's profile image instead of a fallback emoji.
+  function characterPortrait(worldId) {
+    const list = Array.isArray(window.CHARACTERS) ? window.CHARACTERS : [];
+    const meta = list.find((c) => c.worldId === worldId);
+    return meta?.portrait || null;
+  }
+
   function handleMatchProposal(d) {
     if (!d?.matchId || !Array.isArray(d.players)) return;
     activeProposal = {
       matchId: d.matchId,
       gameId: d.gameId,
       title: d.title || d.gameId,
+      zoneId: d.zoneId,
+      hostId: d.hostId,
       members: d.players,
-      deadline: numOr(d.deadline, Date.now() + 7000),
-      responded: null,
+      minPlayers: numOr(d.minPlayers, 1),
+      maxPlayers: numOr(d.maxPlayers, 99),
     };
     openMatchModal();
+  }
+
+  function handleMatchMembersUpdated(d) {
+    if (!d?.matchId || !activeProposal || activeProposal.matchId !== d.matchId) return;
+    activeProposal.hostId = d.hostId;
+    activeProposal.members = Array.isArray(d.players) ? d.players : [];
+    if (typeof d.minPlayers === 'number') activeProposal.minPlayers = d.minPlayers;
+    if (typeof d.maxPlayers === 'number') activeProposal.maxPlayers = d.maxPlayers;
+    renderMatchMembers();
+    refreshMatchActions();
   }
 
   function handleMatchConfirmed(d) {
@@ -628,9 +647,6 @@
     matchStatus.textContent = '확정됨 — 잠시 후 게임이 시작됩니다.';
     matchAcceptBtn.disabled = true;
     matchDeclineBtn.disabled = true;
-    setMemberStatuses(d.accepted || [], d.declined || []);
-    stopMatchCountdown();
-    matchCountdown.textContent = '';
     // go_to_game arrives separately and triggers the redirect.
   }
 
@@ -644,7 +660,6 @@
     if (target.origin !== window.location.origin) return;
     if (!target.pathname.startsWith('/prototypes/')) return;
 
-    stopMatchCountdown();
     stopHeartbeat();
     if (rafHandle) { cancelAnimationFrame(rafHandle); rafHandle = null; }
     if (ws) { try { ws.close(); } catch { /* ignore */ } }
@@ -653,20 +668,14 @@
 
   function handleMatchCancelled(d) {
     if (!d?.matchId) return;
-    if (!activeProposal || activeProposal.matchId !== d.matchId) {
-      // Could be a stale message; close any modal anyway if it matches our id.
-      return;
-    }
+    if (!activeProposal || activeProposal.matchId !== d.matchId) return;
     const reasonText = ({
-      declined: '다른 플레이어가 매칭을 취소했습니다.',
-      timeout: '시간 초과로 매칭이 취소되었습니다.',
+      declined: '매칭이 취소되었습니다.',
       invalid: '매칭이 취소되었습니다.',
     })[d.reason] || '매칭이 취소되었습니다.';
     matchStatus.textContent = reasonText;
     matchAcceptBtn.disabled = true;
     matchDeclineBtn.disabled = true;
-    matchCountdown.textContent = '';
-    stopMatchCountdown();
     if (matchCloseTimer) clearTimeout(matchCloseTimer);
     matchCloseTimer = setTimeout(() => { matchCloseTimer = null; closeMatchModal(); }, 1200);
   }
@@ -675,84 +684,116 @@
     if (!activeProposal) return;
     // A pending cancel-close from a previous proposal must not fire now.
     if (matchCloseTimer) { clearTimeout(matchCloseTimer); matchCloseTimer = null; }
-    // The bottom card would otherwise overlap the joystick on mobile.
     if (joystickEl) joystickEl.style.visibility = 'hidden';
     matchTitle.textContent = activeProposal.title;
-    matchStatus.textContent = '참가하시겠어요?';
-    matchAcceptBtn.disabled = false;
-    matchDeclineBtn.disabled = false;
-    matchMembers.innerHTML = '';
-    for (const m of activeProposal.members) {
-      const li = document.createElement('li');
-      if (me && m.id === me.id) li.classList.add('is-self');
-      li.dataset.id = m.id;
-      const glyph = document.createElement('span');
-      glyph.className = 'glyph';
-      glyph.textContent = characterEmoji(m.characterId);
-      const name = document.createElement('span');
-      name.className = 'name';
-      name.textContent = m.name || '익명';
-      li.append(glyph, name);
-      matchMembers.appendChild(li);
-    }
+    renderMatchMembers();
+    refreshMatchActions();
     matchModal.classList.remove('hidden');
     matchModal.setAttribute('aria-hidden', 'false');
-    startMatchCountdown();
   }
 
   function closeMatchModal() {
     matchModal.classList.add('hidden');
     matchModal.setAttribute('aria-hidden', 'true');
-    stopMatchCountdown();
     if (matchCloseTimer) { clearTimeout(matchCloseTimer); matchCloseTimer = null; }
     if (joystickEl) joystickEl.style.visibility = '';
     activeProposal = null;
   }
 
-  function setMemberStatuses(accepted, declined) {
-    const a = new Set(accepted), dc = new Set(declined);
-    for (const li of matchMembers.children) {
-      li.classList.remove('accepted', 'declined');
-      if (a.has(li.dataset.id)) li.classList.add('accepted');
-      if (dc.has(li.dataset.id)) li.classList.add('declined');
-    }
-  }
+  function renderMatchMembers() {
+    if (!activeProposal) return;
+    matchMembers.innerHTML = '';
+    for (const m of activeProposal.members) {
+      const li = document.createElement('li');
+      if (me && m.id === me.id) li.classList.add('is-self');
+      if (m.id === activeProposal.hostId) li.classList.add('is-host');
+      li.dataset.id = m.id;
 
-  function startMatchCountdown() {
-    stopMatchCountdown();
-    const tick = () => {
-      if (!activeProposal) return;
-      const remain = Math.max(0, activeProposal.deadline - Date.now());
-      matchCountdown.textContent = `${(remain / 1000).toFixed(1)}초 남음`;
-      if (remain <= 0) {
-        // Auto-decline on timeout (matches server behavior).
-        respondToMatch(false);
+      const glyph = document.createElement('span');
+      glyph.className = 'glyph';
+      const src = characterPortrait(m.characterId);
+      if (src) {
+        const img = document.createElement('img');
+        img.src = src;
+        img.alt = '';
+        glyph.appendChild(img);
+      } else {
+        glyph.textContent = characterEmoji(m.characterId);
       }
-    };
-    tick();
-    matchCountdownTimer = setInterval(tick, 100);
-  }
 
-  function stopMatchCountdown() {
-    if (matchCountdownTimer) {
-      clearInterval(matchCountdownTimer);
-      matchCountdownTimer = null;
+      const name = document.createElement('span');
+      name.className = 'name';
+      name.textContent = m.name || '익명';
+      name.style.color = nameColor(m.id);
+
+      li.append(glyph, name);
+      if (m.id === activeProposal.hostId) {
+        const badge = document.createElement('span');
+        badge.className = 'host-badge';
+        badge.textContent = '방장';
+        li.appendChild(badge);
+      }
+      matchMembers.appendChild(li);
     }
   }
 
-  function respondToMatch(accept) {
-    if (!activeProposal || activeProposal.responded != null) return;
-    activeProposal.responded = !!accept;
+  function refreshMatchActions() {
+    if (!activeProposal) return;
+    const isHost = !!(me && activeProposal.hostId === me.id);
+    const min = activeProposal.minPlayers || 1;
+    const count = activeProposal.members.length;
+    const enough = count >= min;
+
+    matchAcceptBtn.style.display = isHost ? '' : 'none';
+    matchAcceptBtn.disabled = !enough;
+    matchAcceptBtn.textContent = enough
+      ? `시작 (${count}명)`
+      : `최소 ${min}명 필요 (${count}/${min})`;
+    matchDeclineBtn.disabled = false;
+    matchDeclineBtn.textContent = '나가기';
+
+    if (isHost) {
+      matchStatus.textContent = enough
+        ? '준비되면 시작을 누르세요.'
+        : `최소 ${min}명이 되면 시작할 수 있어요.`;
+    } else {
+      matchStatus.textContent = '방장이 시작을 누르면 함께 입장합니다.';
+    }
+  }
+
+  function sendMatchStart() {
+    if (!activeProposal) return;
+    if (!me || activeProposal.hostId !== me.id) return;
     matchAcceptBtn.disabled = true;
+    matchStatus.textContent = '시작 중...';
+    send({ t: 'match_start', d: { matchId: activeProposal.matchId } });
+  }
+
+  function sendMatchLeave() {
+    if (!activeProposal) {
+      closeMatchModal();
+      return;
+    }
     matchDeclineBtn.disabled = true;
-    matchStatus.textContent = accept ? '참가 의사 전송 — 다른 플레이어 응답 대기...' : '취소를 보내는 중...';
-    send({ t: 'match_response', d: { matchId: activeProposal.matchId, accept: !!accept } });
+    matchStatus.textContent = '나가는 중...';
+    send({ t: 'match_leave', d: { matchId: activeProposal.matchId } });
+    // Close immediately for snappy feedback — server's zone_progress(null)
+    // will also try to close but the modal is already gone.
+    closeMatchModal();
   }
 
   function handleZoneProgress(d) {
     if (!d || !d.zoneId) {
       myZoneProgress = null;
+      // Walking out of a zone (or being kicked back to ROAM) closes any open
+      // lobby modal so the player isn't stranded looking at a ghost proposal.
+      if (activeProposal) closeMatchModal();
       return;
+    }
+    // If we somehow ended up in a different zone than the proposal we have
+    // a modal open for, that proposal is no longer ours — drop it.
+    if (activeProposal && activeProposal.zoneId && d.zoneId !== activeProposal.zoneId) {
+      closeMatchModal();
     }
     myZoneProgress = {
       zoneId: d.zoneId,
