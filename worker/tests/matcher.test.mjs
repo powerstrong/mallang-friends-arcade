@@ -15,7 +15,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const HOLD = 3000;
 const JUMP = getZone('jump-climber');
-const TUG = getZone('mallang-tug-war');
+const QUIZ = getZone('mallang-quiz-battle');
 
 function fresh(id, overrides = {}) {
   return { id, status: PLAYER_STATUS.ROAM, currentZoneId: null, candidateSince: null, ...overrides };
@@ -67,17 +67,17 @@ test('leaving the zone immediately demotes any non-proposed status', () => {
 test('switching zones resets the candidate timer', () => {
   const switched = applyZonePresence(
     { id: 'a', status: PLAYER_STATUS.INTENT_READY, currentZoneId: 'jump-climber', candidateSince: 1000 },
-    TUG, 5000, HOLD
+    QUIZ, 5000, HOLD
   );
   assert.equal(switched.status, PLAYER_STATUS.CANDIDATE);
-  assert.equal(switched.currentZoneId, 'mallang-tug-war');
+  assert.equal(switched.currentZoneId, 'mallang-quiz-battle');
   assert.equal(switched.candidateSince, 5000);
 });
 
 test('proposed status is not affected by movement updates', () => {
   const proposed = { id: 'a', status: PLAYER_STATUS.PROPOSED, currentZoneId: 'jump-climber', candidateSince: 1000 };
   assert.deepEqual(applyZonePresence(proposed, null, 9999, HOLD), proposed);
-  assert.deepEqual(applyZonePresence(proposed, TUG, 9999, HOLD), proposed);
+  assert.deepEqual(applyZonePresence(proposed, QUIZ, 9999, HOLD), proposed);
 });
 
 test('in_game status is not affected by movement updates', () => {
@@ -89,9 +89,10 @@ test('in_game status is not affected by movement updates', () => {
 
 test('tryFormMatch returns null when below minPlayers', () => {
   const players = [];
-  assert.equal(tryFormMatch(players, TUG), null);
-  players.push({ id: 'a', status: PLAYER_STATUS.INTENT_READY, currentZoneId: TUG.id, candidateSince: 1000 });
-  assert.equal(tryFormMatch(players, TUG), null);
+  assert.equal(tryFormMatch(players, QUIZ), null);
+  players.push({ id: 'a', status: PLAYER_STATUS.INTENT_READY, currentZoneId: QUIZ.id, candidateSince: 1000 });
+  // QUIZ minPlayers=2 — still below
+  assert.equal(tryFormMatch(players, QUIZ), null);
 });
 
 test('tryFormMatch slices to maxPlayers in candidateSince order', () => {
@@ -110,21 +111,22 @@ test('tryFormMatch ignores candidates and players in other zones', () => {
   const players = [
     { id: 'a', status: PLAYER_STATUS.INTENT_READY, currentZoneId: 'jump-climber', candidateSince: 1000 },
     { id: 'b', status: PLAYER_STATUS.CANDIDATE,    currentZoneId: 'jump-climber', candidateSince: 2000 },
-    { id: 'c', status: PLAYER_STATUS.INTENT_READY, currentZoneId: 'mallang-tug-war', candidateSince: 500 },
+    { id: 'c', status: PLAYER_STATUS.INTENT_READY, currentZoneId: 'mallang-quiz-battle', candidateSince: 500 },
   ];
   const m = tryFormMatch(players, JUMP);
   assert.deepEqual(m.players, ['a']);
 });
 
 test('tryFormMatch caps at maxPlayers and leaves the rest queued', () => {
-  const players = Array.from({ length: 4 }, (_, i) => ({
+  // QUIZ maxPlayers = 6. Provide 8 to verify cap.
+  const players = Array.from({ length: 8 }, (_, i) => ({
     id: `p${i}`,
     status: PLAYER_STATUS.INTENT_READY,
-    currentZoneId: 'mallang-tug-war',
+    currentZoneId: 'mallang-quiz-battle',
     candidateSince: 1000 + i,
   }));
-  const m = tryFormMatch(players, TUG);
-  assert.deepEqual(m.players, ['p0', 'p1']);
+  const m = tryFormMatch(players, QUIZ);
+  assert.deepEqual(m.players, ['p0', 'p1', 'p2', 'p3', 'p4', 'p5']);
 });
 
 // ── resolveProposal ─────────────────────────────────────────────────────────
@@ -177,7 +179,7 @@ test('findZoneAt returns the matching zone or null', () => {
 });
 
 test('every zone has a registered gameId path', () => {
-  const known = new Set(['jump-climber', 'mallang-tug-war', 'mallang-quiz-battle']);
+  const known = new Set(['jump-climber', 'mallang-quiz-battle']);
   for (const zone of GAME_ZONES) {
     assert.ok(known.has(zone.gameId), `unknown gameId: ${zone.gameId}`);
     assert.ok(zone.minPlayers >= 1);

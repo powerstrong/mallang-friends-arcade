@@ -348,9 +348,16 @@ h1 {
 
 @media (max-width: 640px) {
   /* Squeeze outer chrome so the world canvas actually fills the phone width. */
-  #app { padding: 10px 6px 64px; }
-  .panel { padding: 10px; border-radius: 12px; }
-  .canvas-wrap { max-width: none; }
+  #app { padding: 6px 4px 56px; }
+  .panel { padding: 8px; border-radius: 12px; }
+  /* Cap canvas height so the full UI (header + canvas + chat-log + reactions
+     + chat-form) fits on phones without forcing the page to scroll. 100dvh
+     adapts to mobile browser chrome. The aspect-ratio rule still drives the
+     width down proportionally when this kicks in. */
+  .canvas-wrap {
+    max-width: none;
+    max-height: calc(100dvh - 270px);
+  }
 
   /* Brand text + meta need to share a narrow header. */
   .world-header { font-size: 0.72rem; padding: 6px 10px; }

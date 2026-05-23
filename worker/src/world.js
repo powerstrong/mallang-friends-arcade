@@ -102,7 +102,12 @@ export class WorldChannel {
         let nextCurrentZoneId = a.currentZoneId ?? null;
         let nextCandidateSince = a.candidateSince ?? null;
 
-        if (a.status === PLAYER_STATUS.PROPOSED || zoneNowId !== a.currentZoneId) {
+        const sameZone = zoneNowId === a.currentZoneId;
+        const isStale = sameZone && (
+          a.status === PLAYER_STATUS.ROAM || a.candidateSince == null
+        );
+
+        if (a.status === PLAYER_STATUS.PROPOSED || !sameZone) {
           if (zoneNow) {
             nextStatus = PLAYER_STATUS.CANDIDATE;
             nextCurrentZoneId = zoneNowId;
@@ -112,6 +117,13 @@ export class WorldChannel {
             nextCurrentZoneId = null;
             nextCandidateSince = null;
           }
+        } else if (isStale) {
+          // Same zone but state is internally inconsistent (e.g. status=roam
+          // with a currentZoneId set, or missing candidateSince). Heal it the
+          // same way applyZonePresence does — treat as a fresh entry.
+          nextStatus = PLAYER_STATUS.CANDIDATE;
+          nextCurrentZoneId = zoneNowId;
+          nextCandidateSince = now;
         }
 
         const dirty =
@@ -451,8 +463,14 @@ export class WorldChannel {
         memberSockets.push({ ws, attach: a });
       }
     }
-    memberSockets.sort((a, b) =>
-      (a.attach.candidateSince ?? 0) - (b.attach.candidateSince ?? 0));
+    // Deterministic seating order: primary by candidateSince (earliest first),
+    // tie-break by sessionId so ordering doesn't depend on WebSocket iteration.
+    memberSockets.sort((a, b) => {
+      const sa = a.attach.candidateSince ?? Number.MAX_SAFE_INTEGER;
+      const sb = b.attach.candidateSince ?? Number.MAX_SAFE_INTEGER;
+      if (sa !== sb) return sa - sb;
+      return String(a.attach.sessionId).localeCompare(String(b.attach.sessionId));
+    });
 
     // Enforce maxPlayers — earliest arrivals fill the seats. Anyone over
     // capacity stays INTENT_READY in the zone but is not broadcast as a
@@ -523,6 +541,23 @@ export class WorldChannel {
         this._send(ws, proposalMsg);
       }
     }
+
+    // Defensive: anyone who was seated last sync but isn't anymore (rare —
+    // requires sort order to shift, which shouldn't happen with stable sort)
+    // must be told to close their stale modal.
+    const dropped = [];
+    for (const id of proposal.lastMemberIds) if (!memberIds.has(id)) dropped.push(id);
+    if (dropped.length) {
+      const cancelMsg = {
+        t: 'match_cancelled',
+        d: { matchId: proposal.matchId, reason: 'left' },
+      };
+      for (const ws of this.state.getWebSockets()) {
+        const a = ws.deserializeAttachment();
+        if (a?.sessionId && dropped.includes(a.sessionId)) this._send(ws, cancelMsg);
+      }
+    }
+
     proposal.lastMemberIds = memberIds;
   }
 

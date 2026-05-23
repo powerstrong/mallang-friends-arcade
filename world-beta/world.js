@@ -146,11 +146,12 @@
     if (lk === 'd' || k === 'ArrowRight') wasd.right = false;
   });
   // Lose any "held" state when the tab/window loses focus — otherwise a
-  // keydown without matching keyup leaves the player drifting. Clear the
-  // touch joystick too in case backgrounding skipped pointercancel.
+  // keydown without matching keyup leaves the player drifting. Also fully
+  // reset the touch joystick (capture / pointer id / thumb) so the next
+  // touch after returning from background isn't blocked.
   window.addEventListener('blur', () => {
     wasd.up = wasd.down = wasd.left = wasd.right = false;
-    joy.up = joy.down = joy.left = joy.right = false;
+    resetJoystick();
   });
   function isHeld(dir) {
     return wasd[dir] || joy[dir];
@@ -161,6 +162,11 @@
   // until release. Listeners are bound to the canvas (not the wrap) so the
   // chat log overlay doesn't trigger movement when it gets touched.
   let joystickEl = null;
+  // Exposed so the top-level `blur` handler can fully reset session state
+  // (activePointerId / thumb transform / .active class) — clearing only the
+  // `joy` flags isn't enough because activePointerId would block the next
+  // touchdown after the tab regains focus.
+  let resetJoystick = () => {};
   function setupJoystick() {
     if (joystickEl) return;
     const wrap = document.querySelector('.canvas-wrap');
@@ -184,6 +190,12 @@
       thumb.style.transform = 'translate(-50%, -50%)';
       base.classList.remove('active');
       activePointerId = null;
+    };
+    resetJoystick = () => {
+      if (activePointerId !== null) {
+        try { canvas.releasePointerCapture(activePointerId); } catch { /* ignore */ }
+      }
+      reset();
     };
     const apply = (clientX, clientY) => {
       let dx = clientX - originX, dy = clientY - originY;
@@ -1133,9 +1145,10 @@
     const lines = wrapText(text, 220);
     const w = Math.max(...lines.map((l) => ctx.measureText(l).width)) + padX * 2;
     const h = lines.length * lineH + padY * 2;
-    // Sit clearly above the 120px sprite + name pill so the bubble doesn't
-    // overlap the character head. Clamp to keep it inside the canvas top.
-    const top = Math.max(8, cy - 150 - h);
+    // Sit above the sprite + name pill so the bubble doesn't overlap the
+    // character head. Derived from current drawH(100) + name pill(~22) +
+    // gap(~8) ≈ 130. Clamp to keep it inside the canvas top.
+    const top = Math.max(8, cy - 130 - h);
 
     // Soft drop shadow for contrast over the grass.
     ctx.shadowColor = 'rgba(0,0,0,0.32)';
