@@ -30,6 +30,23 @@
   ];
   const REACTION_GLYPHS = Object.fromEntries(REACTIONS.map((r) => [r.key, r.glyph]));
 
+  // ── Player name colors ─────────────────────────────────────────────────────
+  // Stable per-id pastel hue so the same player keeps the same color in both
+  // the canvas name tag and the chat log.
+  const NAME_PALETTE = [
+    '#ffb96b', '#6bbcff', '#ff8fb3', '#7ad9a1', '#e5a8ff',
+    '#ffd76b', '#5ad6d6', '#ff9999', '#b8e36b', '#a5b4ff',
+  ];
+  function nameColor(id) {
+    const s = String(id || '');
+    let h = 2166136261;
+    for (let i = 0; i < s.length; i++) {
+      h ^= s.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return NAME_PALETTE[(h >>> 0) % NAME_PALETTE.length];
+  }
+
   // ── Character sprite sheets ───────────────────────────────────────────────
   // 3x3 grid of 32px frames. row: 0=down 1=side(right) 2=up. col: 0=idle 1=stepA 2=stepB.
   // The `left` direction reuses the side row, mirrored horizontally.
@@ -127,7 +144,8 @@
   }
 
   // ── On-screen joystick (touch) ──────────────────────────────────────────────
-  // Fixed virtual stick overlaid on the canvas. CSS hides it on fine pointers.
+  // Spawns under the first touch point on the canvas and follows the finger
+  // until release. Transparent so it never blocks pointer events on the canvas.
   let joystickEl = null;
   function setupJoystick() {
     if (joystickEl) return;
@@ -142,16 +160,19 @@
     wrap.appendChild(base);
     joystickEl = base;
 
-    const TRAVEL = 42; // max thumb offset in px
-    const DEADZONE = 0.34;
-    let active = false, cx = 0, cy = 0;
+    const TRAVEL = 50; // px from origin to fully held
+    const DEADZONE = 0.30;
+    let activePointerId = null;
+    let originX = 0, originY = 0;
 
     const reset = () => {
       joy.up = joy.down = joy.left = joy.right = false;
       thumb.style.transform = 'translate(-50%, -50%)';
+      base.classList.remove('active');
+      activePointerId = null;
     };
-    const apply = (e) => {
-      let dx = e.clientX - cx, dy = e.clientY - cy;
+    const apply = (clientX, clientY) => {
+      let dx = clientX - originX, dy = clientY - originY;
       const len = Math.hypot(dx, dy);
       if (len > TRAVEL) { dx = dx / len * TRAVEL; dy = dy / len * TRAVEL; }
       thumb.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
@@ -160,25 +181,30 @@
       joy.up   = ny < -DEADZONE; joy.down  = ny > DEADZONE;
     };
     const start = (e) => {
-      active = true;
-      const r = base.getBoundingClientRect();
-      cx = r.left + r.width / 2; cy = r.top + r.height / 2;
-      try { base.setPointerCapture(e.pointerId); } catch { /* ignore */ }
-      apply(e);
+      if (activePointerId !== null) return;
+      // Only react to touch/pen — mouse uses the keyboard.
+      if (e.pointerType === 'mouse') return;
+      activePointerId = e.pointerId;
+      originX = e.clientX; originY = e.clientY;
+      const wrapRect = wrap.getBoundingClientRect();
+      base.style.left = (e.clientX - wrapRect.left) + 'px';
+      base.style.top  = (e.clientY - wrapRect.top)  + 'px';
+      base.classList.add('active');
+      apply(e.clientX, e.clientY);
     };
-    const end = () => { if (active) { active = false; reset(); } };
+    const move = (e) => {
+      if (e.pointerId !== activePointerId) return;
+      apply(e.clientX, e.clientY);
+    };
+    const end = (e) => {
+      if (activePointerId !== null && (!e || e.pointerId === activePointerId)) reset();
+    };
 
-    base.addEventListener('pointerdown', (e) => { e.preventDefault(); start(e); });
-    base.addEventListener('pointermove', (e) => { if (active) apply(e); });
-    base.addEventListener('pointerup', end);
-    base.addEventListener('pointercancel', end);
-    // If the OS yanks pointer capture, treat it as a release so movement
-    // input can't get stuck "held" after the finger leaves the stick.
-    base.addEventListener('lostpointercapture', end);
-    // Stop touch events from also reaching the window-level swipe handler.
-    for (const ev of ['touchstart', 'touchmove', 'touchend']) {
-      base.addEventListener(ev, (e) => e.stopPropagation());
-    }
+    wrap.addEventListener('pointerdown', start);
+    wrap.addEventListener('pointermove', move);
+    wrap.addEventListener('pointerup', end);
+    wrap.addEventListener('pointercancel', end);
+    wrap.addEventListener('pointerleave', end);
   }
 
   // ── Picker state ────────────────────────────────────────────────────────────
@@ -518,15 +544,16 @@
     // Instant bubble above the head — fades out after a few seconds.
     bubbles.set(d.id, { text, until: performance.now() + CHAT_BUBBLE_MS });
     // Persistent log on the side — stays visible.
-    appendChatLog(d.name || '익명', text, !!(me && d.id === me.id));
+    appendChatLog(d.id, d.name || '익명', text, !!(me && d.id === me.id));
   }
 
-  function appendChatLog(name, text, isYou) {
+  function appendChatLog(id, name, text, isYou) {
     if (!chatLogBody) return;
     const line = document.createElement('div');
     line.className = isYou ? 'chat-line me' : 'chat-line';
     const who = document.createElement('b');
     who.textContent = name;
+    who.style.color = nameColor(id);
     line.appendChild(who);
     line.appendChild(document.createTextNode(text));
     const nearBottom = chatLogBody.scrollHeight - chatLogBody.scrollTop - chatLogBody.clientHeight < 40;
@@ -542,7 +569,7 @@
     if (!Array.isArray(entries)) return;
     for (const m of entries) {
       if (!m || typeof m.text !== 'string') continue;
-      appendChatLog(m.name || '익명', m.text, !!(me && m.id === me.id));
+      appendChatLog(m.id, m.name || '익명', m.text, !!(me && m.id === me.id));
     }
     chatLogBody.scrollTop = chatLogBody.scrollHeight;
   }
@@ -1037,13 +1064,19 @@
     ctx.save();
     ctx.globalAlpha = alpha;
     ctx.font = '13px -apple-system, system-ui, sans-serif';
-    const padX = 8, padY = 6, lineH = 16;
+    const padX = 9, padY = 6, lineH = 16;
     const lines = wrapText(text, 220);
     const w = Math.max(...lines.map((l) => ctx.measureText(l).width)) + padX * 2;
     const h = lines.length * lineH + padY * 2;
-    const top = cy - 14 - 24 - h;
+    // Sit clearly above the 120px sprite + name pill so the bubble doesn't
+    // overlap the character head.
+    const top = cy - 150 - h;
 
-    ctx.fillStyle = 'rgba(255,255,255,0.95)';
+    // Soft drop shadow for contrast over the grass.
+    ctx.shadowColor = 'rgba(0,0,0,0.32)';
+    ctx.shadowBlur = 8;
+    ctx.shadowOffsetY = 2;
+    ctx.fillStyle = 'rgba(255,255,255,0.98)';
     roundRect(cx - w / 2, top, w, h, 10);
     ctx.fill();
 
@@ -1054,6 +1087,11 @@
     ctx.lineTo(cx + 6, top + h);
     ctx.closePath();
     ctx.fill();
+
+    // Reset shadow before drawing text so the text stays crisp.
+    ctx.shadowColor = 'transparent';
+    ctx.shadowBlur = 0;
+    ctx.shadowOffsetY = 0;
 
     ctx.fillStyle = '#1a1410';
     ctx.textAlign = 'center';
@@ -1104,10 +1142,10 @@
     ctx.save();
     ctx.translate(p.x, p.y);
 
-    // Shadow
-    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    // Shadow — slightly larger and softer so feet read as planted on the ground.
+    ctx.fillStyle = 'rgba(0,0,0,0.32)';
     ctx.beginPath();
-    ctx.ellipse(0, r + 4, r * 0.9, r * 0.35, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, r + 4, r * 1.1, r * 0.42, 0, 0, Math.PI * 2);
     ctx.fill();
 
     // Accent ring marks your own avatar.
@@ -1115,7 +1153,7 @@
       ctx.strokeStyle = '#ffb96b';
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.ellipse(0, r + 4, r * 1.05, r * 0.45, 0, 0, Math.PI * 2);
+      ctx.ellipse(0, r + 4, r * 1.18, r * 0.48, 0, 0, Math.PI * 2);
       ctx.stroke();
     }
 
@@ -1129,8 +1167,12 @@
       const fw = SPRITE_FRAME.width, fh = SPRITE_FRAME.height;
       const drawW = 120, drawH = 120;
       const destX = -drawW / 2;
-      const destY = (r + 5) - drawH * (31 / 32); // feet rest near the shadow
-      nameTagY = destY - 6;
+      // Cells render the character at ~95% of cell height with ~5% bottom padding.
+      // Anchor the visible bottom of the sprite onto the shadow center to kill
+      // the "floating above shadow" feeling across down/side/up rows.
+      const FOOT_FRACTION = 0.95;
+      const destY = (r + 4) - drawH * FOOT_FRACTION;
+      nameTagY = destY - 8;
 
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = 'high';
@@ -1158,12 +1200,23 @@
       ctx.fill();
     }
 
-    // Name tag.
-    ctx.font = '12px -apple-system, system-ui, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'bottom';
-    ctx.fillStyle = '#f0f4ff';
-    ctx.fillText(p.name || '', 0, nameTagY);
+    // Name tag — colored pill matching the chat log so each player is
+    // recognizable at a glance.
+    const name = p.name || '';
+    if (name) {
+      ctx.font = 'bold 15px -apple-system, system-ui, sans-serif';
+      const w = ctx.measureText(name).width;
+      const padX = 9, tagH = 22;
+      const tagW = w + padX * 2;
+      const tagTop = nameTagY - tagH;
+      ctx.fillStyle = 'rgba(20, 30, 16, 0.78)';
+      roundRect(-tagW / 2, tagTop, tagW, tagH, 11);
+      ctx.fill();
+      ctx.fillStyle = nameColor(p.id);
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(name, 0, tagTop + tagH / 2 + 0.5);
+    }
 
     ctx.restore();
   }

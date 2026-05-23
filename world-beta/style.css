@@ -233,42 +233,49 @@ h1 {
 .canvas-wrap {
   position: relative;
   width: 100%;
+  max-width: 460px;
+  margin: 0 auto;
   background: #1f2c47;
   border-radius: 12px;
   overflow: hidden;
-  aspect-ratio: 960 / 540;
+  aspect-ratio: 540 / 960;
 }
 
-/* On-screen joystick — hidden on fine pointers, shown on touch. */
+/* Hide the global "터치↔키보드" toggle injected by shared/input.js — the
+   world page uses an always-on virtual joystick that spawns under the touch. */
+#input-mode-toggle { display: none !important; }
+
+/* On-screen joystick — spawns at the touch point on touchstart and fades
+   out on release. Transparent so it doesn't fight the world art. */
 .vjoy {
   position: absolute;
-  left: 16px;
-  bottom: 16px;
-  width: 104px;
-  height: 104px;
+  left: 0; top: 0;
+  width: 120px;
+  height: 120px;
+  margin-left: -60px;
+  margin-top: -60px;
   border-radius: 50%;
-  background: rgba(14, 24, 40, 0.45);
-  border: 2px solid rgba(255, 255, 255, 0.18);
-  touch-action: none;
+  background: rgba(14, 24, 40, 0.30);
+  border: 2px solid rgba(255, 255, 255, 0.22);
+  pointer-events: none;
   z-index: 5;
-  display: none;
+  opacity: 0;
+  transition: opacity 0.12s;
 }
+
+.vjoy.active { opacity: 1; }
 
 .vjoy-thumb {
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 46px;
-  height: 46px;
+  width: 50px;
+  height: 50px;
   border-radius: 50%;
-  background: rgba(255, 185, 107, 0.92);
+  background: rgba(255, 185, 107, 0.80);
   transform: translate(-50%, -50%);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.32);
   pointer-events: none;
-}
-
-@media (pointer: coarse) {
-  .vjoy { display: block; }
 }
 
 #world-canvas {
@@ -345,10 +352,10 @@ h1 {
 
 @media (max-width: 640px) {
   .chat-log {
-    width: 60%;
-    max-width: 240px;
-    max-height: 52%;
-    font-size: 0.72rem;
+    width: calc(100% - 16px);
+    max-width: none;
+    max-height: 26%;
+    font-size: 0.74rem;
   }
 }
 

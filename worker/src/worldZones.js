@@ -10,11 +10,12 @@
  */
 
 export const GAME_ZONES = [
+  // Portrait (540x960) layout: booths stacked vertically — jump on top, quiz at bottom.
   {
     id: 'jump-climber',
     gameId: 'jump-climber',
     title: '말랑프렌즈 점프',
-    rect: { x: 240, y: 180, w: 160, h: 120 },
+    rect: { x: 110, y: 150, w: 320, h: 220 },
     minPlayers: 1,
     maxPlayers: 2,
     holdMs: 3000,
@@ -23,7 +24,7 @@ export const GAME_ZONES = [
     id: 'mallang-quiz-battle',
     gameId: 'mallang-quiz-battle',
     title: '말랑프렌즈 퀴즈배틀',
-    rect: { x: 560, y: 180, w: 160, h: 120 },
+    rect: { x: 110, y: 660, w: 320, h: 220 },
     minPlayers: 2,
     maxPlayers: 6,
     holdMs: 3000,
