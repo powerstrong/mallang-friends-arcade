@@ -1,4 +1,4 @@
-/* Generates world-beta/assets/mint_kitten_sheet_3x3.png — a 96x96 pixel-art
+/* Generates world/assets/mint_kitten_sheet_3x3.png — a 96x96 pixel-art
  * walk-cycle sprite sheet for the mint kitten world avatar.
  *
  * Layout: 3 cols x 3 rows of 32x32 frames.
@@ -193,7 +193,7 @@ function encodePNG(w, h, rgba) {
   return Buffer.concat([sig, chunk('IHDR', ihdr), chunk('IDAT', idat), chunk('IEND', Buffer.alloc(0))]);
 }
 
-const outDir = path.join(__dirname, '..', 'world-beta', 'assets');
+const outDir = path.join(__dirname, '..', 'world', 'assets');
 fs.mkdirSync(outDir, { recursive: true });
 const outPath = path.join(outDir, 'mint_kitten_sheet_3x3.png');
 fs.writeFileSync(outPath, encodePNG(SHEET, SHEET, px));

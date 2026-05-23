@@ -209,24 +209,12 @@ test('character ids round-trip world → game', () => {
 
   assert.equal(toGameCharacterId('mochi_rabbit', 'jump-climber'), 'mochi-rabbit');
   assert.equal(toGameCharacterId('mint_kitten', 'mallang-quiz-battle'), 'mint-kitten');
-  assert.equal(toGameCharacterId('peach_chick', 'mallang-tug-war'), 'peach-chick');
+  assert.equal(toGameCharacterId('peach_chick', 'jump-climber'), 'peach-chick');
   assert.equal(toGameCharacterId('not_a_thing', 'jump-climber'), null);
 });
 
-test('tug-war does not silently support unsupported avatars', () => {
-  assert.equal(toGameCharacterId('latte_puppy', 'mallang-tug-war'), null);
-  assert.equal(toGameCharacterId('mint_kitten', 'mallang-tug-war'), null);
-});
-
-test('pickGameCharacter falls back deterministically when avatar is unsupported', () => {
-  const a = pickGameCharacter('latte_puppy', 'mallang-tug-war');
-  const b = pickGameCharacter('latte_puppy', 'mallang-tug-war');
-  assert.equal(a.worldId, b.worldId);
-  assert.ok(['mochi_rabbit', 'pudding_hamster', 'peach_chick'].includes(a.worldId));
-  assert.ok(['mochi-rabbit', 'pudding-hamster', 'peach-chick'].includes(a.gameCharacterId));
-
-  // supported avatar passes through unchanged
-  const direct = pickGameCharacter('mochi_rabbit', 'mallang-tug-war');
+test('pickGameCharacter passes supported avatars through unchanged', () => {
+  const direct = pickGameCharacter('mochi_rabbit', 'jump-climber');
   assert.deepEqual(direct, { worldId: 'mochi_rabbit', gameCharacterId: 'mochi-rabbit' });
 });
 
@@ -244,11 +232,6 @@ test('shared/character_sprites.js worldIds match worker/src/characters.js', () =
   const worldIdsInShared = [...sharedSrc.matchAll(/worldId:\s*'([^']+)'/g)].map((m) => m[1]);
   const worldIdsInServer = CHARACTERS.map((c) => c.worldId);
   assert.deepEqual(worldIdsInShared, worldIdsInServer);
-
-  // tug-war null entries must match too
-  const sharedTugNulls = [...sharedSrc.matchAll(/'mallang-tug-war':\s*null/g)].length;
-  const serverTugNulls = CHARACTERS.filter((c) => c.gameIds['mallang-tug-war'] == null).length;
-  assert.equal(sharedTugNulls, serverTugNulls);
 });
 
 // ── stale-state healing ─────────────────────────────────────────────────────

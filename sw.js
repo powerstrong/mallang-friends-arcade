@@ -1,4 +1,4 @@
-const CACHE = 'tenten-v8';
+const CACHE = 'tenten-v9';
 
 const PRECACHE = [
   '/',
@@ -7,11 +7,6 @@ const PRECACHE = [
   '/games/registry.js',
   '/shared/bootstrap.js',
   '/shared/input.js',
-  '/lobby/index.html',
-  '/lobby/room.html',
-  '/lobby/room.css',
-  '/lobby/room.js',
-  '/lobby/config.js',
 ];
 
 self.addEventListener('install', e => {

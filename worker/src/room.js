@@ -10,7 +10,6 @@ const COLORS = [
 // Keep in sync with /games/registry.js (browser can't import that file here)
 const GAME_PATHS = {
   'jump-climber': '/prototypes/jump-climber/index.html',
-  'mallang-tug-war': '/prototypes/mallang-tug-war/index.html',
   'mallang-quiz-battle': '/prototypes/mallang-quiz-battle/index.html',
 };
 
