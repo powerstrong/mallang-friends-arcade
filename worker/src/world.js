@@ -75,18 +75,40 @@ export class WorldChannel {
     // tied to live WebSocket sessions which can't survive hibernation anyway.
     this.proposals = new Map();
 
-    // Hibernation wake-up cleanup: WebSocket attachments survive but in-memory
-    // proposals do not. Demote any orphan PROPOSED player to ROAM so they can
-    // rejoin matching — applyZonePresence refuses to transition PROPOSED.
+    // Hibernation wake-up cleanup:
+    //   1) WebSocket attachments survive hibernation but in-memory proposals
+    //      do not. Demote any orphan PROPOSED player to ROAM.
+    //   2) When WORLD_BOUNDS changes between deploys, the persisted x/y from
+    //      old sessions could be outside the new canvas. Re-clamp and rebuild
+    //      currentZoneId from the actual position so stale state doesn't
+    //      leak into zone counts or render off-screen.
     this.state.blockConcurrencyWhile(async () => {
+      const now = Date.now();
       for (const ws of this.state.getWebSockets()) {
         const a = ws.deserializeAttachment();
-        if (a?.status === PLAYER_STATUS.PROPOSED) {
+        if (!a) continue;
+
+        const px = clamp(Number.isFinite(a.x) ? a.x : SPAWN_POINT.x, 16, WORLD_BOUNDS.width - 16);
+        const py = clamp(Number.isFinite(a.y) ? a.y : SPAWN_POINT.y, 16, WORLD_BOUNDS.height - 16);
+        const zoneNow = findZoneAt(px, py);
+        const next = applyZonePresence(
+          { status: PLAYER_STATUS.ROAM, currentZoneId: null, candidateSince: null },
+          zoneNow,
+          now,
+        );
+
+        const needsClamp = px !== a.x || py !== a.y;
+        const isOrphanProposed = a.status === PLAYER_STATUS.PROPOSED;
+        const isZoneMismatch = a.currentZoneId !== next.currentZoneId;
+
+        if (needsClamp || isOrphanProposed || isZoneMismatch) {
           ws.serializeAttachment({
             ...a,
-            status: PLAYER_STATUS.ROAM,
-            currentZoneId: null,
-            candidateSince: null,
+            x: px,
+            y: py,
+            status: next.status,
+            currentZoneId: next.currentZoneId,
+            candidateSince: next.candidateSince,
           });
         }
       }

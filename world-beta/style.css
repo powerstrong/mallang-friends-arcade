@@ -351,6 +351,24 @@ h1 {
 .chat-line.me b { color: #ffb96b; }
 
 @media (max-width: 640px) {
+  /* Squeeze outer chrome so the world canvas actually fills the phone width. */
+  #app { padding: 10px 6px 64px; }
+  .panel { padding: 10px; border-radius: 12px; }
+  .canvas-wrap { max-width: none; }
+
+  /* Brand text + meta need to share a narrow header. */
+  .world-header { font-size: 0.72rem; padding: 6px 10px; }
+  .brand { gap: 7px; min-width: 0; flex: 1 1 auto; }
+  .brand-logo { width: 28px; height: 28px; }
+  .brand-title {
+    font-size: 0.95rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+  }
+  .world-meta { gap: 6px; }
+  .leave-btn { padding: 3px 8px; font-size: 0.7rem; }
+
   .chat-log {
     width: calc(100% - 16px);
     max-width: none;

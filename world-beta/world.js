@@ -31,20 +31,19 @@
   const REACTION_GLYPHS = Object.fromEntries(REACTIONS.map((r) => [r.key, r.glyph]));
 
   // ── Player name colors ─────────────────────────────────────────────────────
-  // Stable per-id pastel hue so the same player keeps the same color in both
-  // the canvas name tag and the chat log.
-  const NAME_PALETTE = [
-    '#ffb96b', '#6bbcff', '#ff8fb3', '#7ad9a1', '#e5a8ff',
-    '#ffd76b', '#5ad6d6', '#ff9999', '#b8e36b', '#a5b4ff',
-  ];
-  function nameColor(id) {
-    const s = String(id || '');
+  // Keyed by the *nickname* (normalised) so a player keeps the same color
+  // across reconnects (where sessionId changes). HSL generator gives us an
+  // unlimited palette so 11+ players don't collide.
+  function nameColor(key) {
+    const s = String(key || '').toLowerCase().trim();
+    if (!s) return '#a0a8b8';
     let h = 2166136261;
     for (let i = 0; i < s.length; i++) {
       h ^= s.charCodeAt(i);
       h = Math.imul(h, 16777619);
     }
-    return NAME_PALETTE[(h >>> 0) % NAME_PALETTE.length];
+    const hue = (h >>> 0) % 360;
+    return `hsl(${hue}deg 78% 70%)`;
   }
 
   // ── Character sprite sheets ───────────────────────────────────────────────
@@ -122,29 +121,41 @@
     const tag = t.tagName;
     return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || t.isContentEditable;
   }
+  // World page owns its own keyboard layer (WASD + arrows) and its own touch
+  // joystick. We do NOT consult InputManager here because its global touch
+  // handlers fire on window-level touches (including chat-log drags) and
+  // would bleed phantom movement into the world.
   window.addEventListener('keydown', (e) => {
     if (isTypingTarget(e.target)) return;
-    const k = e.key.toLowerCase();
-    if (k === 'w') { wasd.up    = true; e.preventDefault(); }
-    if (k === 's') { wasd.down  = true; e.preventDefault(); }
-    if (k === 'a') { wasd.left  = true; e.preventDefault(); }
-    if (k === 'd') { wasd.right = true; e.preventDefault(); }
+    const k = e.key;
+    const lk = k.toLowerCase();
+    if (lk === 'w' || k === 'ArrowUp')    { wasd.up    = true; e.preventDefault(); }
+    if (lk === 's' || k === 'ArrowDown')  { wasd.down  = true; e.preventDefault(); }
+    if (lk === 'a' || k === 'ArrowLeft')  { wasd.left  = true; e.preventDefault(); }
+    if (lk === 'd' || k === 'ArrowRight') { wasd.right = true; e.preventDefault(); }
   });
   window.addEventListener('keyup', (e) => {
     if (isTypingTarget(e.target)) return;
-    const k = e.key.toLowerCase();
-    if (k === 'w') wasd.up    = false;
-    if (k === 's') wasd.down  = false;
-    if (k === 'a') wasd.left  = false;
-    if (k === 'd') wasd.right = false;
+    const k = e.key;
+    const lk = k.toLowerCase();
+    if (lk === 'w' || k === 'ArrowUp')    wasd.up    = false;
+    if (lk === 's' || k === 'ArrowDown')  wasd.down  = false;
+    if (lk === 'a' || k === 'ArrowLeft')  wasd.left  = false;
+    if (lk === 'd' || k === 'ArrowRight') wasd.right = false;
+  });
+  // Lose any "held" state when the tab/window loses focus — otherwise a
+  // keydown without matching keyup leaves the player drifting.
+  window.addEventListener('blur', () => {
+    wasd.up = wasd.down = wasd.left = wasd.right = false;
   });
   function isHeld(dir) {
-    return wasd[dir] || joy[dir] || (window.InputManager && window.InputManager.isHeld(dir));
+    return wasd[dir] || joy[dir];
   }
 
   // ── On-screen joystick (touch) ──────────────────────────────────────────────
   // Spawns under the first touch point on the canvas and follows the finger
-  // until release. Transparent so it never blocks pointer events on the canvas.
+  // until release. Listeners are bound to the canvas (not the wrap) so the
+  // chat log overlay doesn't trigger movement when it gets touched.
   let joystickEl = null;
   function setupJoystick() {
     if (joystickEl) return;
@@ -181,29 +192,35 @@
     };
     const start = (e) => {
       if (activePointerId !== null) return;
-      // Only react to touch/pen — mouse uses the keyboard.
-      if (e.pointerType === 'mouse') return;
+      if (e.pointerType === 'mouse') return; // mouse users use keyboard
       activePointerId = e.pointerId;
       originX = e.clientX; originY = e.clientY;
       const wrapRect = wrap.getBoundingClientRect();
       base.style.left = (e.clientX - wrapRect.left) + 'px';
       base.style.top  = (e.clientY - wrapRect.top)  + 'px';
       base.classList.add('active');
+      // Capture the pointer to the canvas so finger drags past the canvas
+      // edge still deliver move/up events.
+      try { canvas.setPointerCapture(e.pointerId); } catch { /* ignore */ }
       apply(e.clientX, e.clientY);
+      e.preventDefault();
     };
     const move = (e) => {
       if (e.pointerId !== activePointerId) return;
       apply(e.clientX, e.clientY);
     };
     const end = (e) => {
-      if (activePointerId !== null && (!e || e.pointerId === activePointerId)) reset();
+      if (activePointerId === null) return;
+      if (e && e.pointerId !== activePointerId) return;
+      try { canvas.releasePointerCapture(activePointerId); } catch { /* ignore */ }
+      reset();
     };
 
-    wrap.addEventListener('pointerdown', start);
-    wrap.addEventListener('pointermove', move);
-    wrap.addEventListener('pointerup', end);
-    wrap.addEventListener('pointercancel', end);
-    wrap.addEventListener('pointerleave', end);
+    canvas.addEventListener('pointerdown', start);
+    canvas.addEventListener('pointermove', move);
+    canvas.addEventListener('pointerup', end);
+    canvas.addEventListener('pointercancel', end);
+    canvas.addEventListener('lostpointercapture', end);
   }
 
   // ── Picker state ────────────────────────────────────────────────────────────
@@ -552,7 +569,7 @@
     line.className = isYou ? 'chat-line me' : 'chat-line';
     const who = document.createElement('b');
     who.textContent = name;
-    who.style.color = nameColor(id);
+    who.style.color = nameColor(name);
     line.appendChild(who);
     line.appendChild(document.createTextNode(text));
     const nearBottom = chatLogBody.scrollHeight - chatLogBody.scrollTop - chatLogBody.clientHeight < 40;
@@ -724,7 +741,7 @@
       const name = document.createElement('span');
       name.className = 'name';
       name.textContent = m.name || '익명';
-      name.style.color = nameColor(m.id);
+      name.style.color = nameColor(m.name);
 
       li.append(glyph, name);
       if (m.id === activeProposal.hostId) {
@@ -992,7 +1009,10 @@
     // Booth illustration.
     const booth = getBoothImage(z.gameId);
     if (booth && booth.ready) {
-      const drawW = r.w + 84;
+      // Keep the booth scaled to fit inside the canvas. r.w + 40 means the
+      // 320x320 booth image renders at 360x360 and the top edge of the top
+      // booth (rect.y=150) lands at canvas y=16 instead of overflowing.
+      const drawW = r.w + 40;
       const drawH = drawW * booth.img.height / booth.img.width;
       ctx.drawImage(booth.img, cx - drawW / 2, (r.y + r.h) - drawH + 6, drawW, drawH);
     }
@@ -1110,8 +1130,8 @@
     const w = Math.max(...lines.map((l) => ctx.measureText(l).width)) + padX * 2;
     const h = lines.length * lineH + padY * 2;
     // Sit clearly above the 120px sprite + name pill so the bubble doesn't
-    // overlap the character head.
-    const top = cy - 150 - h;
+    // overlap the character head. Clamp to keep it inside the canvas top.
+    const top = Math.max(8, cy - 150 - h);
 
     // Soft drop shadow for contrast over the grass.
     ctx.shadowColor = 'rgba(0,0,0,0.32)';
@@ -1253,7 +1273,7 @@
       ctx.fillStyle = 'rgba(20, 30, 16, 0.78)';
       roundRect(-tagW / 2, tagTop, tagW, tagH, 11);
       ctx.fill();
-      ctx.fillStyle = nameColor(p.id);
+      ctx.fillStyle = nameColor(p.name);
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(name, 0, tagTop + tagH / 2 + 0.5);
