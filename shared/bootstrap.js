@@ -68,8 +68,6 @@ window.GameBoot = (function () {
       return;
     }
     // Solo / direct-link sessions fall back to the brand landing page.
-    // The legacy /lobby/room.html?code=... return path was removed when the
-    // room-code lobby was retired.
     window.location.href = '/';
   }
 

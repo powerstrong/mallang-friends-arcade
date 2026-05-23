@@ -1076,7 +1076,6 @@
   // Per-game booth theme — accent colour + a playful icon.
   const ZONE_THEME = {
     'jump-climber':        { color: '#ff9f4d', dark: '#d9791c', icon: '🧗' },
-    'mallang-tug-war':     { color: '#5fd3a0', dark: '#33ab78', icon: '🪢' },
     'mallang-quiz-battle': { color: '#7db4ff', dark: '#4d83d9', icon: '🧠' },
   };
   function zoneTheme(z) {

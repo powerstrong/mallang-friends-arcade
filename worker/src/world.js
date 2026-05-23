@@ -21,7 +21,6 @@ import { toGameCharacterId } from './characters.js';
 // game added to the registry needs no world-side change unless we want a zone.
 const GAME_URLS = Object.freeze({
   'jump-climber': '/prototypes/jump-climber/index.html',
-  'mallang-tug-war': '/prototypes/mallang-tug-war/index.html',
   'mallang-quiz-battle': '/prototypes/mallang-quiz-battle/index.html',
 });
 

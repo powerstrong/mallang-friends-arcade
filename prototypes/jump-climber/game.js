@@ -811,7 +811,7 @@ function applyResultButtonLabels() {
   }
   restartFromResultsButton.hidden = false;
   restartFromResultsButton.textContent = isRoomSession ? '대기실로 복귀' : '한 판 더 하기';
-  exitAfterResultsButton.textContent = isRoomSession ? '광장으로 가기' : '광장으로 나가기';
+  exitAfterResultsButton.textContent = isRoomSession ? '광장으로 가기' : '메인으로 나가기';
 }
 
 let lastHudSignature = "";
@@ -2560,7 +2560,7 @@ function endGame() {
 
 function configureSessionMode() {
   if (!isRoomSession) {
-    exitAfterResultsButton.textContent = "광장으로 가기";
+    exitAfterResultsButton.textContent = isRoomSession ? "광장으로 가기" : "메인으로 나가기";
     backToSetupButton.textContent = "설정";
     restartButton.hidden = false;
     restartButton.textContent = "재시작";
