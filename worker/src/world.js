@@ -158,6 +158,26 @@ export class WorldChannel {
       return new Response('ok');
     }
 
+    // GET /state — anonymous lounge snapshot (online + per-zone counts) used
+    // by the join panel to show "지금 N명이 광장에 있어요" before WS upgrade.
+    if (url.pathname.endsWith('/state')) {
+      let online = 0;
+      const zoneCounts = new Map();
+      for (const ws of this.state.getWebSockets()) {
+        const a = ws.deserializeAttachment();
+        if (!a?.sessionId) continue;
+        online += 1;
+        if (a.currentZoneId) {
+          zoneCounts.set(a.currentZoneId, (zoneCounts.get(a.currentZoneId) || 0) + 1);
+        }
+      }
+      const zones = [];
+      for (const [zoneId, count] of zoneCounts) zones.push({ zoneId, count });
+      return new Response(JSON.stringify({ online, zones }), {
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
     const upgrade = request.headers.get('Upgrade');
     if (upgrade !== 'websocket') {
       return new Response('Expected websocket', { status: 426 });

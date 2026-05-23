@@ -96,6 +96,24 @@ export default {
       return stub.fetch(request);
     }
 
+    // GET /api/world/:loungeId/state - read-only lounge snapshot for the
+    // join screen ("지금 N명이 광장에 있어요"). No WS upgrade.
+    const worldStateMatch = url.pathname.match(/^\/api\/world\/([a-z0-9-]+)\/state$/);
+    if (method === 'GET' && worldStateMatch) {
+      const loungeId = worldStateMatch[1];
+      if (!LOUNGE_ID_PATTERN.test(loungeId)) {
+        return corsResponse(JSON.stringify({ error: 'Invalid lounge id' }), { status: 400 });
+      }
+      const id = env.WORLD_CHANNEL.idFromName(loungeId);
+      const stub = env.WORLD_CHANNEL.get(id);
+      const res = await stub.fetch(new Request(`${url.origin}/state`, { method: 'GET' }));
+      const body = await res.text();
+      return corsResponse(body, {
+        status: res.status,
+        headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
+      });
+    }
+
     return corsResponse(JSON.stringify({ error: 'Not Found' }), { status: 404 });
   },
 };

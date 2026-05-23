@@ -385,6 +385,17 @@ h1 {
   text-align: center;
 }
 
+.online-count {
+  margin: 8px 0 0;
+  color: var(--accent);
+  font-size: 0.86rem;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  min-height: 1.2em;
+}
+
+.online-count.is-empty { color: var(--text-dim); font-weight: 500; }
+
 .extra-links {
   margin: 14px 0 0;
   text-align: center;

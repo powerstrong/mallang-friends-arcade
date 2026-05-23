@@ -145,6 +145,7 @@
   const chatLogEl = document.getElementById('chat-log');
   const chatLogBody = document.getElementById('chat-log-body');
   const chatLogToggle = document.getElementById('chat-log-toggle');
+  const onlineCountEl = document.getElementById('online-count');
   const leaveBtn = document.getElementById('leave-btn');
   const matchModal = document.getElementById('match-modal');
   const matchTitle = document.getElementById('match-title');
@@ -284,6 +285,7 @@
   let selectedCharacterId = null;
   buildPicker();
   restoreSavedName();
+  startOnlinePoll();
 
   nameInput.addEventListener('input', updateJoinButton);
   joinBtn.addEventListener('click', tryJoin);
@@ -463,6 +465,44 @@
     joinStatus.classList.remove('error');
     setConnStatus(false);
     updateJoinButton();
+    startOnlinePoll();
+  }
+
+  // ── Online count polling ──────────────────────────────────────────────────
+  // Anonymous read-only GET to /api/world/:loungeId/state. Refreshes the
+  // join screen badge ("지금 광장에 N명이 모여 있어요") every 8s while the
+  // user is still on the join panel.
+  let onlinePollTimer = null;
+  async function refreshOnlineCount() {
+    if (!onlineCountEl) return;
+    try {
+      const base = window.WORKER_URL || window.location.origin;
+      const url = `${base}/api/world/${encodeURIComponent(LOUNGE_ID)}/state`;
+      const res = await fetch(url, { cache: 'no-store' });
+      if (!res.ok) throw new Error(String(res.status));
+      const data = await res.json();
+      const n = Number.isFinite(data.online) ? data.online : 0;
+      if (n > 0) {
+        onlineCountEl.textContent = `지금 광장에 ${n}명이 모여 있어요`;
+        onlineCountEl.classList.remove('is-empty');
+      } else {
+        onlineCountEl.textContent = '아직 아무도 없어요. 가장 먼저 입장해 보세요!';
+        onlineCountEl.classList.add('is-empty');
+      }
+    } catch {
+      // 네트워크 일시 오류는 조용히 무시. 마지막 표시 유지.
+    }
+  }
+  function startOnlinePoll() {
+    if (onlinePollTimer) return;
+    refreshOnlineCount();
+    onlinePollTimer = setInterval(refreshOnlineCount, 8000);
+  }
+  function stopOnlinePoll() {
+    if (onlinePollTimer) {
+      clearInterval(onlinePollTimer);
+      onlinePollTimer = null;
+    }
   }
 
   function showJoinError(msg) {
@@ -537,6 +577,7 @@
     // or spin up a second render loop.
     if (!worldStarted) {
       worldStarted = true;
+      stopOnlinePoll();
       buildReactionBar();
       bindChatForm();
       bindMatchModal();
