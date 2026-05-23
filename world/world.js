@@ -281,6 +281,11 @@
     canvas.addEventListener('lostpointercapture', end);
   }
 
+  // Online count poll timer. Declared up here (not inside the polling block
+  // below) because `let` has TDZ — startOnlinePoll() runs immediately on
+  // page load and would otherwise throw.
+  let onlinePollTimer = null;
+
   // ── Picker state ────────────────────────────────────────────────────────────
   let selectedCharacterId = null;
   buildPicker();
@@ -471,8 +476,9 @@
   // ── Online count polling ──────────────────────────────────────────────────
   // Anonymous read-only GET to /api/world/:loungeId/state. Refreshes the
   // join screen badge ("지금 광장에 N명이 모여 있어요") every 8s while the
-  // user is still on the join panel.
-  let onlinePollTimer = null;
+  // user is still on the join panel. The timer state is declared up near the
+  // module-level state (search "onlinePollTimer") because startOnlinePoll()
+  // runs immediately on first paint, before this block.
   async function refreshOnlineCount() {
     if (!onlineCountEl) return;
     try {
