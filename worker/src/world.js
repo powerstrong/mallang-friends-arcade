@@ -43,6 +43,8 @@ const VALID_DIRS = new Set(['up', 'down', 'left', 'right']);
 
 const MAX_CHAT_LEN = 120;
 const CHAT_THROTTLE_MS = 800;
+const CHAT_HISTORY_MS = 2 * 60 * 60 * 1000; // 2 hours
+const CHAT_HISTORY_KEY = 'chatHistory';
 const REACTION_THROTTLE_MS = 1500;
 const VALID_REACTIONS = new Set(['wave', 'heart', 'lol', 'wow', 'party', 'sleep']);
 
@@ -236,6 +238,7 @@ export class WorldChannel {
         count, ready,
       };
     });
+    const chatHistory = await this._recentChatHistory();
     this._send(ws, {
       t: 'welcome',
       d: {
@@ -246,6 +249,7 @@ export class WorldChannel {
         zones: zoneSnapshots,
         players: peers,
         you: me,
+        chat: chatHistory,
       },
     });
 
@@ -644,12 +648,39 @@ export class WorldChannel {
 
     ws.serializeAttachment({ ...attach, lastChatAt: now });
 
+    const entry = { id: attach.sessionId, name: attach.name, text, ts: now };
+    await this._appendChatHistory(entry);
+
     // Echo to sender too so the bubble appears reliably even if local optimistic
     // render is skipped. Client de-dupes by id+ts if it ever needs to.
-    this._broadcast({
-      t: 'chat',
-      d: { id: attach.sessionId, name: attach.name, text, ts: now },
-    });
+    this._broadcast({ t: 'chat', d: entry });
+  }
+
+  // Chat history — persisted in DO storage so it survives hibernation and is
+  // replayed to clients on every join/reconnect via the welcome payload.
+  async _loadChatHistory() {
+    if (this._chatHistory) return this._chatHistory;
+    const stored = await this.state.storage.get(CHAT_HISTORY_KEY);
+    this._chatHistory = Array.isArray(stored) ? stored : [];
+    return this._chatHistory;
+  }
+
+  async _appendChatHistory(entry) {
+    await this._loadChatHistory();
+    this._chatHistory.push(entry);
+    const cutoff = Date.now() - CHAT_HISTORY_MS;
+    // Prune entries older than the retention window. Cheap because new entries
+    // are appended at the tail in time order.
+    while (this._chatHistory.length && this._chatHistory[0].ts < cutoff) {
+      this._chatHistory.shift();
+    }
+    await this.state.storage.put(CHAT_HISTORY_KEY, this._chatHistory);
+  }
+
+  async _recentChatHistory() {
+    await this._loadChatHistory();
+    const cutoff = Date.now() - CHAT_HISTORY_MS;
+    return this._chatHistory.filter((m) => m.ts >= cutoff);
   }
 
   async _handleReaction(ws, attach, d) {

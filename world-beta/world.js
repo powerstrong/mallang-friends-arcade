@@ -86,7 +86,9 @@
   const reactionBar = document.getElementById('reaction-bar');
   const chatForm = document.getElementById('chat-form');
   const chatInput = document.getElementById('chat-input');
-  const chatLog = document.getElementById('chat-log');
+  const chatLogEl = document.getElementById('chat-log');
+  const chatLogBody = document.getElementById('chat-log-body');
+  const chatLogToggle = document.getElementById('chat-log-toggle');
   const leaveBtn = document.getElementById('leave-btn');
   const matchModal = document.getElementById('match-modal');
   const matchTitle = document.getElementById('match-title');
@@ -348,7 +350,7 @@
     zoneStates = new Map();
     zonesCatalog = [];
     if (activeProposal) closeMatchModal();
-    if (chatLog) chatLog.innerHTML = '';
+    if (chatLogBody) chatLogBody.innerHTML = '';
 
     worldPanel.classList.add('hidden');
     joinPanel.classList.remove('hidden');
@@ -435,6 +437,10 @@
       setupJoystick();
       startRenderLoop();
     }
+
+    // Server replays recent (≤2h) chat history on every welcome — render it
+    // so reconnect/re-join shows the conversation that happened.
+    renderChatHistory(d.chat);
   }
 
   function buildReactionBar() {
@@ -519,17 +525,50 @@
   }
 
   function appendChatLog(name, text, isYou) {
-    if (!chatLog) return;
+    if (!chatLogBody) return;
     const line = document.createElement('div');
     line.className = isYou ? 'chat-line me' : 'chat-line';
     const who = document.createElement('b');
     who.textContent = name;
     line.appendChild(who);
     line.appendChild(document.createTextNode(text));
-    chatLog.appendChild(line);
-    while (chatLog.childElementCount > 60) chatLog.removeChild(chatLog.firstChild);
-    chatLog.scrollTop = chatLog.scrollHeight;
+    const nearBottom = chatLogBody.scrollHeight - chatLogBody.scrollTop - chatLogBody.clientHeight < 40;
+    chatLogBody.appendChild(line);
+    // Only auto-scroll if the user was already near the bottom; otherwise they
+    // are reading older messages and shouldn't be yanked.
+    if (nearBottom) chatLogBody.scrollTop = chatLogBody.scrollHeight;
   }
+
+  function renderChatHistory(entries) {
+    if (!chatLogBody) return;
+    chatLogBody.innerHTML = '';
+    if (!Array.isArray(entries)) return;
+    for (const m of entries) {
+      if (!m || typeof m.text !== 'string') continue;
+      appendChatLog(m.name || '익명', m.text, !!(me && m.id === me.id));
+    }
+    chatLogBody.scrollTop = chatLogBody.scrollHeight;
+  }
+
+  // Collapse toggle — persisted across sessions in localStorage.
+  const CHAT_COLLAPSED_KEY = 'tenten_chatCollapsed';
+  function setChatCollapsed(collapsed) {
+    if (!chatLogEl) return;
+    chatLogEl.classList.toggle('collapsed', !!collapsed);
+    if (chatLogToggle) {
+      chatLogToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+      chatLogToggle.setAttribute('aria-label', collapsed ? '채팅 펼치기' : '채팅 접기');
+    }
+    try { localStorage.setItem(CHAT_COLLAPSED_KEY, collapsed ? '1' : '0'); } catch { /* ignore */ }
+  }
+  if (chatLogToggle) {
+    chatLogToggle.addEventListener('click', () => {
+      setChatCollapsed(!chatLogEl.classList.contains('collapsed'));
+    });
+  }
+  try {
+    if (localStorage.getItem(CHAT_COLLAPSED_KEY) === '1') setChatCollapsed(true);
+  } catch { /* ignore */ }
 
   function handleReaction(d) {
     if (!d?.id || !REACTION_GLYPHS[d.emoji]) return;
