@@ -73,6 +73,47 @@
   worldBg.onload = () => { worldBgReady = true; };
   worldBg.src = './assets/world_bg.png';
 
+  // ── Spawn entry effect ───────────────────────────────────────────────────
+  // 게임 끝나고 월드로 돌아왔을 때 캐릭터 위에 깜빡이는 등장 이펙트.
+  // 외부 이미지 없이 canvas drawing 으로 빠른 폭죽/링 효과.
+  const spawnEffects = [];
+  function pushSpawnEffect(x, y) {
+    spawnEffects.push({ x, y, startAt: performance.now(), duration: 900 });
+  }
+  function drawSpawnEffects(now) {
+    for (let i = spawnEffects.length - 1; i >= 0; i--) {
+      const e = spawnEffects[i];
+      const t = (now - e.startAt) / e.duration;
+      if (t >= 1) { spawnEffects.splice(i, 1); continue; }
+      const fade = 1 - t;
+      ctx.save();
+      ctx.translate(e.x, e.y);
+      const ringR = 8 + t * 60;
+      ctx.strokeStyle = `rgba(255,255,255,${fade.toFixed(2)})`;
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.arc(0, 0, ringR, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.strokeStyle = `rgba(255,217,163,${fade.toFixed(2)})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(0, 0, ringR * 0.6, 0, Math.PI * 2);
+      ctx.stroke();
+      // 6개 별이 회전하면서 퍼져나가는 sparkle
+      ctx.fillStyle = `rgba(255,255,200,${fade.toFixed(2)})`;
+      for (let s = 0; s < 6; s++) {
+        const a = (Math.PI * 2 * s) / 6 + t * Math.PI;
+        const sr = ringR * 0.9;
+        const sx = Math.cos(a) * sr;
+        const sy = Math.sin(a) * sr;
+        ctx.beginPath();
+        ctx.arc(sx, sy, Math.max(0, 3 - t * 2), 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+  }
+
   // ── Game booth illustrations ──────────────────────────────────────────────
   const boothImages = {};
   function getBoothImage(gameId) {
@@ -339,7 +380,17 @@
     const name = nameInput.value.trim().slice(0, 16);
     try { localStorage.setItem('world_name', name); } catch { /* ignore */ }
 
-    joinParams = { name, characterId: selectedCharacterId };
+    // entryFrom='game' 일 때 서버가 광장 가운데 랜덤 위치로 스폰. 한 번
+    // 소비하면 URL에서 제거해서 다음 leave→rejoin 때 다시 랜덤되지 않게 함.
+    const entryFrom = (new URLSearchParams(window.location.search).get('from')) || null;
+    if (entryFrom === 'game') {
+      try {
+        const url = new URL(window.location.href);
+        url.searchParams.delete('from');
+        history.replaceState(null, '', url.toString());
+      } catch { /* ignore */ }
+    }
+    joinParams = { name, characterId: selectedCharacterId, entryFrom };
     openSocket();
   }
 
@@ -496,6 +547,13 @@
     // Server replays recent (≤2h) chat history on every welcome — render it
     // so reconnect/re-join shows the conversation that happened.
     renderChatHistory(d.chat);
+
+    // 게임 복귀로 입장한 경우 캐릭터 위치에 등장 이펙트 한 번.
+    if (joinParams && joinParams.entryFrom === 'game' && me) {
+      pushSpawnEffect(me.x, me.y);
+      // 이번 입장에만 트리거. 재접속(welcome 다시 와도) 효과 다시 안 돌게.
+      joinParams = { ...joinParams, entryFrom: null };
+    }
   }
 
   function buildReactionBar() {
@@ -970,6 +1028,7 @@
 
     // Overlays on top of everything.
     const now = performance.now();
+    drawSpawnEffects(now);
     drawOverlays(now);
   }
 

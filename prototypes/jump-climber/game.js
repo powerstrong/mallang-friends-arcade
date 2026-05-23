@@ -776,8 +776,7 @@ function showResultsOverlay() {
     resultScoreEls[slot].textContent = `${player ? player.bestHeight : 0}m`;
   }
 
-  restartFromResultsButton.textContent = isRoomSession ? "대기실로 복귀" : "한 판 더 하기";
-  exitAfterResultsButton.textContent = isRoomSession ? "허브로 가기" : "허브로 나가기";
+  applyResultButtonLabels();
   resultsOverlay.classList.add("is-active");
 }
 
@@ -797,9 +796,22 @@ function showNetworkResultsOverlay(results) {
     resultScoreEls[slot].textContent = `${entry.score}m`;
   }
 
-  restartFromResultsButton.textContent = "대기실로 복귀";
-  exitAfterResultsButton.textContent = "허브로 가기";
+  applyResultButtonLabels();
   resultsOverlay.classList.add("is-active");
+}
+
+// 결과 화면 버튼 레이블/표시 결정. 월드에서 들어왔으면 '한 판 더' 같은
+// 선택지는 의미가 없으니 단일 '월드로 돌아가기' 만 노출한다.
+function applyResultButtonLabels() {
+  const fromWorld = !!(gameBoot && gameBoot.from === 'world');
+  if (fromWorld) {
+    restartFromResultsButton.hidden = true;
+    exitAfterResultsButton.textContent = '월드로 돌아가기';
+    return;
+  }
+  restartFromResultsButton.hidden = false;
+  restartFromResultsButton.textContent = isRoomSession ? '대기실로 복귀' : '한 판 더 하기';
+  exitAfterResultsButton.textContent = isRoomSession ? '허브로 가기' : '허브로 나가기';
 }
 
 let lastHudSignature = "";

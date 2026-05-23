@@ -256,12 +256,16 @@ export class WorldChannel {
     const characterId = isValidCharacterId(d.characterId) ? d.characterId : randomCharacterId();
     const sessionId = newSessionId();
 
+    // 게임에서 돌아왔으면 광장 가운데 빈 영역에 랜덤 스폰. 첫 입장 등 그 외
+    // 경로는 기존 고정 spawn point.
+    const spawn = pickSpawn(d?.entryFrom);
+
     const me = {
       id: sessionId,
       name,
       characterId,
-      x: SPAWN_POINT.x,
-      y: SPAWN_POINT.y,
+      x: spawn.x,
+      y: spawn.y,
       dir: 'down',
       moving: false,
       status: 'roam',
@@ -888,3 +892,19 @@ export class WorldChannel {
 }
 
 function clamp(v, lo, hi) { return Math.min(hi, Math.max(lo, v)); }
+
+/* Returns a spawn position for a freshly-joining player.
+ *   - entryFrom === 'game' : land at a random spot in the lobby gathering area
+ *     (lower 2/3 of the canvas, away from booths). Gives a "you just landed
+ *     back" feel and avoids piling all returning players on top of each other.
+ *   - otherwise            : fixed SPAWN_POINT (first join, character change).
+ */
+function pickSpawn(entryFrom) {
+  if (entryFrom === 'game') {
+    return {
+      x: 80 + Math.floor(Math.random() * 381), // [80, 460]
+      y: 450 + Math.floor(Math.random() * 401), // [450, 850]
+    };
+  }
+  return { x: SPAWN_POINT.x, y: SPAWN_POINT.y };
+}

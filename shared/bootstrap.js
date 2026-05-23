@@ -24,6 +24,11 @@ window.GameBoot = (function () {
   const gameMeta = registry.find(g => g.id === gameId) || null;
   const gameType = gameMeta ? gameMeta.type : 'SOLO';
 
+  // 'world' when the game was launched from the world lounge (= round trip
+  // back through /world-beta on exit). Useful for the result screen to drop
+  // the "한 판 더" affordance — world lobbies don't support instant restart.
+  const from = params.get('from') || null;
+
   // true when launched from a multiplayer lobby
   const isMultiplayer = !!code;
 
@@ -52,11 +57,14 @@ window.GameBoot = (function () {
   function exit() {
     // World-launched games carry from=world&worldId=... so we return players
     // to the lounge they came from instead of dumping them into the lobby.
-    const from = params.get('from');
+    // We also tag from=game so the world client triggers a random spawn +
+    // landing effect instead of placing the player at the fixed SPAWN_POINT.
     if (from === 'world') {
       const worldId = params.get('worldId');
-      const qs = worldId ? ('?worldId=' + encodeURIComponent(worldId)) : '';
-      window.location.href = '/world-beta/' + qs;
+      const out = new URLSearchParams();
+      if (worldId) out.set('worldId', worldId);
+      out.set('from', 'game');
+      window.location.href = '/world-beta/?' + out.toString();
       return;
     }
     if (isMultiplayer && code) {
@@ -68,5 +76,5 @@ window.GameBoot = (function () {
     }
   }
 
-  return { code, name, gameId, gameType, playerId, isMultiplayer, submitResult, exit };
+  return { code, name, gameId, gameType, playerId, isMultiplayer, from, submitResult, exit };
 })();
