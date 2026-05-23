@@ -13,7 +13,7 @@ export const GAME_ZONES = [
   {
     id: 'jump-climber',
     gameId: 'jump-climber',
-    title: '말랑 점프',
+    title: '말랑프렌즈 점프',
     rect: { x: 240, y: 180, w: 160, h: 120 },
     minPlayers: 1,
     maxPlayers: 2,
@@ -22,7 +22,7 @@ export const GAME_ZONES = [
   {
     id: 'mallang-quiz-battle',
     gameId: 'mallang-quiz-battle',
-    title: '말랑 퀴즈배틀',
+    title: '말랑프렌즈 퀴즈배틀',
     rect: { x: 560, y: 180, w: 160, h: 120 },
     minPlayers: 2,
     maxPlayers: 6,

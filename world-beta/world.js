@@ -80,7 +80,6 @@
   const joinBtn = document.getElementById('join-btn');
   const joinStatus = document.getElementById('join-status');
   const connStatus = document.getElementById('conn-status');
-  const worldIdLabel = document.getElementById('world-id-label');
   const canvas = document.getElementById('world-canvas');
   const ctx = canvas.getContext('2d');
   const reactionBar = document.getElementById('reaction-bar');
@@ -97,8 +96,6 @@
   const matchAcceptBtn = document.getElementById('match-accept');
   const matchDeclineBtn = document.getElementById('match-decline');
   const matchCountdown = document.getElementById('match-countdown');
-
-  worldIdLabel.textContent = LOUNGE_ID;
 
   // shared/input.js only binds arrow keys. Add WASD locally so this page
   // matches the on-screen hint without touching shared input used by games.
@@ -1103,7 +1100,7 @@
   }
 
   function drawAvatar(p, isYou) {
-    const r = 14;
+    const r = 20;
     ctx.save();
     ctx.translate(p.x, p.y);
 
@@ -1130,7 +1127,7 @@
       const row = dir === 'down' ? 0 : dir === 'up' ? 2 : 1; // left/right -> side
       const col = p.moving ? (Math.floor(performance.now() / WALK_FRAME_MS) % 2) + 1 : 0;
       const fw = SPRITE_FRAME.width, fh = SPRITE_FRAME.height;
-      const drawW = 60, drawH = 60;
+      const drawW = 120, drawH = 120;
       const destX = -drawW / 2;
       const destY = (r + 5) - drawH * (31 / 32); // feet rest near the shadow
       nameTagY = destY - 6;
