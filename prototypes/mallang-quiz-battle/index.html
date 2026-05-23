@@ -14,8 +14,9 @@
       <!-- ── Setup Screen: 캐릭터 선택 + Ready ── -->
       <section id="setupScreen" class="screen screen--setup is-active">
         <section class="panel setup-panel" aria-labelledby="setupTitle">
+          <img class="logo-banner" src="./assets/quiz_logo.png" alt="" aria-hidden="true" />
           <p class="eyebrow">MALLANG QUIZ BATTLE</p>
-          <h1 id="setupTitle">🧠 말랑프렌즈 퀴즈배틀</h1>
+          <h1 id="setupTitle">말랑프렌즈 퀴즈배틀</h1>
           <p class="setup-copy">캐릭터를 고르고 Ready를 누르면 퀴즈가 시작됩니다!</p>
 
           <div class="character-grid" aria-label="캐릭터 선택">
@@ -58,6 +59,7 @@
         <section class="panel quiz-panel">
           <div class="quiz-header">
             <span id="questionProgress" class="question-progress"></span>
+            <button id="hintBtn" type="button" class="hint-btn" aria-label="힌트 보기"><img class="hint-icon" src="./assets/hint_bulb.png" alt="" aria-hidden="true" /><span class="hint-label">힌트</span><span class="hint-cost">-40</span></button>
             <div id="timerDisplay" class="timer-display" aria-label="남은 시간"></div>
           </div>
 
@@ -96,10 +98,11 @@
       <!-- ── Result Screen: 우승자 + 순위 ── -->
       <section id="resultScreen" class="screen screen--result">
         <div id="resultWinner" class="result-winner">
-          <div class="winner-crown">🏆</div>
+          <img class="winner-trophy" src="./assets/trophy_gold.png" alt="" aria-hidden="true" />
           <img id="winnerChar" class="winner-char" src="" alt="" />
           <h2 id="winnerName" class="winner-name"></h2>
           <p id="winnerScore" class="winner-score"></p>
+          <img class="winner-podium" src="./assets/podium.png" alt="" aria-hidden="true" />
         </div>
 
         <section class="panel rankings-panel" aria-labelledby="rankingsTitle">

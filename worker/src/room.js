@@ -19,6 +19,7 @@ const QUIZ_QUESTION_COUNT = 10;
 const QUIZ_TIME_LIMIT_MS = 10000;
 const QUIZ_REVEAL_MS = 3500;
 const QUIZ_POINTS_PER_CORRECT = 100;
+const QUIZ_HINT_PENALTY = 40;
 
 function randomHex(len) {
   const bytes = new Uint8Array(len / 2);
@@ -1716,12 +1717,30 @@ export class GameRoom {
 
   _initQuizGame(roster) {
     if (this.quizGame) return;
-    const arr = [...QUIZ_BANK];
-    for (let i = arr.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [arr[i], arr[j]] = [arr[j], arr[i]];
+
+    // 난이도 상향: 초등 혼합(가장 쉬운 셋)은 제외하고, 심화(`*2-`) 문항은 가중치 2배로 풀에 포함
+    const isEasy = q => typeof q.id === 'string' && q.id.startsWith('elem-mixed-');
+    const isHard = q => typeof q.id === 'string' && /^(math2|sci2|soc2|lang2|life2)-/.test(q.id);
+    const pool = [];
+    for (const q of QUIZ_BANK) {
+      if (isEasy(q)) continue;
+      pool.push(q);
+      if (isHard(q)) pool.push(q); // 가중치 2배
     }
-    const shuffled = arr;
+    // 중복 제거를 위해 id 기준으로 한 번 뽑은 문항은 제외하며 선별
+    for (let i = pool.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [pool[i], pool[j]] = [pool[j], pool[i]];
+    }
+    const seen = new Set();
+    const picked = [];
+    for (const q of pool) {
+      if (seen.has(q.id)) continue;
+      seen.add(q.id);
+      picked.push(q);
+      if (picked.length >= QUIZ_QUESTION_COUNT) break;
+    }
+
     this.quizGame = {
       players: roster.map(p => ({
         id: p.id,
@@ -1733,10 +1752,11 @@ export class GameRoom {
         ready: false,
         connected: false,
       })),
-      questions: shuffled.slice(0, QUIZ_QUESTION_COUNT),
+      questions: picked,
       currentIndex: -1,
       phase: 'waiting',
       submissions: {},
+      hintsUsed: {}, // { playerId: { questionIndex: true } }
       timer: null,
       questionStartedAt: null,
     };
@@ -1863,16 +1883,51 @@ export class GameRoom {
     }
   }
 
+  async _handleQuizHint(ws, player, msg) {
+    if (!this.quizGame || this.quizGame.phase !== 'question') return;
+    if (msg.questionIndex !== this.quizGame.currentIndex) return;
+    if (this.quizGame.submissions[player.id] !== undefined) return; // 이미 답 제출
+
+    const qIdx = this.quizGame.currentIndex;
+    const used = this.quizGame.hintsUsed[player.id] || {};
+    if (used[qIdx]) return; // 이미 힌트 사용
+    used[qIdx] = true;
+    this.quizGame.hintsUsed[player.id] = used;
+
+    const q = this.quizGame.questions[qIdx];
+    // 오답 보기 4개 중 2개를 임의로 선택해 제거
+    const wrongIndices = [0, 1, 2, 3].filter(i => i !== q.answer);
+    for (let i = wrongIndices.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [wrongIndices[i], wrongIndices[j]] = [wrongIndices[j], wrongIndices[i]];
+    }
+    const eliminated = wrongIndices.slice(0, 2);
+
+    try {
+      ws.send(JSON.stringify({
+        type: 'QUIZ_HINT_RESULT',
+        questionIndex: qIdx,
+        eliminated,
+        penalty: QUIZ_HINT_PENALTY,
+      }));
+    } catch { /* ignore closed */ }
+  }
+
   async _revealQuizAnswer() {
     if (!this.quizGame || this.quizGame.phase !== 'question') return;
     if (this.quizGame.timer) { clearTimeout(this.quizGame.timer); this.quizGame.timer = null; }
     this.quizGame.phase = 'reveal';
 
     const q = this.quizGame.questions[this.quizGame.currentIndex];
+    const qIdx = this.quizGame.currentIndex;
+    const hintUsedIds = [];
     for (const [pid, answerIndex] of Object.entries(this.quizGame.submissions)) {
       if (answerIndex === q.answer) {
         const p = this.quizGame.players.find(p => p.id === pid);
-        if (p) p.score += QUIZ_POINTS_PER_CORRECT;
+        const usedHint = !!(this.quizGame.hintsUsed[pid] && this.quizGame.hintsUsed[pid][qIdx]);
+        if (usedHint) hintUsedIds.push(pid);
+        const gained = usedHint ? Math.max(0, QUIZ_POINTS_PER_CORRECT - QUIZ_HINT_PENALTY) : QUIZ_POINTS_PER_CORRECT;
+        if (p) p.score += gained;
       }
     }
 
@@ -1883,6 +1938,7 @@ export class GameRoom {
       correctIndex: q.answer,
       explanation: q.explanation,
       submissions: { ...this.quizGame.submissions },
+      hintUsedIds,
       scores,
     }, 'mallang-quiz-battle');
 
@@ -2079,6 +2135,9 @@ export class GameRoom {
         break;
       case 'QUIZ_ANSWER':
         if (player?.gameId === 'mallang-quiz-battle') await this._handleQuizAnswer(player, msg);
+        break;
+      case 'QUIZ_HINT':
+        if (player?.gameId === 'mallang-quiz-battle') await this._handleQuizHint(ws, player, msg);
         break;
       case 'submit_result': if (player) await this._handleSubmitResult(player, msg);      break;
       case 'rematch':       if (player) await this._handleRematch();                       break;

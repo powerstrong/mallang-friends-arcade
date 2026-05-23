@@ -7,6 +7,39 @@ const CHAR_IMAGES = {
   'mint-kitten':     '/prototypes/jump-climber/assets/고양이 메인이미지.png',
 };
 
+// 캐릭터 반응 포즈 (점프 클라이머 자산 재활용)
+const CHAR_POSES = {
+  'mochi-rabbit': {
+    idle: CHAR_IMAGES['mochi-rabbit'],
+    jump: '/prototypes/jump-climber/assets/토끼 점프 위로.png',
+    fall: '/prototypes/jump-climber/assets/토끼 추락.png',
+  },
+  'pudding-hamster': {
+    idle: CHAR_IMAGES['pudding-hamster'],
+    jump: '/prototypes/jump-climber/assets/햄스터 점프 위로.png',
+    fall: '/prototypes/jump-climber/assets/햄스터 추락.png',
+  },
+  'peach-chick': {
+    idle: CHAR_IMAGES['peach-chick'],
+    jump: '/prototypes/jump-climber/assets/병아리 점프.png',
+    fall: '/prototypes/jump-climber/assets/병아리 추락.png',
+  },
+  'latte-puppy': {
+    idle: CHAR_IMAGES['latte-puppy'],
+    jump: '/prototypes/jump-climber/assets/라떼 점프 위로.png',
+    fall: '/prototypes/jump-climber/assets/라떼 추락.png',
+  },
+  'mint-kitten': {
+    idle: CHAR_IMAGES['mint-kitten'],
+    jump: '/prototypes/jump-climber/assets/고양이 점프 위로.png',
+    fall: '/prototypes/jump-climber/assets/고양이 추락.png',
+  },
+};
+
+function getPoses(characterId) {
+  return CHAR_POSES[characterId] || CHAR_POSES['mochi-rabbit'];
+}
+
 const PLAYER_COLORS = [
   '#ef4444', '#3b82f6', '#22c55e', '#f59e0b',
   '#a855f7', '#ec4899', '#14b8a6', '#f97316',
@@ -33,6 +66,7 @@ let reconnectCount = 0;
 let gameEnded = false;
 let comboCount = 0;
 let wasFirstSubmit = false;
+let hintUsedThisQuestion = false;
 
 /* ── DOM 참조 ──────────────────────────────────────── */
 const setupScreen       = document.getElementById('setupScreen');
@@ -60,6 +94,7 @@ const chatToggle        = document.getElementById('chatToggle');
 const chatInputWrap     = document.getElementById('chatInputWrap');
 const chatInput         = document.getElementById('chatInput');
 const chatSend          = document.getElementById('chatSend');
+const hintBtn           = document.getElementById('hintBtn');
 
 /* ── 캐릭터 선택 ────────────────────────────────────── */
 document.querySelectorAll('.character-card').forEach(card => {
@@ -77,6 +112,18 @@ readyBtn.addEventListener('click', () => {
   readyBtn.textContent = isReady ? '취소' : 'Ready!';
   readyBtn.classList.toggle('is-ready', isReady);
   sendIfOpen({ type: 'QUIZ_READY', ready: isReady });
+});
+
+/* ── 힌트 버튼 ──────────────────────────────────────── */
+hintBtn.addEventListener('click', () => {
+  if (!currentQuestion) return;
+  if (hintUsedThisQuestion) return;
+  if (myAnswer !== null) return;
+  hintBtn.disabled = true;
+  sendIfOpen({
+    type: 'QUIZ_HINT',
+    questionIndex: currentQuestion.questionIndex,
+  });
 });
 
 /* ── WebSocket 연결 ──────────────────────────────────── */
@@ -120,6 +167,7 @@ function handleMessage(msg) {
     case 'QUIZ_COUNTDOWN':     onCountdown(msg);    break;
     case 'QUIZ_QUESTION':      onQuestion(msg);     break;
     case 'QUIZ_SUBMITTED':     onSubmitted(msg);    break;
+    case 'QUIZ_HINT_RESULT':   onHintResult(msg);   break;
     case 'QUIZ_REVEAL':        onReveal(msg);       break;
     case 'QUIZ_END':           onEnd(msg);          break;
     case 'new_record':         onNewRecord(msg);    break;
@@ -194,16 +242,24 @@ function onCountdown(msg) {
   revealPanel.classList.add('is-hidden');
   timerDisplay.textContent = '';
   questionProgress.textContent = '';
+  hintBtn.disabled = true;
+  hintBtn.classList.remove('is-used');
 }
 
 function onQuestion(msg) {
   currentQuestion = msg;
   myAnswer = null;
   wasFirstSubmit = false;
+  hintUsedThisQuestion = false;
   submittedIds = new Set();
 
   countdownOverlay.classList.add('is-hidden');
   revealPanel.classList.add('is-hidden');
+
+  // 힌트 버튼 초기화
+  hintBtn.disabled = false;
+  hintBtn.classList.remove('is-used');
+  hintBtn.firstChild.textContent = '💡 힌트 ';
 
   questionProgress.textContent = `Q ${msg.questionIndex + 1} / ${msg.total}`;
   questionText.textContent = msg.question;
@@ -230,6 +286,22 @@ function onQuestion(msg) {
 function onSubmitted(msg) {
   submittedIds.add(msg.playerId);
   updateSubmittedIndicators();
+}
+
+function onHintResult(msg) {
+  if (!currentQuestion || msg.questionIndex !== currentQuestion.questionIndex) return;
+  hintUsedThisQuestion = true;
+  hintBtn.disabled = true;
+  hintBtn.classList.add('is-used');
+  hintBtn.firstChild.textContent = '💡 사용됨 ';
+
+  const btns = [...optionGrid.querySelectorAll('.option-btn')];
+  (msg.eliminated || []).forEach(i => {
+    if (btns[i]) {
+      btns[i].classList.add('is-eliminated');
+      btns[i].disabled = true;
+    }
+  });
 }
 
 function onReveal(msg) {
@@ -269,6 +341,14 @@ function onReveal(msg) {
     });
   }
 
+  // 캐릭터 반응 (점프/추락/시간초과)
+  players.forEach(p => {
+    const sub = msg.submissions ? msg.submissions[p.id] : undefined;
+    if (sub === undefined) playCharReaction(p.id, 'timeout');
+    else if (sub === msg.correctIndex) playCharReaction(p.id, 'correct');
+    else playCharReaction(p.id, 'wrong');
+  });
+
   // 내 점수 상승 float
   const myAfter = players.find(p => p.id === playerId);
   const newScore = myAfter ? (myAfter.score || 0) : 0;
@@ -286,8 +366,15 @@ function onReveal(msg) {
   const timedOut = myAnswer === null;
   const correct  = myAnswer === msg.correctIndex;
 
+  const myUsedHint = Array.isArray(msg.hintUsedIds) && msg.hintUsedIds.includes(playerId);
   revealResult.textContent = timedOut ? '⏱ 시간 초과' : correct ? '🎉 정답!' : '❌ 오답';
   revealResult.className   = 'reveal-result ' + (correct ? 'is-correct' : 'is-wrong');
+  if (myUsedHint && correct) {
+    const tag = document.createElement('span');
+    tag.className = 'reveal-hint-tag';
+    tag.textContent = '💡 힌트 사용 (-40)';
+    revealResult.appendChild(tag);
+  }
   revealExplanation.textContent = msg.explanation;
   revealPanel.classList.remove('is-hidden');
 
@@ -347,6 +434,9 @@ function submitAnswer(index) {
   if (myAnswer !== null) return;
   wasFirstSubmit = submittedIds.size === 0;
   myAnswer = index;
+
+  // 답 제출 후에는 힌트 사용 불가
+  hintBtn.disabled = true;
 
   [...optionGrid.querySelectorAll('.option-btn')].forEach((btn, i) => {
     btn.disabled = true;
@@ -491,6 +581,64 @@ function floatScore(delta) {
   el.addEventListener('animationend', () => el.remove());
 }
 
+/* 캐릭터 반응 — 점수표 행의 캐릭터 이미지 교체 + 애니메이션 + 이모트 */
+function playCharReaction(playerId, type) {
+  const tr = scoreBar.querySelector(`tr[data-player-id="${playerId}"]`);
+  if (!tr) return;
+  const img = tr.querySelector('.st-char');
+  const p = players.find(x => x.id === playerId);
+  if (!img || !p) return;
+  const poses = getPoses(p.characterId);
+
+  img.classList.remove('is-jump', 'is-fall');
+  // reflow → 애니메이션 재실행
+  // eslint-disable-next-line no-unused-expressions
+  img.offsetWidth;
+
+  if (type === 'correct') {
+    img.src = poses.jump;
+    img.classList.add('is-jump');
+    spawnCharEmote(tr, EMOTE_IMG.correct, 'correct');
+    setTimeout(() => {
+      img.src = poses.idle;
+      img.classList.remove('is-jump');
+    }, 750);
+  } else if (type === 'wrong') {
+    img.src = poses.fall;
+    img.classList.add('is-fall');
+    spawnCharEmote(tr, EMOTE_IMG.wrong, 'wrong');
+    setTimeout(() => {
+      img.src = poses.idle;
+      img.classList.remove('is-fall');
+    }, 700);
+  } else {
+    // timeout: 포즈 유지 + 졸린 이모트
+    spawnCharEmote(tr, EMOTE_IMG.timeout, 'timeout');
+  }
+}
+
+const EMOTE_IMG = {
+  correct: './assets/emote_sparkle.png',
+  wrong:   './assets/emote_drop.png',
+  timeout: './assets/emote_zzz.png',
+};
+
+function spawnCharEmote(tr, src, type) {
+  const wrap = tr.querySelector('.st-char-wrap');
+  if (!wrap) return;
+  const r = wrap.getBoundingClientRect();
+  const el = document.createElement('div');
+  el.className = 'fx-char-emote fx-' + type;
+  const im = document.createElement('img');
+  im.src = src;
+  im.alt = '';
+  el.appendChild(im);
+  el.style.left = (r.left + r.width / 2) + 'px';
+  el.style.top  = (r.top - 6) + 'px';
+  document.body.appendChild(el);
+  el.addEventListener('animationend', () => el.remove());
+}
+
 /* 버튼 ripple */
 function addRipple(btn, e) {
   const rect = btn.getBoundingClientRect();
@@ -548,7 +696,14 @@ function renderScoreBar() {
 
     const nameTd = document.createElement('td');
     nameTd.className = 'st-name';
-    nameTd.innerHTML = `<span class="st-player-name" style="color:${color}">${escHtml(p.name)}</span>`;
+    const poses = getPoses(p.characterId);
+    nameTd.innerHTML =
+      `<span class="st-name-inner">` +
+        `<span class="st-char-wrap">` +
+          `<img class="st-char" src="${poses.idle}" alt="" />` +
+        `</span>` +
+        `<span class="st-player-name" style="color:${color}">${escHtml(p.name)}</span>` +
+      `</span>`;
     tr.appendChild(nameTd);
 
     const history = answerHistory[p.id] || {};
