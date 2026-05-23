@@ -70,7 +70,7 @@
     /* Tabs */
     .tabs {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-columns: repeat(2, 1fr);
       gap: 6px;
       background: var(--primary-soft);
       padding: 5px;
@@ -200,9 +200,8 @@
     </header>
 
     <div class="tabs">
-      <button class="tab active" data-game="jump-climber">말랑<br>점프</button>
-      <button class="tab" data-game="mallang-quiz-battle">퀴즈<br>배틀</button>
-      <button class="tab" data-game="mallang-tug-war">줄<br>다리기</button>
+      <button class="tab active" data-game="jump-climber">말랑프렌즈<br>점프</button>
+      <button class="tab" data-game="mallang-quiz-battle">말랑프렌즈<br>퀴즈배틀</button>
     </div>
 
     <div class="table-wrap">
@@ -237,7 +236,6 @@
     const UNITS = {
       'jump-climber':       'm',
       'mallang-quiz-battle': '점',
-      'mallang-tug-war':    '%',
     };
 
     let currentGame = 'jump-climber';
