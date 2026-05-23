@@ -4,6 +4,13 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
   <title>말랑프렌즈 광장 — 말랑프렌즈 아케이드</title>
+  <meta name="description" content="말랑한 친구들과 모여 미니게임을 즐기는 광장." />
+  <meta name="theme-color" content="#4b6bff" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="icon" href="/prototypes/jump-climber/assets/icon.svg" type="image/svg+xml" />
+  <meta property="og:title" content="말랑프렌즈 광장" />
+  <meta property="og:description" content="말랑한 친구들과 모여 미니게임을 즐기는 광장." />
+  <meta property="og:type" content="website" />
   <link rel="stylesheet" href="./style.css" />
 </head>
 <body>
@@ -82,5 +89,11 @@
   <script src="/shared/character_sprites.js"></script>
   <script src="/shared/input.js"></script>
   <script src="./world.js"></script>
+
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(() => {});
+    }
+  </script>
 </body>
 </html>

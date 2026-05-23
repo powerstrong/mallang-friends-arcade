@@ -1,7 +1,11 @@
-const CACHE = 'tenten-v10';
+const CACHE = 'tenten-v11';
 
 const PRECACHE = [
   '/',
+  '/world/',
+  '/world/index.html',
+  '/world/style.css',
+  '/world/world.js',
   '/manifest.webmanifest',
   '/styles/lab.css',
   '/games/registry.js',
