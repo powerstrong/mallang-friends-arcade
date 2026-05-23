@@ -1025,10 +1025,9 @@
     // Booth illustration.
     const booth = getBoothImage(z.gameId);
     if (booth && booth.ready) {
-      // Keep the booth scaled to fit inside the canvas. r.w + 40 means the
-      // 320x320 booth image renders at 360x360 and the top edge of the top
-      // booth (rect.y=150) lands at canvas y=16 instead of overflowing.
-      const drawW = r.w + 40;
+      // 두 개를 가로로 나란히 배치하는 좁은 rect(235w)에 맞춰 살짝만 크게.
+      // r.w + 20 = 255px → 폴드 cover에서도 한 화면에 둘 다 보인다.
+      const drawW = r.w + 20;
       const drawH = drawW * booth.img.height / booth.img.width;
       ctx.drawImage(booth.img, cx - drawW / 2, (r.y + r.h) - drawH + 6, drawW, drawH);
     }
@@ -1217,13 +1216,16 @@
 
   function drawAvatar(p, isYou) {
     const r = 18;
+    // Shadow Y is pulled slightly up from r+4 so the visible character feet
+    // overlap with the shadow instead of sitting above it ("floating").
+    const SHADOW_Y = r + 2;
     ctx.save();
     ctx.translate(p.x, p.y);
 
-    // Shadow — slightly larger and softer so feet read as planted on the ground.
-    ctx.fillStyle = 'rgba(0,0,0,0.32)';
+    // Shadow — slightly larger and more opaque so feet read as planted.
+    ctx.fillStyle = 'rgba(0,0,0,0.38)';
     ctx.beginPath();
-    ctx.ellipse(0, r + 4, r * 1.1, r * 0.42, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, SHADOW_Y, r * 1.15, r * 0.42, 0, 0, Math.PI * 2);
     ctx.fill();
 
     // Accent ring marks your own avatar.
@@ -1231,7 +1233,7 @@
       ctx.strokeStyle = '#ffb96b';
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.ellipse(0, r + 4, r * 1.18, r * 0.48, 0, 0, Math.PI * 2);
+      ctx.ellipse(0, SHADOW_Y, r * 1.22, r * 0.48, 0, 0, Math.PI * 2);
       ctx.stroke();
     }
 
@@ -1245,11 +1247,11 @@
       const fw = SPRITE_FRAME.width, fh = SPRITE_FRAME.height;
       const drawW = 100, drawH = 100;
       const destX = -drawW / 2;
-      // Cells render the character at ~95% of cell height with ~5% bottom padding.
-      // Anchor the visible bottom of the sprite onto the shadow center to kill
-      // the "floating above shadow" feeling across down/side/up rows.
-      const FOOT_FRACTION = 0.95;
-      const destY = (r + 4) - drawH * FOOT_FRACTION;
+      // Cells render the character at ~97% of cell height with a tiny bottom
+      // padding. Anchor the visible bottom of the sprite onto the shadow so
+      // the avatar reads as planted across down/side/up rows.
+      const FOOT_FRACTION = 0.97;
+      const destY = SHADOW_Y - drawH * FOOT_FRACTION;
       nameTagY = destY - 8;
 
       ctx.imageSmoothingEnabled = true;
