@@ -499,6 +499,10 @@ export class WorldChannel {
 
     const existing = [...this.proposals.values()].find((p) => p.zoneId === zoneId);
 
+    // 발사 중인 proposal 은 멤버 변화에 반응하지 않는다 — launch race 방지.
+    // (라운치가 끝나면 proposal 은 _launchProposal 끝에서 삭제됨)
+    if (existing && existing.phase === 'launching') return;
+
     if (seated.length === 0) {
       if (existing) this.proposals.delete(existing.matchId);
       return;
@@ -581,26 +585,46 @@ export class WorldChannel {
     proposal.lastMemberIds = memberIds;
   }
 
-  /* Host clicks "시작" — snapshot the current ready members and launch. */
+  /* Any seated READY member clicks "시작" — first-wins. The first click claims
+   * the proposal by setting phase='launching' BEFORE any await; concurrent
+   * clicks see the phase and return silently (their modal is already locked
+   * by the match_starting broadcast).
+   *
+   * Note: hostId is now presentation-only (leader badge). Power to start is
+   * granted to every current seated member — the social model is "READY 자체가
+   * 동의" 로 해석.
+   */
   async _handleMatchStart(ws, attach, d) {
     if (!attach.sessionId) return;
     const matchId = typeof d?.matchId === 'string' ? d.matchId : null;
-    // 아래 분기들은 예전엔 silent return 이었다. 클라는 응답이 없으면 모달이
-    // '시작 중...' 상태로 영원히 갇혀버려서, 호스트 전환·매칭 만료 같은
-    // 짧은 윈도우 race 가 "가끔 입장이 안 됨" 으로 보였다. 명시적 에러로
-    // 돌려보내 모달이 복구되도록 한다.
     if (!matchId) return this._sendError(ws, 'BAD_REQUEST', '잘못된 요청입니다.');
     const proposal = this.proposals.get(matchId);
     if (!proposal) return this._sendError(ws, 'NO_PROPOSAL', '매칭이 만료되었습니다. 잠시 후 다시 시도해주세요.');
-    if (proposal.hostId !== attach.sessionId) return this._sendError(ws, 'NOT_HOST', '방장이 바뀌었습니다.');
+
+    // First-wins lock: 이미 발사 중이면 늦은 클릭은 silent ok. 클라 모달은
+    // 이미 match_starting 으로 잠겨있으니 다시 알릴 필요 없다.
+    if (proposal.phase === 'launching') return;
+
+    // seated 멤버만 시작 가능. stale UI 로 over-cap 대기자가 누르는 경우 차단.
+    if (!proposal.lastMemberIds || !proposal.lastMemberIds.has(attach.sessionId)) {
+      return this._sendError(ws, 'NOT_MEMBER', '매칭 멤버가 아닙니다.');
+    }
 
     const zone = getZone(proposal.zoneId);
     if (!zone) return this._cancelProposal(proposal, 'invalid');
 
-    // Collect with candidateSince so we can cap at maxPlayers fairly
-    // (earliest arrivals get the seats). Comparator MUST match the one used
-    // by `_syncProposalForZone` so the host's modal view and the launch set
-    // are identical when candidateSince ties occur.
+    // ★ first-wins claim — 반드시 첫 await 전에 세팅.
+    // 이걸 await 뒤에 두면 동시 두 클릭이 둘 다 진입해서 같은 proposal 을
+    // 두 번 처리하게 된다 (Codex 가 지적한 핵심 race).
+    proposal.phase = 'launching';
+    proposal.startedBy = attach.sessionId;
+
+    // 모든 seated 멤버에게 즉시 잠금 신호. 클라는 모든 버튼을 disable 하고
+    // "OOO님이 시작합니다!" 표시.
+    this._broadcastMatchStarting(proposal, attach);
+
+    // seated 재계산 — INTENT_READY 멤버만 카운트. Comparator는 _syncProposalForZone
+    // 과 동일해야 view 와 launch 집합이 일치한다.
     const ready = [];
     for (const w of this.state.getWebSockets()) {
       const a = w.deserializeAttachment();
@@ -614,14 +638,52 @@ export class WorldChannel {
     const seatedIds = ready.slice(0, zone.maxPlayers).map((r) => r.id);
 
     if (seatedIds.length < zone.minPlayers) {
-      this._send(ws, {
-        t: 'error',
-        d: { code: 'MIN_PLAYERS', message: `최소 ${zone.minPlayers}명이 필요합니다.` },
-      });
+      // 락 해제 — 다른 멤버 모달도 풀어줘야 한다.
+      proposal.phase = null;
+      proposal.startedBy = null;
+      this._broadcastMatchUnstarting(proposal);
+      this._sendError(ws, 'MIN_PLAYERS', `최소 ${zone.minPlayers}명이 필요합니다.`);
       return;
     }
     proposal.players = seatedIds;
     await this._launchProposal(proposal);
+  }
+
+  /* Tell every currently-seated member that someone clicked 시작. Clients
+   * lock their modal until either go_to_game (success) or match_unstarting
+   * (server backed out after min-recheck) arrives.
+   */
+  _broadcastMatchStarting(proposal, starterAttach) {
+    const msg = {
+      t: 'match_starting',
+      d: {
+        matchId: proposal.matchId,
+        startedBy: {
+          id: starterAttach.sessionId,
+          name: starterAttach.name,
+          characterId: starterAttach.characterId,
+        },
+      },
+    };
+    for (const w of this.state.getWebSockets()) {
+      const a = w.deserializeAttachment();
+      if (a?.sessionId && proposal.lastMemberIds && proposal.lastMemberIds.has(a.sessionId)) {
+        this._send(w, msg);
+      }
+    }
+  }
+
+  /* Release the modal lock when the launch is aborted post-claim (e.g. a
+   * member dropped INTENT_READY between the claim and the seated recheck).
+   */
+  _broadcastMatchUnstarting(proposal) {
+    const msg = { t: 'match_unstarting', d: { matchId: proposal.matchId } };
+    for (const w of this.state.getWebSockets()) {
+      const a = w.deserializeAttachment();
+      if (a?.sessionId && proposal.lastMemberIds && proposal.lastMemberIds.has(a.sessionId)) {
+        this._send(w, msg);
+      }
+    }
   }
 
   /* Player tapped "나가기" in the lobby. Treat the same as walking out:
@@ -690,28 +752,34 @@ export class WorldChannel {
     if (!this.proposals.has(proposal.matchId)) return;
     if (!GAME_URLS[proposal.gameId]) {
       // Defensive — should never happen if zone catalog matches GAME_URLS.
+      proposal.phase = null;
+      proposal.startedBy = null;
+      this._broadcastMatchUnstarting(proposal);
       this._cancelProposal(proposal, 'invalid');
       return;
     }
 
-    // Snapshot members with their game-side characterId so the URL the player
-    // receives carries the correct kebab-case avatar id.
-    const launchPlayers = [];
-    const memberSockets = [];
-    for (const ws of this.state.getWebSockets()) {
-      const a = ws.deserializeAttachment();
-      if (!a?.sessionId || !proposal.players.includes(a.sessionId)) continue;
-      memberSockets.push({ ws, attach: a });
-      launchPlayers.push({
-        id: a.sessionId,
-        name: a.name,
-        characterId: a.characterId, // world id; room.js translates via pickGameCharacter
-      });
-    }
-
-    // Seed the GameRoom DO with phase=playing + roster. The matchId itself
-    // serves as the room code (wm-<uuid>) — opaque, no 4-digit collision risk.
+    // Codex review: 이 함수 어디서든 throw 가 새면 proposal 이 phase='launching'
+    // 으로 좀비가 되어 후속 클릭이 영원히 차단된다. 전체를 try/catch 로 감싸서
+    // 어떤 실패도 잠금 복구 + cancel 로 끝나게 한다.
     try {
+      // Snapshot members with their game-side characterId so the URL the player
+      // receives carries the correct kebab-case avatar id.
+      const launchPlayers = [];
+      const memberSockets = [];
+      for (const ws of this.state.getWebSockets()) {
+        const a = ws.deserializeAttachment();
+        if (!a?.sessionId || !proposal.players.includes(a.sessionId)) continue;
+        memberSockets.push({ ws, attach: a });
+        launchPlayers.push({
+          id: a.sessionId,
+          name: a.name,
+          characterId: a.characterId, // world id; room.js translates via pickGameCharacter
+        });
+      }
+
+      // Seed the GameRoom DO with phase=playing + roster. The matchId itself
+      // serves as the room code (wm-<uuid>) — opaque, no 4-digit collision risk.
       const id = this.env.GAME_ROOM.idFromName(proposal.matchId);
       const stub = this.env.GAME_ROOM.get(id);
       const res = await stub.fetch(new Request('https://world.local/world-launch', {
@@ -724,11 +792,22 @@ export class WorldChannel {
         }),
       }));
       if (!res.ok) throw new Error(`world-launch failed: ${res.status}`);
+
+      return this._finishLaunch(proposal, memberSockets);
     } catch (err) {
-      // GameRoom seeding failed — cancel cleanly so members aren't stuck.
+      // 어떤 예외든 잠금 복구 + cancel. 좀비 proposal 방지.
+      proposal.phase = null;
+      proposal.startedBy = null;
+      this._broadcastMatchUnstarting(proposal);
       this._cancelProposal(proposal, 'invalid');
       return;
     }
+  }
+
+  /* Finalize the launch: flip every member to IN_GAME, push match_confirmed +
+   * go_to_game. Split out of _launchProposal so the outer try/catch covers it.
+   */
+  _finishLaunch(proposal, memberSockets) {
 
     // Build the per-player game URL. Use a relative path so the browser stays
     // on the same origin as the world page.

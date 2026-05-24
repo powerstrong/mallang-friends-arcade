@@ -555,6 +555,8 @@
       case 'zone_progress': return handleZoneProgress(env.d);
       case 'match_proposal': return handleMatchProposal(env.d);
       case 'match_members_updated': return handleMatchMembersUpdated(env.d);
+      case 'match_starting': return handleMatchStarting(env.d);
+      case 'match_unstarting': return handleMatchUnstarting(env.d);
       case 'match_confirmed': return handleMatchConfirmed(env.d);
       case 'match_cancelled': return handleMatchCancelled(env.d);
       case 'go_to_game': return handleGoToGame(env.d);
@@ -805,6 +807,29 @@
     // go_to_game arrives separately and triggers the redirect.
   }
 
+  /* 누군가 "시작" 을 눌러 서버가 first-wins 락을 잡은 직후. 모든 seated 멤버의
+   * 모달이 동시에 잠긴다. go_to_game 이 따라 오면 게임 페이지로 이동, 또는
+   * match_unstarting / match_cancelled 가 오면 잠금 해제.
+   */
+  function handleMatchStarting(d) {
+    if (!d?.matchId) return;
+    if (!activeProposal || activeProposal.matchId !== d.matchId) return;
+    const starter = d.startedBy || {};
+    const who = starter.name || '누군가';
+    matchStatus.textContent = `${who}님이 시작합니다...`;
+    matchAcceptBtn.disabled = true;
+    matchDeclineBtn.disabled = true;
+  }
+
+  /* 서버가 락을 잡았다가 min 재검증 실패로 되돌렸을 때. 버튼 다시 살리고
+   * 평시 안내로 복귀.
+   */
+  function handleMatchUnstarting(d) {
+    if (!d?.matchId) return;
+    if (!activeProposal || activeProposal.matchId !== d.matchId) return;
+    refreshMatchActions();
+  }
+
   function handleGoToGame(d) {
     if (!d?.url || typeof d.url !== 'string') return;
     // Hardened same-origin check. `startsWith('/')` is NOT enough — '//evil.com'
@@ -894,12 +919,15 @@
 
   function refreshMatchActions() {
     if (!activeProposal) return;
-    const isHost = !!(me && activeProposal.hostId === me.id);
+    // hostId 는 이제 권한 필드가 아니라 표시용 (leader 배지). seated 멤버
+    // 누구나 시작 가능.
+    const isMember = !!(me && Array.isArray(activeProposal.members)
+      && activeProposal.members.some((m) => m.id === me.id));
     const min = activeProposal.minPlayers || 1;
     const count = activeProposal.members.length;
     const enough = count >= min;
 
-    matchAcceptBtn.style.display = isHost ? '' : 'none';
+    matchAcceptBtn.style.display = isMember ? '' : 'none';
     matchAcceptBtn.disabled = !enough;
     matchAcceptBtn.textContent = enough
       ? `시작 (${count}명)`
@@ -907,18 +935,17 @@
     matchDeclineBtn.disabled = false;
     matchDeclineBtn.textContent = '나가기';
 
-    if (isHost) {
-      matchStatus.textContent = enough
-        ? '준비되면 시작을 누르세요.'
-        : `최소 ${min}명이 되면 시작할 수 있어요.`;
-    } else {
-      matchStatus.textContent = '방장이 시작을 누르면 함께 입장합니다.';
-    }
+    matchStatus.textContent = enough
+      ? '준비되면 누구나 시작을 누를 수 있어요.'
+      : `${min}명이 모이면 시작할 수 있어요.`;
   }
 
   function sendMatchStart() {
     if (!activeProposal) return;
-    if (!me || activeProposal.hostId !== me.id) return;
+    // seated 멤버인지 확인 (자기 자신이 members 배열에 있는지)
+    const isMember = !!(me && Array.isArray(activeProposal.members)
+      && activeProposal.members.some((m) => m.id === me.id));
+    if (!isMember) return;
     matchAcceptBtn.disabled = true;
     matchStatus.textContent = '시작 중...';
     send({ t: 'match_start', d: { matchId: activeProposal.matchId } });
