@@ -299,6 +299,19 @@
     if (e.key === 'Enter' && !joinBtn.disabled) tryJoin();
   });
 
+  // 게임에서 광장으로 복귀 (?from=game) 했고 닉네임·캐릭터가 둘 다 저장돼
+  // 있으면 picker 를 건너뛰고 바로 입장. picker DOM 이 한 프레임 깜빡이지
+  // 않도록 join 패널도 즉시 숨긴다.
+  (function maybeAutoRejoin() {
+    try {
+      const from = new URLSearchParams(window.location.search).get('from');
+      if (from !== 'game') return;
+      if (joinBtn.disabled) return; // 저장된 닉/캐릭터가 없으면 평소대로 picker 노출
+      joinPanel.classList.add('hidden');
+      tryJoin();
+    } catch { /* ignore */ }
+  })();
+
   // ── World state ─────────────────────────────────────────────────────────────
   let ws = null;
   let joinParams = null;   // { name, characterId } — kept so we can re-join on reconnect
@@ -1336,26 +1349,12 @@
 
   function drawAvatar(p, isYou) {
     const r = 18;
-    // Shadow Y is pulled slightly up from r+4 so the visible character feet
-    // overlap with the shadow instead of sitting above it ("floating").
-    const SHADOW_Y = r + 2;
     ctx.save();
     ctx.translate(p.x, p.y);
 
-    // Shadow — slightly larger and more opaque so feet read as planted.
-    ctx.fillStyle = 'rgba(0,0,0,0.38)';
-    ctx.beginPath();
-    ctx.ellipse(0, SHADOW_Y, r * 1.15, r * 0.42, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Accent ring marks your own avatar.
-    if (isYou) {
-      ctx.strokeStyle = '#ffb96b';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.ellipse(0, SHADOW_Y, r * 1.22, r * 0.48, 0, 0, Math.PI * 2);
-      ctx.stroke();
-    }
+    // 지면 기반 그림자/링은 그리지 않는다. 스프라이트 셀 하단 패딩이 캐릭터
+    // 마다 달라서 어떤 y로 두어도 한쪽에서는 발과 분리돼 떠 보였다. 본인 표시는
+    // 아래쪽 이름표 스타일로 처리한다.
 
     const sprite = getSprite(p.characterId);
     let nameTagY = -r - 8;
@@ -1367,11 +1366,12 @@
       const fw = SPRITE_FRAME.width, fh = SPRITE_FRAME.height;
       const drawW = 100, drawH = 100;
       const destX = -drawW / 2;
-      // Cells render the character at ~97% of cell height with a tiny bottom
-      // padding. Anchor the visible bottom of the sprite onto the shadow so
-      // the avatar reads as planted across down/side/up rows.
-      const FOOT_FRACTION = 0.97;
-      const destY = SHADOW_Y - drawH * FOOT_FRACTION;
+      // 스프라이트 셀 하단에 ~15% 정도 빈 패딩이 있어 0.97 로 정렬하면
+      // 시각적 발이 지면보다 위에 떴다. 0.85 로 낮춰 캐릭터를 더 끌어내려
+      // 셀 패딩이 지면 아래로 빠지고 시각적 발이 y≈0(컨택트 쉐도우 자리)에
+      // 닿도록 한다.
+      const FOOT_FRACTION = 0.85;
+      const destY = -drawH * FOOT_FRACTION;
       nameTagY = destY - 8;
 
       ctx.imageSmoothingEnabled = true;
@@ -1412,7 +1412,13 @@
       ctx.fillStyle = 'rgba(20, 30, 16, 0.78)';
       roundRect(-tagW / 2, tagTop, tagW, tagH, 11);
       ctx.fill();
-      ctx.fillStyle = nameColor(p.name);
+      if (isYou) {
+        ctx.strokeStyle = '#ffb96b';
+        ctx.lineWidth = 1.8;
+        roundRect(-tagW / 2, tagTop, tagW, tagH, 11);
+        ctx.stroke();
+      }
+      ctx.fillStyle = isYou ? '#ffd9a8' : nameColor(p.name);
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(name, 0, tagTop + tagH / 2 + 0.5);
