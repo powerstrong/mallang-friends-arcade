@@ -585,10 +585,14 @@ export class WorldChannel {
   async _handleMatchStart(ws, attach, d) {
     if (!attach.sessionId) return;
     const matchId = typeof d?.matchId === 'string' ? d.matchId : null;
-    if (!matchId) return;
+    // 아래 분기들은 예전엔 silent return 이었다. 클라는 응답이 없으면 모달이
+    // '시작 중...' 상태로 영원히 갇혀버려서, 호스트 전환·매칭 만료 같은
+    // 짧은 윈도우 race 가 "가끔 입장이 안 됨" 으로 보였다. 명시적 에러로
+    // 돌려보내 모달이 복구되도록 한다.
+    if (!matchId) return this._sendError(ws, 'BAD_REQUEST', '잘못된 요청입니다.');
     const proposal = this.proposals.get(matchId);
-    if (!proposal) return;
-    if (proposal.hostId !== attach.sessionId) return; // only host may start
+    if (!proposal) return this._sendError(ws, 'NO_PROPOSAL', '매칭이 만료되었습니다. 잠시 후 다시 시도해주세요.');
+    if (proposal.hostId !== attach.sessionId) return this._sendError(ws, 'NOT_HOST', '방장이 바뀌었습니다.');
 
     const zone = getZone(proposal.zoneId);
     if (!zone) return this._cancelProposal(proposal, 'invalid');

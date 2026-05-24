@@ -962,12 +962,30 @@
 
   function handleServerError(d) {
     const msg = d?.message || '서버 오류';
+    const code = d?.code || '';
     if (!me) {
       showJoinError(msg);
-    } else {
-      // Already in the world — surface but keep the session alive.
-      console.warn('[world] server error:', d);
+      return;
     }
+    // 매칭 모달이 열린 상태에서 들어온 에러 (MIN_PLAYERS, NO_PROPOSAL,
+    // NOT_HOST 등)는 호스트가 "시작 중..."으로 영원히 갇히지 않도록 모달에
+    // 그대로 노출하고 버튼을 복구한다.
+    if (activeProposal && !matchModal.classList.contains('hidden')) {
+      if (code === 'NO_PROPOSAL') {
+        // 서버에선 이미 매칭이 사라졌다 — 모달도 짧은 안내 후 닫는다.
+        matchStatus.textContent = msg;
+        matchAcceptBtn.disabled = true;
+        matchDeclineBtn.disabled = true;
+        if (matchCloseTimer) clearTimeout(matchCloseTimer);
+        matchCloseTimer = setTimeout(() => { matchCloseTimer = null; closeMatchModal(); }, 1200);
+      } else {
+        // MIN_PLAYERS, NOT_HOST 등 — 모달은 유지하고 버튼·텍스트만 복구.
+        refreshMatchActions();
+        matchStatus.textContent = msg;
+      }
+      return;
+    }
+    console.warn('[world] server error:', d);
   }
 
   function onClose() {
