@@ -154,6 +154,7 @@
   const matchAcceptBtn = document.getElementById('match-accept');
   const matchDeclineBtn = document.getElementById('match-decline');
   const matchModalCard = document.getElementById('match-modal-card');
+  const matchStartingView = document.getElementById('match-starting-view');
   const starterPortrait = document.getElementById('starter-portrait');
   const starterText = document.getElementById('starter-text');
 
@@ -837,6 +838,7 @@
     starterText.innerHTML = `<strong>${escapeHtml(who)}</strong>님이 모두를 <strong>${escapeHtml(title)}</strong>(으)로 데려갑니다<span class="arrow">→</span>`;
 
     matchModalCard.classList.add('is-starting');
+    matchStartingView.setAttribute('aria-hidden', 'false');
     matchAcceptBtn.disabled = true;
     matchDeclineBtn.disabled = true;
 
@@ -852,6 +854,7 @@
     if (!d?.matchId) return;
     if (!activeProposal || activeProposal.matchId !== d.matchId) return;
     matchModalCard.classList.remove('is-starting');
+    matchStartingView.setAttribute('aria-hidden', 'true');
     matchStartingAt = 0;
     refreshMatchActions();
   }
@@ -910,6 +913,7 @@
     refreshMatchActions();
     // 새 modal 은 항상 평시 상태로 — 이전 트랜지션 잔재 제거.
     matchModalCard.classList.remove('is-starting');
+    matchStartingView.setAttribute('aria-hidden', 'true');
     matchStartingAt = 0;
     matchModal.classList.remove('hidden');
     matchModal.setAttribute('aria-hidden', 'false');
@@ -921,6 +925,7 @@
     if (matchCloseTimer) { clearTimeout(matchCloseTimer); matchCloseTimer = null; }
     if (joystickEl) joystickEl.style.visibility = '';
     matchModalCard.classList.remove('is-starting');
+    matchStartingView.setAttribute('aria-hidden', 'true');
     matchStartingAt = 0;
     activeProposal = null;
   }

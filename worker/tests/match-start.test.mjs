@@ -243,6 +243,39 @@ test('_syncProposalForZone is a no-op while phase=launching', async () => {
   assert.equal(findSent(newWs, 'match_proposal').length, 0);
 });
 
+test('over-cap: 3 READY, maxPlayers=2 — only top 2 seated launch, third is silent', async () => {
+  // JUMP zone: min=1, max=2. We seat A+B as the advertised proposal members
+  // (lastMemberIds = {A, B}); C is INTENT_READY in the same zone but NOT in
+  // lastMemberIds — simulating an over-cap waiter (3+ ready, but only 2 seats).
+  const { ch, state } = makeChannel();
+  const { proposal, members } = seedReady(ch, state, [
+    { id: 'a', name: 'Alice' },
+    { id: 'b', name: 'Bob' },
+  ], JUMP);
+  // C arrives later — INTENT_READY in zone but later candidateSince, so the
+  // seated-recheck sort still puts A,B first.
+  const cAttach = {
+    sessionId: 'c', name: 'Carol', characterId: 'mochi_rabbit',
+    x: 270, y: 520, dir: 'down', moving: false,
+    status: PLAYER_STATUS.INTENT_READY,
+    currentZoneId: JUMP.id,
+    candidateSince: Date.now(), // newest — sorts last
+  };
+  const cWs = makeWs(cAttach);
+  state.sockets.push(cWs);
+
+  await ch._handleMatchStart(members[0].ws, members[0].attach, { matchId: proposal.matchId });
+
+  // A + B launched, C did not.
+  assert.equal(findSent(members[0].ws, 'go_to_game').length, 1, 'A launched');
+  assert.equal(findSent(members[1].ws, 'go_to_game').length, 1, 'B launched');
+  assert.equal(findSent(cWs, 'go_to_game').length, 0, 'C did not launch (over-cap)');
+
+  // C also did not get match_starting broadcast (broadcast targets lastMemberIds only).
+  assert.equal(findSent(cWs, 'match_starting').length, 0);
+  assert.equal(findSent(members[0].ws, 'match_starting').length, 1);
+});
+
 test('GameRoom seed failure: phase rolled back + unstarting broadcast + cancel', async () => {
   const { ch, state } = makeChannel({}, { GAME_ROOM: {
     idFromName(n) { return { n }; },

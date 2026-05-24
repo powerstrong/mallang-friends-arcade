@@ -82,8 +82,9 @@
           <button id="match-decline" type="button" class="btn-ghost">나가기</button>
           <button id="match-accept" type="button" class="btn-primary">시작</button>
         </div>
-        <!-- match_starting 도착 시 위 요소들이 숨겨지고 아래 전환 화면이 표시됨 -->
-        <div id="match-starting-view" class="match-starting-view" aria-hidden="true">
+        <!-- match_starting 도착 시 위 요소들이 숨겨지고 아래 전환 화면이 표시됨.
+             handleMatchStarting/closeMatchModal 에서 aria-hidden 을 토글한다. -->
+        <div id="match-starting-view" class="match-starting-view" aria-hidden="true" role="status" aria-live="polite">
           <div class="starter-portrait" id="starter-portrait" aria-hidden="true"></div>
           <div class="starter-text" id="starter-text"></div>
         </div>
