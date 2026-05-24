@@ -1,4 +1,4 @@
-const CACHE = 'tenten-v11';
+const CACHE = 'tenten-v12';
 
 const PRECACHE = [
   '/',
@@ -41,7 +41,10 @@ self.addEventListener('fetch', e => {
       fetch(e.request)
         .then(res => {
           if (res.ok) {
-            caches.open(CACHE).then(c => c.put(e.request, res.clone()));
+            // 비동기 caches.open 이 풀리기 전에 클론을 떠둬야 한다.
+            // 안 그러면 페이지가 본문을 먼저 소비해서 clone() 이 실패한다.
+            const copy = res.clone();
+            caches.open(CACHE).then(c => c.put(e.request, copy));
           }
           return res;
         })
@@ -57,7 +60,8 @@ self.addEventListener('fetch', e => {
     caches.match(e.request).then(cached => {
       const fresh = fetch(e.request).then(res => {
         if (res.ok) {
-          caches.open(CACHE).then(c => c.put(e.request, res.clone()));
+          const copy = res.clone();
+          caches.open(CACHE).then(c => c.put(e.request, copy));
         }
         return res;
       });
