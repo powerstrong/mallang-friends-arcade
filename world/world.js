@@ -300,14 +300,14 @@
   });
 
   // 게임에서 광장으로 복귀 (?from=game) 했고 닉네임·캐릭터가 둘 다 저장돼
-  // 있으면 picker 를 건너뛰고 바로 입장. picker DOM 이 한 프레임 깜빡이지
-  // 않도록 join 패널도 즉시 숨긴다.
+  // 있으면 picker 를 건너뛰고 바로 입장. joinPanel 은 일부러 숨기지 않는다
+  // — handleWelcome 이 도착해야 worldPanel 이 켜지므로, 미리 숨기면 WS
+  // 연결이 느리거나 실패할 때 빈 화면이 된다.
   (function maybeAutoRejoin() {
     try {
       const from = new URLSearchParams(window.location.search).get('from');
       if (from !== 'game') return;
       if (joinBtn.disabled) return; // 저장된 닉/캐릭터가 없으면 평소대로 picker 노출
-      joinPanel.classList.add('hidden');
       tryJoin();
     } catch { /* ignore */ }
   })();
@@ -525,6 +525,10 @@
   }
 
   function showJoinError(msg) {
+    // 자동 입장 등으로 joinPanel 이 숨겨진 상태에서 실패하면 사용자가
+    // 빈 화면에 갇히므로, 무조건 join 패널을 복원한다.
+    joinPanel.classList.remove('hidden');
+    worldPanel.classList.add('hidden');
     joinStatus.textContent = msg;
     joinStatus.classList.add('error');
     joinBtn.disabled = false;
