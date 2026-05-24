@@ -153,6 +153,9 @@
   const matchMembers = document.getElementById('match-members');
   const matchAcceptBtn = document.getElementById('match-accept');
   const matchDeclineBtn = document.getElementById('match-decline');
+  const matchModalCard = document.getElementById('match-modal-card');
+  const starterPortrait = document.getElementById('starter-portrait');
+  const starterText = document.getElementById('starter-text');
 
   // shared/input.js only binds arrow keys. Add WASD locally so this page
   // matches the on-screen hint without touching shared input used by games.
@@ -339,6 +342,7 @@
   // Active match proposal awaiting our response.
   let activeProposal = null; // { matchId, gameId, title, members, deadline, responded }
   let matchCloseTimer = null; // delayed closeMatchModal handle (cancellation flow)
+  let matchStartingAt = 0;    // performance.now() when 'match_starting' arrived; 0 = not in transition
 
   // ── Picker UI ───────────────────────────────────────────────────────────────
   function buildPicker() {
@@ -807,26 +811,48 @@
     // go_to_game arrives separately and triggers the redirect.
   }
 
-  /* 누군가 "시작" 을 눌러 서버가 first-wins 락을 잡은 직후. 모든 seated 멤버의
-   * 모달이 동시에 잠긴다. go_to_game 이 따라 오면 게임 페이지로 이동, 또는
-   * match_unstarting / match_cancelled 가 오면 잠금 해제.
+  /* 누군가 "시작" 을 눌러 서버가 first-wins 락을 잡은 직후. modal-card 가
+   * .is-starting 으로 바뀌면서 멤버 목록·액션이 사라지고 starter 의
+   * 캐릭터 + 안내 문구가 부드럽게 떠오른다. go_to_game 이 따라 오면
+   * 게임 페이지로 이동, match_unstarting / match_cancelled 가 오면 복귀.
    */
   function handleMatchStarting(d) {
     if (!d?.matchId) return;
     if (!activeProposal || activeProposal.matchId !== d.matchId) return;
     const starter = d.startedBy || {};
     const who = starter.name || '누군가';
-    matchStatus.textContent = `${who}님이 시작합니다...`;
+    const title = activeProposal.title || '게임';
+
+    // Starter 의 캐릭터 portrait (있으면 이미지, 없으면 이모지).
+    const portraitSrc = characterPortrait(starter.characterId);
+    starterPortrait.innerHTML = '';
+    if (portraitSrc) {
+      const img = document.createElement('img');
+      img.src = portraitSrc;
+      img.alt = '';
+      starterPortrait.appendChild(img);
+    } else {
+      starterPortrait.textContent = characterEmoji(starter.characterId);
+    }
+    starterText.innerHTML = `<strong>${escapeHtml(who)}</strong>님이 모두를 <strong>${escapeHtml(title)}</strong>(으)로 데려갑니다<span class="arrow">→</span>`;
+
+    matchModalCard.classList.add('is-starting');
     matchAcceptBtn.disabled = true;
     matchDeclineBtn.disabled = true;
+
+    // go_to_game 이 너무 빨리 도착해도 최소 700ms 는 화면을 잡아둔다.
+    // 그래야 트랜지션 의도가 인지된다.
+    matchStartingAt = performance.now();
   }
 
-  /* 서버가 락을 잡았다가 min 재검증 실패로 되돌렸을 때. 버튼 다시 살리고
-   * 평시 안내로 복귀.
+  /* 서버가 락을 잡았다가 min 재검증 실패로 되돌렸을 때. 트랜지션 풀고
+   * 평시 모달로 복귀.
    */
   function handleMatchUnstarting(d) {
     if (!d?.matchId) return;
     if (!activeProposal || activeProposal.matchId !== d.matchId) return;
+    matchModalCard.classList.remove('is-starting');
+    matchStartingAt = 0;
     refreshMatchActions();
   }
 
@@ -840,10 +866,24 @@
     if (target.origin !== window.location.origin) return;
     if (!target.pathname.startsWith('/prototypes/')) return;
 
-    stopHeartbeat();
-    if (rafHandle) { cancelAnimationFrame(rafHandle); rafHandle = null; }
-    if (ws) { try { ws.close(); } catch { /* ignore */ } }
-    window.location.href = target.pathname + target.search + target.hash;
+    const navigate = () => {
+      stopHeartbeat();
+      if (rafHandle) { cancelAnimationFrame(rafHandle); rafHandle = null; }
+      if (ws) { try { ws.close(); } catch { /* ignore */ } }
+      window.location.href = target.pathname + target.search + target.hash;
+    };
+
+    // 트랜지션 의도를 인지할 수 있게 최소 700ms 는 잡아둔다 (Gemini 권장).
+    // 서버 응답이 느리면 자연스럽게 그 시간이 다 흘러간 뒤일 수 있고, 그
+    // 경우엔 즉시 이동한다.
+    const MIN_TRANSITION_MS = 700;
+    const elapsed = matchStartingAt ? performance.now() - matchStartingAt : MIN_TRANSITION_MS;
+    const remain = Math.max(0, MIN_TRANSITION_MS - elapsed);
+    if (remain > 0) {
+      setTimeout(navigate, remain);
+    } else {
+      navigate();
+    }
   }
 
   function handleMatchCancelled(d) {
@@ -868,6 +908,9 @@
     matchTitle.textContent = activeProposal.title;
     renderMatchMembers();
     refreshMatchActions();
+    // 새 modal 은 항상 평시 상태로 — 이전 트랜지션 잔재 제거.
+    matchModalCard.classList.remove('is-starting');
+    matchStartingAt = 0;
     matchModal.classList.remove('hidden');
     matchModal.setAttribute('aria-hidden', 'false');
   }
@@ -877,6 +920,8 @@
     matchModal.setAttribute('aria-hidden', 'true');
     if (matchCloseTimer) { clearTimeout(matchCloseTimer); matchCloseTimer = null; }
     if (joystickEl) joystickEl.style.visibility = '';
+    matchModalCard.classList.remove('is-starting');
+    matchStartingAt = 0;
     activeProposal = null;
   }
 

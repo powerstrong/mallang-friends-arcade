@@ -74,13 +74,18 @@
     </section>
 
     <div id="match-modal" class="modal hidden" aria-hidden="true" role="dialog">
-      <div class="modal-card">
+      <div class="modal-card" id="match-modal-card">
         <h2 id="match-title">매칭 확인</h2>
         <p id="match-status" class="modal-sub"></p>
         <ul id="match-members" class="match-members"></ul>
-        <div class="modal-actions">
+        <div class="modal-actions" id="match-actions">
           <button id="match-decline" type="button" class="btn-ghost">나가기</button>
           <button id="match-accept" type="button" class="btn-primary">시작</button>
+        </div>
+        <!-- match_starting 도착 시 위 요소들이 숨겨지고 아래 전환 화면이 표시됨 -->
+        <div id="match-starting-view" class="match-starting-view" aria-hidden="true">
+          <div class="starter-portrait" id="starter-portrait" aria-hidden="true"></div>
+          <div class="starter-text" id="starter-text"></div>
         </div>
       </div>
     </div>

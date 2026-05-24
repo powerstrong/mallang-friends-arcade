@@ -539,6 +539,55 @@ h1 {
 }
 .match-members li.is-self { outline: 2px solid var(--accent); }
 .match-members li.is-host { background: rgba(255, 217, 163, 0.16); }
+
+/* ─ match starting transition (option B) ───────────────────────────────────
+ * 누군가 "시작" 을 누르면 modal-card 가 .is-starting 으로 바뀌면서 멤버
+ * 목록·액션은 사라지고 starter 의 캐릭터 + "데려갑니다" 문구가 부드럽게
+ * 떠오른다. Habbo / 클럽펭귄 식의 짧은 공간이동 연출.
+ */
+.match-starting-view {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 0 4px;
+  animation: starter-fade-in 0.28s ease both;
+}
+#match-modal-card.is-starting #match-status,
+#match-modal-card.is-starting #match-members,
+#match-modal-card.is-starting #match-actions { display: none; }
+#match-modal-card.is-starting #match-title { opacity: 0.7; font-size: 1rem; margin-bottom: 6px; }
+#match-modal-card.is-starting .match-starting-view { display: flex; }
+
+.starter-portrait {
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--panel-2);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.35), 0 0 0 4px rgba(255,217,163,0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 3rem;
+  line-height: 1;
+}
+.starter-portrait img {
+  width: 100%; height: 100%; object-fit: cover; display: block;
+}
+.starter-text {
+  font-size: 1.05rem;
+  font-weight: 700;
+  text-align: center;
+  color: var(--text);
+  line-height: 1.4;
+}
+.starter-text .arrow { color: var(--accent); margin-left: 4px; }
+
+@keyframes starter-fade-in {
+  from { transform: scale(0.85); opacity: 0; }
+  to   { transform: scale(1);    opacity: 1; }
+}
 .match-members li .host-badge {
   display: inline-block;
   margin-top: 4px;
