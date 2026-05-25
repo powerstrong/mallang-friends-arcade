@@ -2379,6 +2379,22 @@ export class GameRoom {
       return;
     }
 
+    // 정답 누수 봉쇄 (Gemini HIGH): "정답은 사과" 처럼 정답을 그대로 포함한 메시지는
+    // 다른 사람에게 보내지 않고 본인에게만 시스템 경고. 추측은 짧은 단어로 충분.
+    if (answer && guess.includes(answer)) {
+      const myWs = this._findPlayerWs(player.id);
+      if (myWs) {
+        try {
+          myWs.send(JSON.stringify({
+            type: 'SS_CHAT',
+            system: true,
+            text: '정답이 그대로 들어있어서 다른 사람에게 안 보내요!',
+          }));
+        } catch {}
+      }
+      return;
+    }
+
     // 자리 일치 근접 — 본인에게만 SS_HINT_FEEDBACK + 시스템 메시지.
     const guessChars = [...guess];
     const answerChars = [...answer];
@@ -2509,9 +2525,13 @@ export class GameRoom {
 
   async _endSseukRound(reason) {
     if (!this.sseukGame) return;
-    if (this.sseukGame.timers.round) { clearTimeout(this.sseukGame.timers.round); this.sseukGame.timers.round = null; }
-    if (this.sseukGame.timers.bonus) { clearTimeout(this.sseukGame.timers.bonus); this.sseukGame.timers.bonus = null; }
-    if (this.sseukGame.timers.hint?.length) { for (const h of this.sseukGame.timers.hint) clearTimeout(h); this.sseukGame.timers.hint = []; }
+    // 재진입 가드 (Gemini CRITICAL): bonus-timeout / all-correct / drawer-disconnect 가
+    // 동일 tick에 겹쳐 들어와도 한 번만 처리되도록. _startSseukRound가 phase를
+    // 'volunteering'으로 재설정하므로 다음 라운드는 정상 진행.
+    if (this.sseukGame.phase === 'ending') return;
+    this.sseukGame.phase = 'ending';
+    // 4개 token 패밀리 + 4개 타이머 일괄 정리 (Gemini MEDIUM: volunteer 누락 보정).
+    this._clearSseukTimers();
 
     const r = this.sseukGame.currentRound;
     const perPlayerDelta = {};
