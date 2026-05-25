@@ -22,6 +22,7 @@ import { toGameCharacterId } from './characters.js';
 const GAME_URLS = Object.freeze({
   'jump-climber': '/prototypes/jump-climber/index.html',
   'mallang-quiz-battle': '/prototypes/mallang-quiz-battle/index.html',
+  'sseuk-sseuk': '/prototypes/sseuk-sseuk/index.html',
 });
 
 const PROTOCOL_VERSION = 1;
