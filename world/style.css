@@ -352,10 +352,13 @@ h1 {
   .panel { padding: 8px; border-radius: 12px; }
   /* Cap canvas height so the full UI (header + canvas + chat-log + reactions
      + chat-form) fits on phones without forcing the page to scroll. 100dvh
-     adapts to mobile browser chrome. The aspect-ratio rule still drives the
-     width down proportionally when this kicks in. */
+     adapts to mobile browser chrome.
+     주의: max-height 만 걸면 부모가 좁고 높이가 캡에 닿을 때 `width: 100%`
+     가 그대로 살아남아 540:960 aspect-ratio 가 깨진다 (가로가 남아 캐릭터가
+     넓적해 보이는 원인). max-width 도 함께 줄여 두 축 모두 동일 비율로
+     클램프되도록 한다. */
   .canvas-wrap {
-    max-width: none;
+    max-width: min(100%, calc((100dvh - 270px) * 540 / 960));
     max-height: calc(100dvh - 270px);
   }
 
