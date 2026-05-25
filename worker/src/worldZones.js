@@ -5,6 +5,7 @@
  *
  *   jump-climber        : 1..2  (worker/src/room.js JUMP_SESSION_LIMITS.players)
  *   mallang-quiz-battle : 2..6  (registry recommendedPlayers)
+ *   sseuk-sseuk         : 2..6  (registry recommendedPlayers)
  *
  * holdMs is the dwell time before a candidate becomes intent_ready.
  */
@@ -27,6 +28,15 @@ export const GAME_ZONES = [
     gameId: 'mallang-quiz-battle',
     title: '말랑프렌즈 퀴즈배틀',
     rect: { x: 280, y: 100, w: 235, h: 200 },
+    minPlayers: 2,
+    maxPlayers: 6,
+    holdMs: 3000,
+  },
+  {
+    id: 'sseuk-sseuk',
+    gameId: 'sseuk-sseuk',
+    title: '말랑프렌즈 슥슥',
+    rect: { x: 152, y: 320, w: 235, h: 200 },
     minPlayers: 2,
     maxPlayers: 6,
     holdMs: 3000,

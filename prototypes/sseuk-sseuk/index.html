@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#10b981" />
+    <title>말랑프렌즈 슥슥</title>
+    <link rel="icon" href="../jump-climber/assets/icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <main class="game-shell">
+
+      <section id="setupScreen" class="screen screen--setup is-active">
+        <section class="panel setup-panel" aria-labelledby="setupTitle">
+          <p class="eyebrow">MALLANG SSEUK-SSEUK</p>
+          <h1 id="setupTitle">말랑프렌즈 슥슥</h1>
+          <p class="setup-copy">그려서 맞히는 캐주얼 그림 게임. (Phase 0 골격)</p>
+
+          <div id="bootStatus" class="boot-status" aria-live="polite">연결 대기 중…</div>
+
+          <div id="waitingPlayers" class="waiting-players" aria-label="대기 중인 플레이어" aria-live="polite"></div>
+        </section>
+      </section>
+
+    </main>
+
+    <script src="/games/registry.js"></script>
+    <script src="/shared/bootstrap.js"></script>
+    <script src="/shared/config.js"></script>
+    <script src="./game.js"></script>
+  </body>
+</html>

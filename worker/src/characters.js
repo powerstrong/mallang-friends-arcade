@@ -2,31 +2,32 @@
  * Keep these two files in sync — see assertSharedMatchesWorker() below.
  *
  * Each character declares which games it can be used in. The truth lives in
- * worker/src/room.js (JUMP_CHARACTERS, QUIZ_VALID_CHARS):
+ * worker/src/room.js (JUMP_CHARACTERS, QUIZ_VALID_CHARS, SS_VALID_CHARS):
  *   jump-climber        : all five
  *   mallang-quiz-battle : all five
+ *   sseuk-sseuk         : all five
  */
 
 export const CHARACTERS = Object.freeze([
   Object.freeze({
     worldId: 'latte_puppy', label: '라떼강아지',
-    gameIds: Object.freeze({ 'jump-climber': 'latte-puppy', 'mallang-quiz-battle': 'latte-puppy' }),
+    gameIds: Object.freeze({ 'jump-climber': 'latte-puppy', 'mallang-quiz-battle': 'latte-puppy', 'sseuk-sseuk': 'latte-puppy' }),
   }),
   Object.freeze({
     worldId: 'mochi_rabbit', label: '토끼',
-    gameIds: Object.freeze({ 'jump-climber': 'mochi-rabbit', 'mallang-quiz-battle': 'mochi-rabbit' }),
+    gameIds: Object.freeze({ 'jump-climber': 'mochi-rabbit', 'mallang-quiz-battle': 'mochi-rabbit', 'sseuk-sseuk': 'mochi-rabbit' }),
   }),
   Object.freeze({
     worldId: 'pudding_hamster', label: '햄스터',
-    gameIds: Object.freeze({ 'jump-climber': 'pudding-hamster', 'mallang-quiz-battle': 'pudding-hamster' }),
+    gameIds: Object.freeze({ 'jump-climber': 'pudding-hamster', 'mallang-quiz-battle': 'pudding-hamster', 'sseuk-sseuk': 'pudding-hamster' }),
   }),
   Object.freeze({
     worldId: 'mint_kitten', label: '고양이',
-    gameIds: Object.freeze({ 'jump-climber': 'mint-kitten', 'mallang-quiz-battle': 'mint-kitten' }),
+    gameIds: Object.freeze({ 'jump-climber': 'mint-kitten', 'mallang-quiz-battle': 'mint-kitten', 'sseuk-sseuk': 'mint-kitten' }),
   }),
   Object.freeze({
     worldId: 'peach_chick', label: '병아리',
-    gameIds: Object.freeze({ 'jump-climber': 'peach-chick', 'mallang-quiz-battle': 'peach-chick' }),
+    gameIds: Object.freeze({ 'jump-climber': 'peach-chick', 'mallang-quiz-battle': 'peach-chick', 'sseuk-sseuk': 'peach-chick' }),
   }),
 ]);
 

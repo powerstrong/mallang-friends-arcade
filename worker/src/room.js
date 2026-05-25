@@ -11,9 +11,12 @@ const COLORS = [
 const GAME_PATHS = {
   'jump-climber': '/prototypes/jump-climber/index.html',
   'mallang-quiz-battle': '/prototypes/mallang-quiz-battle/index.html',
+  'sseuk-sseuk': '/prototypes/sseuk-sseuk/index.html',
 };
 
 const QUIZ_VALID_CHARS = ['mochi-rabbit', 'pudding-hamster', 'peach-chick', 'latte-puppy', 'mint-kitten'];
+const SS_VALID_CHARS = ['mochi-rabbit', 'pudding-hamster', 'peach-chick', 'latte-puppy', 'mint-kitten'];
+const SS_TOTAL_ROUNDS = 5;
 const QUIZ_QUESTION_COUNT = 10;
 const QUIZ_TIME_LIMIT_MS = 10000;
 const QUIZ_REVEAL_MS = 3500;
@@ -277,6 +280,7 @@ export class GameRoom {
     this.tugWarGame = null;
     this.tugWarLoop = null;
     this.quizGame = null;
+    this.sseukGame = null;
   }
 
   // Returns [{ws, player}] for all connected, registered players
@@ -983,6 +987,10 @@ export class GameRoom {
   async _handleJoinGame(ws, msg) {
     if (msg.gameId === 'mallang-quiz-battle') {
       return await this._handleQuizJoinGame(ws, msg);
+    }
+
+    if (msg.gameId === 'sseuk-sseuk') {
+      return await this._handleSseukJoinGame(ws, msg);
     }
 
     if (msg.gameId === 'mallang-tug-war') {
@@ -1969,6 +1977,55 @@ export class GameRoom {
     await this.state.storage.put('phase', 'results');
   }
 
+  // ── 슥슥 (Phase 0 stubs — Phase A에서 라운드/추첨/캐릭터 선택 확장) ──
+
+  _initSseukGame(roster) {
+    if (this.sseukGame) return;
+    this.sseukGame = {
+      phase: 'waiting',
+      currentRound: 0,
+      totalRounds: SS_TOTAL_ROUNDS,
+      players: roster.map((p, i) => ({
+        id: p.id,
+        name: p.name,
+        colorIndex: i % COLORS.length,
+        characterId: 'mochi-rabbit',
+        connected: false,
+        ready: false,
+        score: 0,
+      })),
+      scores: {},
+      drawerHistory: [],
+      usedKeywords: [],
+      tokens: { volunteer: 0, round: 0, bonus: 0, hint: 0 },
+    };
+  }
+
+  async _handleSseukJoinGame(ws, msg) {
+    const fullRoster = (await this.state.storage.get('gameRoster')) || [];
+    const rosterPlayer = fullRoster.find(p => p.id === msg.playerId);
+    if (!rosterPlayer) {
+      ws.send(JSON.stringify({ type: 'error', message: '방 플레이어 정보가 맞지 않습니다.' }));
+      return;
+    }
+
+    this._initSseukGame(fullRoster);
+
+    const ssPlayer = this.sseukGame.players.find(p => p.id === msg.playerId);
+    if (ssPlayer) {
+      ssPlayer.connected = true;
+      if (SS_VALID_CHARS.includes(msg.characterId)) ssPlayer.characterId = msg.characterId;
+    }
+
+    ws.serializeAttachment({ ...rosterPlayer, role: 'game', gameId: 'sseuk-sseuk', isSpectator: false });
+    ws.send(JSON.stringify({
+      type: 'SS_JOINED',
+      players: this.sseukGame.players,
+      phase: this.sseukGame.phase,
+    }));
+    this._broadcastGame({ type: 'SS_PLAYER_UPDATE', players: this.sseukGame.players }, 'sseuk-sseuk');
+  }
+
   _handlePlayerInput(player, msg) {
     if (!this.jumpGame || player.role !== 'game' || player.gameId !== 'jump-climber') return;
     if (player.isSpectator) return;
@@ -2170,6 +2227,18 @@ export class GameRoom {
         break;
       case 'QUIZ_HINT':
         if (player?.gameId === 'mallang-quiz-battle') await this._handleQuizHint(ws, player, msg);
+        break;
+      // ── 슥슥 (Phase 0: dispatch wiring only. 핸들러는 Phase A~D에서 채워짐) ──
+      case 'SS_READY':
+      case 'SS_SELECT_CHARACTER':
+      case 'SS_VOLUNTEER':
+      case 'SS_STROKE_ADD':
+      case 'SS_CANVAS_CLEAR':
+      case 'SS_STROKE_UNDO':
+      case 'SS_GUESS':
+        if (player?.gameId === 'sseuk-sseuk') {
+          // TODO(Phase A~D): route to _handleSseuk* handlers.
+        }
         break;
       case 'submit_result': if (player) await this._handleSubmitResult(player, msg);      break;
       case 'rematch':       if (player) await this._handleRematch();                       break;
