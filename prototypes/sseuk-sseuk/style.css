@@ -28,7 +28,10 @@ button {
 
 .game-shell {
   width: 100%;
-  max-width: 430px;
+  /* 일반 폰(<=430px)에선 width:100%가 먼저 잡혀 영향 없음.
+   * 폴더블 펼침(~725px CSS px)에선 600px까지 확장.
+   * 태블릿/데스크탑은 600px에서 멈춰 비례 깨짐 방지. */
+  max-width: 600px;
   min-height: 100dvh;
   margin: 0 auto;
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
@@ -245,6 +248,11 @@ h2 { margin: 4px 0 8px; font-size: 20px; color: #064e3b; }
   border: 2px solid #6ee7b7;
   border-radius: 16px;
   aspect-ratio: 1;
+  /* 폴드 가로/태블릿 등 세로 공간이 짧을 때 캔버스가 화면을 뚫고 나가지 않도록.
+   * 일반 세로폰에선 width 기반 aspect-ratio가 먼저 작아져 영향 없음. */
+  max-height: 60vh;
+  width: 100%;
+  margin: 0 auto;
   overflow: hidden;
   position: relative;
   touch-action: none;
