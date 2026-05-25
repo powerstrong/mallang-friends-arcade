@@ -1195,6 +1195,7 @@
   const ZONE_THEME = {
     'jump-climber':        { color: '#ff9f4d', dark: '#d9791c', icon: '🧗' },
     'mallang-quiz-battle': { color: '#7db4ff', dark: '#4d83d9', icon: '🧠' },
+    'sseuk-sseuk':         { color: '#10b981', dark: '#047857', icon: '✏️' },
   };
   function zoneTheme(z) {
     return ZONE_THEME[z.gameId] || ZONE_THEME[z.id] ||
@@ -1211,54 +1212,84 @@
     }
   }
 
-  // A carnival-style game booth: striped awning, signboard, entrance pad.
+  // 부스 표시 정책 (사용자 피드백):
+  //   • 기본: 작은 원형 영역 + 라벨만. 월드가 산만하지 않도록 일러스트는 숨김.
+  //   • 들어선 순간(inHere): 일러스트 노출 + 카운트다운 진행.
   function drawBooth(z, r, st, inHere, near) {
     const t = zoneTheme(z);
     const cx = r.x + r.w / 2;
+    const cy = r.y + r.h / 2;
+    const markerR = Math.min(36, Math.min(r.w, r.h) * 0.18); // 작은 원형 마커
     ctx.save();
 
-    // Proximity glow — soft rings while approaching or standing inside.
-    if (near || inHere) {
+    if (inHere) {
+      // ── inHere: rect 전체에 proximity glow + 일러스트 ─────────────
       ctx.save();
       ctx.strokeStyle = t.color;
       for (let i = 0; i < 3; i++) {
-        ctx.globalAlpha = (inHere ? 0.38 : 0.24) - i * 0.08;
+        ctx.globalAlpha = 0.38 - i * 0.08;
         ctx.lineWidth = 2;
         roundRect(r.x - 3 - i * 3, r.y - 3 - i * 3, r.w + 6 + i * 6, r.h + 6 + i * 6, 16 + i * 3);
         ctx.stroke();
       }
       ctx.restore();
+
+      const padY = r.y + r.h - 28;
+      ctx.fillStyle = hexA(t.color, 0.55);
+      roundRect(r.x + 14, padY, r.w - 28, 22, 11);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.22)';
+      roundRect(r.x + 18, padY + 3, r.w - 36, 6, 3);
+      ctx.fill();
+
+      const booth = getBoothImage(z.gameId);
+      if (booth && booth.ready) {
+        const drawW = r.w + 20;
+        const drawH = drawW * booth.img.height / booth.img.width;
+        ctx.drawImage(booth.img, cx - drawW / 2, (r.y + r.h) - drawH + 6, drawW, drawH);
+      }
+    } else {
+      // ── 기본: 작은 원형 마커 + 아이콘. 가까이 가면 살짝 강조. ──────
+      ctx.fillStyle = hexA(t.color, near ? 0.32 : 0.18);
+      ctx.beginPath();
+      ctx.arc(cx, cy, markerR, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = hexA(t.color, near ? 0.95 : 0.7);
+      ctx.lineWidth = near ? 3 : 2;
+      ctx.beginPath();
+      ctx.arc(cx, cy, markerR, 0, Math.PI * 2);
+      ctx.stroke();
+      // 중앙 아이콘 (이모지)
+      ctx.font = `${Math.floor(markerR * 1.1)}px -apple-system, system-ui, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(t.icon || '🎮', cx, cy + 1);
+
+      if (near) {
+        // 가까울 때 외곽 부드러운 펄스링 1줄
+        ctx.save();
+        ctx.strokeStyle = t.color;
+        ctx.globalAlpha = 0.4;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(cx, cy, markerR + 6, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
     }
 
-    // Entrance pad — subtle "stand here" marker at the booth base.
-    const padY = r.y + r.h - 28;
-    ctx.fillStyle = hexA(t.color, inHere ? 0.55 : 0.28);
-    roundRect(r.x + 14, padY, r.w - 28, 22, 11);
-    ctx.fill();
-    ctx.fillStyle = 'rgba(255,255,255,0.22)';
-    roundRect(r.x + 18, padY + 3, r.w - 36, 6, 3);
-    ctx.fill();
-
-    // Booth illustration.
-    const booth = getBoothImage(z.gameId);
-    if (booth && booth.ready) {
-      // 두 개를 가로로 나란히 배치하는 좁은 rect(235w)에 맞춰 살짝만 크게.
-      // r.w + 20 = 255px → 폴드 cover에서도 한 화면에 둘 다 보인다.
-      const drawW = r.w + 20;
-      const drawH = drawW * booth.img.height / booth.img.width;
-      ctx.drawImage(booth.img, cx - drawW / 2, (r.y + r.h) - drawH + 6, drawW, drawH);
-    }
-
-    // Title — below the booth, dark halo for readability on grass.
+    // Title — 마커/일러스트 아래.
+    const titleY = inHere ? r.y + r.h + 16 : cy + markerR + 14;
     ctx.font = 'bold 14px -apple-system, system-ui, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'alphabetic';
     ctx.lineWidth = 3;
     ctx.lineJoin = 'round';
     ctx.strokeStyle = 'rgba(20,30,16,0.85)';
-    ctx.strokeText(z.title, cx, r.y + r.h + 16);
+    ctx.strokeText(z.title, cx, titleY);
     ctx.fillStyle = '#ffffff';
-    ctx.fillText(z.title, cx, r.y + r.h + 16);
+    ctx.fillText(z.title, cx, titleY);
 
     // Status line / countdown.
     if (inHere && myZoneProgress && myZoneProgress.zoneId === z.id) {
@@ -1273,24 +1304,25 @@
       ctx.lineWidth = 3;
       ctx.lineJoin = 'round';
       ctx.strokeStyle = 'rgba(20,30,16,0.8)';
-      ctx.strokeText(statusText, cx, r.y + r.h + 33);
+      const statusY = titleY + 17;
+      ctx.strokeText(statusText, cx, statusY);
       ctx.fillStyle = enough ? '#d6ffe6' : '#eef2ff';
-      ctx.fillText(statusText, cx, r.y + r.h + 33);
+      ctx.fillText(statusText, cx, statusY);
     }
     ctx.restore();
 
-    // Proximity tooltip floats above the booth.
-    if (near) drawZoneTip(z, r, t);
+    // Proximity tooltip — 마커 모드일 땐 마커 위로, inHere일 땐 rect 위로.
+    if (near) drawZoneTip(z, r, t, inHere, cy - markerR);
   }
 
-  function drawZoneTip(z, r, t) {
+  function drawZoneTip(z, r, t, inHere, markerTopY) {
     const sec = Math.round((z.holdMs || 3000) / 1000);
     const text = `들어가서 ${sec}초 → 시작!`;
     ctx.save();
     ctx.font = 'bold 11px -apple-system, system-ui, sans-serif';
     const w = ctx.measureText(text).width + 18;
     const cx = r.x + r.w / 2;
-    const y = r.y - 66;
+    const y = inHere ? (r.y - 66) : (markerTopY - 22);
     ctx.fillStyle = t.dark;
     roundRect(cx - w / 2, y - 11, w, 22, 8);
     ctx.fill();
