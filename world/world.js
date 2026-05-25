@@ -325,12 +325,25 @@
   // 가 깜빡이며 보였던 문제 해결. WS 가 실패하면 showJoinError 가 picker 를
   // 복원하므로 빈 화면에 갇히는 케이스도 없음.
   const autoEnterSplash = document.getElementById('auto-enter-splash');
+  // 자동입장 splash 가 무한 로딩에 갇히지 않게 timeout fallback. 7초 안에
+  // welcome 이 도착하지 않으면 (서버가 ALREADY_JOINED 같은 error 를 안 보내고
+  // 그냥 멈춘 케이스 포함) splash 를 내리고 picker + 재시도 안내로 전환.
+  let autoEnterFallbackTimer = null;
   function showAutoEnterSplash() {
     if (!autoEnterSplash) return;
     autoEnterSplash.classList.remove('hidden');
     joinPanel.classList.add('hidden');
+    if (autoEnterFallbackTimer) clearTimeout(autoEnterFallbackTimer);
+    autoEnterFallbackTimer = setTimeout(() => {
+      autoEnterFallbackTimer = null;
+      // me 가 채워졌으면 이미 정상 입장 완료. welcome 가 안 왔으면 강제 회복.
+      if (me) return;
+      try { if (ws) ws.close(); } catch { /* ignore */ }
+      showJoinError('광장 입장이 늦어집니다. 다시 시도해 주세요.');
+    }, 7000);
   }
   function hideAutoEnterSplash() {
+    if (autoEnterFallbackTimer) { clearTimeout(autoEnterFallbackTimer); autoEnterFallbackTimer = null; }
     if (autoEnterSplash) autoEnterSplash.classList.add('hidden');
   }
   (function maybeAutoRejoin() {
