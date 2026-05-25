@@ -1,10 +1,10 @@
-/* 말랑프렌즈 슥슥 — Phase A styles.
+/* 말랑프렌즈 쓱쓱 — Phase A styles.
  * Mobile-first 430px portrait shell. Phase E polishes canvas + chat overlay + safe areas.
  */
 
 *, *::before, *::after { box-sizing: border-box; }
 
-/* 슥슥은 전적으로 라이트 톤으로 디자인됐다. 브라우저 자동 다크 모드가
+/* 쓱쓱은 전적으로 라이트 톤으로 디자인됐다. 브라우저 자동 다크 모드가
  * 캔버스/일러스트를 어둡게 뒤집어 캐릭터가 깨져 보이는 문제 봉쇄. */
 :root { color-scheme: light only; }
 
@@ -215,7 +215,7 @@ h2 { margin: 4px 0 8px; font-size: 20px; color: #064e3b; }
 .mute-btn.is-muted { opacity: 0.45; }
 .mute-btn[aria-pressed="true"] { opacity: 0.45; }
 
-/* ── 슥슥 일러스트 (codex imagegen + white→alpha 후처리) ──── */
+/* ── 쓱쓱 일러스트 (codex imagegen + white→alpha 후처리) ──── */
 /* 일러스트 자체는 알파 PNG/WebP 라 배경이 비치는데, 다크 모드·강제 다크·
  * accessibility invert 환경에서 캐릭터 가장자리 잔여 픽셀이 어둡게 도드라져
  * 보였다. 명시적 라이트 패드를 깔아 안전망. */

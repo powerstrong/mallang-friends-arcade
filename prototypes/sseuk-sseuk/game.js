@@ -1,4 +1,4 @@
-/* 말랑프렌즈 슥슥 — Phase B + C + D 통합.
+/* 말랑프렌즈 쓱쓱 — Phase B + C + D 통합.
  *
  * Phase B: 캔버스 1000x1000 + 도구바 + 스트로크 broadcast/apply.
  * Phase C: 시간 힌트 슬롯 채우기 (글자 수 / 한 글자 공개).

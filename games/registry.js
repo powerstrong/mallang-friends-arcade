@@ -41,7 +41,7 @@ window.GAME_REGISTRY = [
   },
   {
     id: 'sseuk-sseuk',
-    title: '말랑프렌즈 슥슥',
+    title: '말랑프렌즈 쓱쓱',
     description: '한 명이 그리고 나머지가 채팅으로 맞히는 그림 게임 ✏️',
     type: 'PARTY_LIVE',
     recommendedPlayers: '2~6명',

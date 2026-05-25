@@ -14,7 +14,7 @@ export const GAME_ZONES = [
   // Portrait (540x960) layout: 세 부스를 모두 상단에 가로로 배치해 스폰
   // 지점(SPAWN_POINT y=520)에서 충분히 떨어뜨린다. 부스 폭을 165 로 줄여
   // 540 안에 3 열로 들어가도록 한 결과 — 일러스트가 약간 작아지지만
-  // 스폰 직후 슥슥 부스에 강제로 끌려들어가는 문제가 사라진다.
+  // 스폰 직후 쓱쓱 부스에 강제로 끌려들어가는 문제가 사라진다.
   {
     id: 'jump-climber',
     gameId: 'jump-climber',
@@ -36,7 +36,7 @@ export const GAME_ZONES = [
   {
     id: 'sseuk-sseuk',
     gameId: 'sseuk-sseuk',
-    title: '말랑프렌즈 슥슥',
+    title: '말랑프렌즈 쓱쓱',
     rect: { x: 361, y: 80, w: 165, h: 200 },
     minPlayers: 2,
     maxPlayers: 6,

@@ -1996,7 +1996,7 @@ export class GameRoom {
     await this.state.storage.put('phase', 'results');
   }
 
-  // ── 슥슥 (Phase A: 라운드 머신 + 토큰 가드 + 라이프사이클 정리) ──
+  // ── 쓱쓱 (Phase A: 라운드 머신 + 토큰 가드 + 라이프사이클 정리) ──
   // Phase B에서 캔버스/스트로크, Phase C에서 정식 키워드 풀/시간 힌트, Phase D에서 정답 판정/근접 힌트 추가.
 
   _initSseukGame(roster) {
@@ -2872,7 +2872,7 @@ export class GameRoom {
       case 'QUIZ_HINT':
         if (player?.gameId === 'mallang-quiz-battle') await this._handleQuizHint(ws, player, msg);
         break;
-      // ── 슥슥 ──
+      // ── 쓱쓱 ──
       case 'SS_SELECT_CHARACTER':
         if (player?.gameId === 'sseuk-sseuk') await this._handleSseukSelectCharacter(player, msg);
         break;
@@ -2957,7 +2957,7 @@ export class GameRoom {
   }
 
   async _handleChat(player, msg) {
-    // 슥슥 게임 세션 플레이어는 SS_GUESS 파이프라인만 사용 (정답 누수 봉쇄).
+    // 쓱쓱 게임 세션 플레이어는 SS_GUESS 파이프라인만 사용 (정답 누수 봉쇄).
     if (player?.gameId === 'sseuk-sseuk') return;
     const text = (msg.text || '').slice(0, 256).trim();
     if (!text) return;
