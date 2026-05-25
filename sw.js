@@ -1,4 +1,4 @@
-const CACHE = 'tenten-v25';
+const CACHE = 'tenten-v26';
 
 const PRECACHE = [
   '/',
@@ -16,7 +16,7 @@ const PRECACHE = [
 ];
 
 self.addEventListener('install', e => {
-  // 개별 addAll 실패가 전체 install 을 깨뜨리지 않도록 best-effort 로 채운다.
+  // 개별 addAll 실패가 전체 install 을 깨뜨리지 않도록 best-effort.
   e.waitUntil(
     caches.open(CACHE)
       .then(c => Promise.allSettled(PRECACHE.map(url => c.add(url))))
@@ -34,8 +34,6 @@ self.addEventListener('activate', e => {
   );
 });
 
-// 안전망: 어떤 경우든 valid Response 를 반환해 FetchEvent 가 network error 로
-// 떨어지는 것을 막는다. 캐시 쓰기/네트워크 fetch 의 모든 거부는 swallow.
 function putInCache(req, res) {
   try {
     const copy = res.clone();
@@ -43,52 +41,33 @@ function putInCache(req, res) {
   } catch { /* ignore */ }
 }
 
+// Network-first 전략 — deploy 시점에 새 코드가 즉시 클라에 전달되도록.
+// 캐시는 *오프라인 fallback* 용도로만 유지. (cache-first 였을 때 사용자가
+// 캐시된 옛 world.js 를 계속 받아 버그 수정이 반영되지 않던 문제 해결.)
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
   if (e.request.url.includes('/api/')) return;
 
-  // Top-level 네비게이션: network 우선, 실패 시 cache, 그것도 없으면 '/' 폴백.
-  if (e.request.mode === 'navigate') {
-    e.respondWith((async () => {
-      try {
-        const res = await fetch(e.request);
-        if (res && res.ok) putInCache(e.request, res);
-        return res;
-      } catch {
-        const cached = await caches.match(e.request, { ignoreSearch: true });
-        if (cached) return cached;
-        const root = await caches.match('/');
-        if (root) return root;
-        // 마지막 보루 — 최소 503 응답이라도 돌려줘서 SW promise 가 reject 되지
-        // 않게 한다 (uncaught 'Failed to fetch' 회피).
-        return new Response('네트워크에 연결할 수 없습니다.', {
-          status: 503,
-          statusText: 'Network Unavailable',
-          headers: { 'Content-Type': 'text/plain; charset=utf-8' },
-        });
-      }
-    })());
-    return;
-  }
-
-  // 하위 리소스: cache-first, 없으면 network. 두 경로 모두 거부 swallow.
   e.respondWith((async () => {
-    const cached = await caches.match(e.request);
-    if (cached) {
-      // stale-while-revalidate — 백그라운드로 재페치해 캐시 갱신 (실패해도 무시).
-      fetch(e.request).then(res => {
-        if (res && res.ok) putInCache(e.request, res);
-      }).catch(() => {});
-      return cached;
-    }
     try {
       const res = await fetch(e.request);
       if (res && res.ok) putInCache(e.request, res);
       return res;
     } catch {
-      // 캐시도 네트워크도 없으면 빈 504 — SW 가 throw 되어 클라가 broken 페이지를
-      // 보지 않도록.
-      return new Response('', { status: 504, statusText: 'Gateway Timeout' });
+      // 네트워크 실패 → 캐시 폴백.
+      const cached = e.request.mode === 'navigate'
+        ? (await caches.match(e.request, { ignoreSearch: true })) || (await caches.match('/'))
+        : await caches.match(e.request);
+      if (cached) return cached;
+      // 그것도 없으면 valid Response 라도 돌려줘서 FetchEvent reject 방지.
+      return new Response(
+        e.request.mode === 'navigate' ? '네트워크에 연결할 수 없습니다.' : '',
+        {
+          status: e.request.mode === 'navigate' ? 503 : 504,
+          statusText: e.request.mode === 'navigate' ? 'Network Unavailable' : 'Gateway Timeout',
+          headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+        }
+      );
     }
   })());
 });
