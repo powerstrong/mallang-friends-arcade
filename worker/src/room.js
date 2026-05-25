@@ -2641,7 +2641,9 @@ export class GameRoom {
 
     // 다음 라운드 또는 게임 종료. disconnect/insufficient-players 사유는
     // 사용자가 메시지를 읽을 시간을 더 주기 위해 길게.
-    const pauseMs = (reason === 'drawer-disconnect' || reason === 'insufficient-players') ? 2500 : 1500;
+    // 일반 종료(timeout/bonus-timeout/all-correct)는 클라가 1.5s 리플레이를
+    // 재생한 뒤 2s 정도 완성된 그림을 그대로 보여주도록 3500ms.
+    const pauseMs = (reason === 'drawer-disconnect' || reason === 'insufficient-players') ? 2500 : 3500;
     this.sseukGame.currentRoundIdx += 1;
     if (this.sseukGame.currentRoundIdx >= this.sseukGame.totalRounds) {
       await new Promise(rs => setTimeout(rs, pauseMs));
