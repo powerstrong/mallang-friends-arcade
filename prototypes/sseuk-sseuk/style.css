@@ -231,6 +231,14 @@ h2 { margin: 4px 0 8px; font-size: 20px; color: #064e3b; }
   color: #064e3b;
 }
 .keyword-slot__cell.is-revealed { border-color: #10b981; }
+.keyword-slot__placeholder {
+  color: #047857;
+  font-size: 13px;
+  font-style: italic;
+  padding: 6px 12px;
+  background: #f0fdf4;
+  border-radius: 8px;
+}
 /* ── Canvas ─────────────────────────────────────────── */
 .canvas-wrap {
   background: #ffffff;

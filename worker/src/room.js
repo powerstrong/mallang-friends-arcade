@@ -2062,13 +2062,19 @@ export class GameRoom {
     };
     if (this.sseukGame.currentRound && this.sseukGame.phase !== 'waiting') {
       const r = this.sseukGame.currentRound;
+      const isDrawer = r.drawerId === msg.playerId;
+      const lengthRevealed = !!r.hintRevealed?.length;
       snapshot.round = {
         drawerId: r.drawerId,
-        syllableCount: r.syllableCount,
-        // Show keyword only to the drawer.
-        keyword: r.drawerId === msg.playerId ? r.keyword : null,
+        // syllableCount: 출제자 또는 length 힌트가 이미 공개된 경우에만 송신.
+        syllableCount: (isDrawer || lengthRevealed) ? r.syllableCount : null,
+        keyword: isDrawer ? r.keyword : null,
         timeLeftMs: this._sseukTimeLeftMs(),
         volunteersDeadlineAt: r.volunteersDeadlineAt || null,
+        // letter 힌트도 이미 공개됐으면 함께 복원.
+        revealedLetter: (r.hintRevealed?.letterIdx != null && !isDrawer)
+          ? { position: r.hintRevealed.letterIdx, value: [...r.keyword][r.hintRevealed.letterIdx] }
+          : null,
       };
     }
     ws.send(JSON.stringify(snapshot));
@@ -2170,7 +2176,13 @@ export class GameRoom {
 
   async _resolveDrawer() {
     if (!this.sseukGame) return;
+    // Idempotent 가드 (Codex MAJOR #1): 마지막 지원자와 volunteer timeout이 같은 tick에
+    // 도달할 경우 _resolveDrawer가 중복 실행되어 drawer/keyword가 다시 뽑히고
+    // SS_DRAWER_SELECTED가 두 번 송신되는 race를 봉쇄.
+    if (this.sseukGame.phase !== 'volunteering') return;
+    if (this.sseukGame.currentRound?.drawerId) return;
     if (this.sseukGame.timers.volunteer) { clearTimeout(this.sseukGame.timers.volunteer); this.sseukGame.timers.volunteer = null; }
+    this.sseukGame.phase = 'lottery';     // 전환 잠금 (이후 _handleSseukVolunteer가 다시 트리거하지 않음)
     const r = this.sseukGame.currentRound;
     if (!r) return;
 
@@ -2205,16 +2217,18 @@ export class GameRoom {
     this.sseukGame.drawerHistory.push(drawerId);
 
     // 추첨 연출 + 출제자/일반에게 분리 송신.
-    const animPayload = {
+    // syllableCount는 출제자만 받음 (Codex MAJOR #4: 20s 글자수 힌트가 의미를 가지도록 노출 지연).
+    const animPayloadBase = {
       type: 'SS_DRAWER_SELECTED',
       drawerId,
-      syllableCount: r.syllableCount,
       lotteryMs: SS_LOTTERY_ANIM_MS,
       candidates: eligibleVolunteers.length >= 2 ? eligibleVolunteers : null,
     };
     for (const { ws, player } of this._getSessions()) {
       if (player.gameId !== 'sseuk-sseuk') continue;
-      const payload = player.id === drawerId ? { ...animPayload, keyword } : animPayload;
+      const payload = player.id === drawerId
+        ? { ...animPayloadBase, keyword, syllableCount: r.syllableCount }
+        : { ...animPayloadBase, syllableCount: null };
       try { ws.send(JSON.stringify(payload)); } catch {}
     }
 
@@ -2238,14 +2252,29 @@ export class GameRoom {
   // ── Phase B: 스트로크 동기화 ────────────────────────────────
 
   _handleSseukStrokeAdd(player, msg) {
-    if (!this.sseukGame || this.sseukGame.phase !== 'drawing') return;
+    if (!this.sseukGame) return;
+    // Codex MAJOR #3: bonus phase에서도 출제자가 그릴 수 있어야 (클라가 허용 중).
+    if (this.sseukGame.phase !== 'drawing' && this.sseukGame.phase !== 'bonus') return;
     const r = this.sseukGame.currentRound;
     if (!r || r.drawerId !== player.id) return;       // 출제자만 그릴 수 있다.
-    const points = Array.isArray(msg.points) ? msg.points.slice(0, SS_STROKE_POINTS_CAP) : null;
-    if (!points || points.length === 0) return;
+    if (!Array.isArray(msg.points)) return;
     if (r.strokes.length >= SS_STROKES_PER_ROUND_CAP) return; // 무시 (cap).
+
+    // Codex MINOR #7: 포인트 단위로 형태/숫자/범위 검증. malformed payload는 폐기.
+    const validPoints = [];
+    const cap = Math.min(msg.points.length, SS_STROKE_POINTS_CAP);
+    for (let i = 0; i < cap; i++) {
+      const p = msg.points[i];
+      if (!Array.isArray(p) || p.length !== 2) continue;
+      const x = Number(p[0]), y = Number(p[1]);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+      if (x < 0 || x > 1000 || y < 0 || y > 1000) continue;
+      validPoints.push([Math.round(x), Math.round(y)]);
+    }
+    if (validPoints.length === 0) return;
+
     const stroke = {
-      points,
+      points: validPoints,
       color: typeof msg.color === 'string' ? msg.color.slice(0, 16) : '#000',
       thickness: typeof msg.thickness === 'number' ? Math.max(1, Math.min(64, msg.thickness)) : 4,
       order: r.strokes.length,
@@ -2260,7 +2289,8 @@ export class GameRoom {
   }
 
   _handleSseukCanvasClear(player, _msg) {
-    if (!this.sseukGame || this.sseukGame.phase !== 'drawing') return;
+    if (!this.sseukGame) return;
+    if (this.sseukGame.phase !== 'drawing' && this.sseukGame.phase !== 'bonus') return;
     const r = this.sseukGame.currentRound;
     if (!r || r.drawerId !== player.id) return;
     r.strokes = [];
@@ -2268,7 +2298,8 @@ export class GameRoom {
   }
 
   _handleSseukStrokeUndo(player, _msg) {
-    if (!this.sseukGame || this.sseukGame.phase !== 'drawing') return;
+    if (!this.sseukGame) return;
+    if (this.sseukGame.phase !== 'drawing' && this.sseukGame.phase !== 'bonus') return;
     const r = this.sseukGame.currentRound;
     if (!r || r.drawerId !== player.id) return;
     if (r.strokes.length === 0) return;
@@ -2504,13 +2535,20 @@ export class GameRoom {
     this.sseukGame.phase = 'drawing';
     const r = this.sseukGame.currentRound;
     r.startedAt = Date.now();
-    this._broadcastGame({
+    // syllableCount는 출제자에게만 — Codex MAJOR #4 (글자수 힌트 지연).
+    const baseStart = {
       type: 'SS_ROUND_START',
       roundIdx: this.sseukGame.currentRoundIdx,
       drawerId: r.drawerId,
-      syllableCount: r.syllableCount,
       timeLeftMs: SS_ROUND_DURATION_MS,
-    }, 'sseuk-sseuk');
+    };
+    for (const { ws, player } of this._getSessions()) {
+      if (player.gameId !== 'sseuk-sseuk') continue;
+      const payload = player.id === r.drawerId
+        ? { ...baseStart, syllableCount: r.syllableCount }
+        : { ...baseStart, syllableCount: null };
+      try { ws.send(JSON.stringify(payload)); } catch {}
+    }
 
     // Round-end fallback timer (정답 없이 시간 만료).
     const token = ++this.sseukGame.tokens.round;
@@ -3097,7 +3135,20 @@ export class GameRoom {
           this._endSseukRound('drawer-disconnect').catch(() => {});
           return;
         }
-        // drawing 중 비-출제자 disconnect: 전원 정답 조건 재계산 (Phase D에서 정답 발생). Phase A는 추가 작업 없음.
+        // Codex MINOR #6: 비-출제자 disconnect 시, 남은 connected guesser가 모두 맞힌
+        // 상태라면 bonus/timeout 안 기다리고 즉시 all-correct로 종료.
+        if (this.sseukGame.phase === 'drawing' || this.sseukGame.phase === 'bonus') {
+          const r = this.sseukGame.currentRound;
+          if (r) {
+            const remainingGuessers = this.sseukGame.players.filter(p => p.connected && p.id !== r.drawerId);
+            const allCorrect = remainingGuessers.length > 0
+              && remainingGuessers.every(g => r.correctOrder?.includes(g.id));
+            if (allCorrect) {
+              this._endSseukRound('all-correct').catch(() => {});
+              return;
+            }
+          }
+        }
       }
       return;
     }

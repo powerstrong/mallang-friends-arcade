@@ -193,6 +193,14 @@ function renderKeywordSlot(round) {
   keywordSlot.innerHTML = '';
   slotCells = [];
   const n = round.syllableCount || 0;
+  if (n === 0) {
+    // 글자 수 미공개 — 20초 SS_HINT_REVEAL kind='length' 도착 시 채워짐.
+    const placeholder = document.createElement('span');
+    placeholder.className = 'keyword-slot__placeholder';
+    placeholder.textContent = '글자 수는 잠시 후 공개';
+    keywordSlot.appendChild(placeholder);
+    return;
+  }
   const drawerKeywordChars = (amIDrawer && round.keyword) ? [...round.keyword] : null;
   for (let i = 0; i < n; i++) {
     const cell = document.createElement('span');
@@ -203,13 +211,12 @@ function renderKeywordSlot(round) {
     slotCells.push(cell);
   }
 }
-function revealLengthHint() {
-  // length 힌트는 슬롯이 이미 글자 수만큼 깔려 있으므로, 시각 강조만 살짝.
-  for (const c of slotCells) c.classList.add('is-revealed-letter');
-  setTimeout(() => {
-    if (amIDrawer) return; // 출제자는 글자가 보이므로 굳이 빼지 않음.
-    for (const c of slotCells) c.classList.remove('is-revealed-letter');
-  }, 900);
+function revealLengthHint(count) {
+  if (amIDrawer) return;            // 출제자는 이미 슬롯 보유
+  if (slotCells.length > 0) return; // 이미 렌더됨
+  if (!currentRound) return;
+  currentRound.syllableCount = count;
+  renderKeywordSlot(currentRound);
 }
 function revealLetterHint(position, value) {
   if (amIDrawer) return;
@@ -577,7 +584,7 @@ function handleMessage(msg) {
       if (!amIDrawer) applyIncomingStroke(msg);
       break;
     case 'SS_HINT_REVEAL':
-      if (msg.kind === 'length') revealLengthHint();
+      if (msg.kind === 'length') revealLengthHint(msg.value);
       else if (msg.kind === 'letter') revealLetterHint(msg.position, msg.value);
       break;
     case 'SS_HINT_FEEDBACK':

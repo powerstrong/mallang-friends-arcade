@@ -191,7 +191,7 @@ test('findZoneAt returns the matching zone or null', () => {
 });
 
 test('every zone has a registered gameId path', () => {
-  const known = new Set(['jump-climber', 'mallang-quiz-battle']);
+  const known = new Set(['jump-climber', 'mallang-quiz-battle', 'sseuk-sseuk']);
   for (const zone of GAME_ZONES) {
     assert.ok(known.has(zone.gameId), `unknown gameId: ${zone.gameId}`);
     assert.ok(zone.minPlayers >= 1);
