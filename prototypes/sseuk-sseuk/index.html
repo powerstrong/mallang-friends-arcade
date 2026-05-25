@@ -109,6 +109,13 @@
           <p class="eyebrow">라운드 종료</p>
           <h2 id="roundEndKeyword"></h2>
           <p id="roundEndReason" class="round-end-reason"></p>
+          <!-- 정답 리플레이: SS_ROUND_END 도착 시 클라이언트 측 allStrokes 를
+               1.5초 안에 재생한 뒤 최종 그림 그대로 정지. 빈 캔버스 이면
+               (라운드 중 그림 없었음) is-hidden 으로 숨김. -->
+          <div id="replayWrap" class="replay-wrap is-hidden">
+            <canvas id="replayCanvas" class="replay-canvas" width="400" height="400" aria-label="라운드 그림 리플레이"></canvas>
+            <p class="replay-caption">정답 그림 다시 보기</p>
+          </div>
           <ol id="roundEndDeltas" class="round-end-deltas"></ol>
         </section>
       </section>

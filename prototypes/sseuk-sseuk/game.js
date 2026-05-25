@@ -77,6 +77,9 @@ const roundEndPanel    = document.getElementById('roundEndPanel');
 const roundEndKeyword  = document.getElementById('roundEndKeyword');
 const roundEndReason   = document.getElementById('roundEndReason');
 const roundEndDeltas   = document.getElementById('roundEndDeltas');
+const replayWrap       = document.getElementById('replayWrap');
+const replayCanvas     = document.getElementById('replayCanvas');
+const replayCtx        = replayCanvas ? replayCanvas.getContext('2d') : null;
 const rankingsList     = document.getElementById('rankingsList');
 const exitBtn          = document.getElementById('exitBtn');
 
@@ -483,6 +486,109 @@ chatForm.addEventListener('submit', (e) => {
 });
 
 /* ── Round end / Game end ───────────────────────────── */
+
+/* 정답 리플레이 — round-end 패널 안에서 allStrokes 를 1.5초 안에 빠르게
+ * 재생한 뒤 완성된 그림 그대로 정지. 서버에 추가 페이로드 없이 클라가
+ * 라운드 중 누적해둔 스트로크를 그대로 사용한다 (중간 합류자는 strokes 가
+ * 비어 있어 replay 자체가 숨겨짐).
+ *
+ * 의도: 라운드 중간의 clear/undo 히스토리는 재현하지 않는다. "정답 그림이
+ * 완성되는 과정"만 보여주는 게 목적이라 출제자가 지웠다 다시 그린 흔적은
+ * 의미 없음. allStrokes 는 어차피 라운드 종료 시점의 최종 스트로크 집합.
+ *
+ * 성능: 매 RAF 마다 clear + 전체 재렌더는 worst-case (200 strokes × 500
+ * points) 에서 모바일에 부담. 대신 delta 렌더 — 이전 프레임에서 그린
+ * 위치(renderedStrokeIdx, renderedPointIdx) 부터 새 위치까지만 추가로
+ * stroke 한다. progress 가 단조 증가하므로 clear 가 필요 없다. */
+const REPLAY_DURATION_MS = 1500;
+const REPLAY_SOURCE_DIM = 1000;       // drawCanvas 논리 좌표
+let replayRafHandle = null;
+function clearReplayCanvas() {
+  if (!replayCtx) return;
+  replayCtx.fillStyle = '#ffffff';
+  replayCtx.fillRect(0, 0, replayCanvas.width, replayCanvas.height);
+}
+function playReplay(strokes) {
+  if (!replayCtx || !replayWrap) return;
+  if (replayRafHandle) { cancelAnimationFrame(replayRafHandle); replayRafHandle = null; }
+  const valid = (strokes || []).filter(s => s && Array.isArray(s.points) && s.points.length > 0);
+  const totalPoints = valid.reduce((acc, s) => acc + s.points.length, 0);
+  if (totalPoints === 0) {
+    replayWrap.classList.add('is-hidden');
+    clearReplayCanvas();
+    return;
+  }
+  replayWrap.classList.remove('is-hidden');
+  clearReplayCanvas();
+  const W = replayCanvas.width;
+  const scale = W / REPLAY_SOURCE_DIM;
+  replayCtx.lineCap = 'round';
+  replayCtx.lineJoin = 'round';
+
+  // Delta-render 상태: 다음으로 그릴 stroke·point 인덱스.
+  let renderedStrokeIdx = 0;
+  let renderedPointIdx = 0;
+
+  function advanceTo(targetTotal) {
+    let cumBefore = 0;
+    // 이전 stroke들의 누적 카운트 — current stroke 시작점까지 합.
+    for (let i = 0; i < renderedStrokeIdx; i++) cumBefore += valid[i].points.length;
+    while (renderedStrokeIdx < valid.length) {
+      const s = valid[renderedStrokeIdx];
+      const pts = s.points;
+      const reachInThis = targetTotal - cumBefore;
+      if (reachInThis <= renderedPointIdx) return;
+      const stopAt = Math.min(pts.length, reachInThis);
+      const color = s.color || '#000';
+      const thickness = Math.max(1, (s.thickness || 8) * scale);
+      if (renderedPointIdx === 0 && stopAt === 1) {
+        // dot — 단일 점은 fill arc 로. 작은 thickness 도 보이도록 max(1).
+        const [x, y] = pts[0];
+        replayCtx.fillStyle = color;
+        replayCtx.beginPath();
+        replayCtx.arc(x * scale, y * scale, Math.max(1, thickness / 2), 0, Math.PI * 2);
+        replayCtx.fill();
+        renderedPointIdx = 1;
+      } else if (stopAt > renderedPointIdx) {
+        // 새 세그먼트: 이전 마지막 점에서 이어 그리기 위해 max(0, idx-1) 부터 moveTo.
+        const fromIdx = Math.max(0, renderedPointIdx - 1);
+        replayCtx.strokeStyle = color;
+        replayCtx.lineWidth = thickness;
+        replayCtx.beginPath();
+        replayCtx.moveTo(pts[fromIdx][0] * scale, pts[fromIdx][1] * scale);
+        for (let i = Math.max(1, renderedPointIdx); i < stopAt; i++) {
+          replayCtx.lineTo(pts[i][0] * scale, pts[i][1] * scale);
+        }
+        replayCtx.stroke();
+        renderedPointIdx = stopAt;
+      }
+      if (renderedPointIdx >= pts.length) {
+        cumBefore += pts.length;
+        renderedStrokeIdx += 1;
+        renderedPointIdx = 0;
+      } else {
+        // 아직 이번 stroke 미완 — 다음 RAF 에서 이어 그리기.
+        return;
+      }
+    }
+  }
+
+  const startedAt = performance.now();
+  const tick = (now) => {
+    const progress = Math.min(1, (now - startedAt) / REPLAY_DURATION_MS);
+    const showUpTo = Math.floor(progress * totalPoints);
+    advanceTo(showUpTo);
+    if (progress < 1) {
+      replayRafHandle = requestAnimationFrame(tick);
+    } else {
+      // 마지막 점까지 확실히 그리기 (반올림 누락 방지).
+      advanceTo(totalPoints);
+      replayRafHandle = null;
+    }
+  };
+  replayRafHandle = requestAnimationFrame(tick);
+}
+
 function renderRoundEnd(msg) {
   showSubPanel('roundEndPanel');
   const reasonText = {
@@ -494,6 +600,8 @@ function renderRoundEnd(msg) {
   }[msg.reason] || '라운드 종료';
   roundEndKeyword.textContent = msg.keyword ? `정답: ${msg.keyword}` : '정답 없음';
   roundEndReason.textContent = reasonText;
+  // 정답 그림 리플레이 재생 (그릴 게 없으면 함수가 wrap을 숨김).
+  playReplay(allStrokes);
   roundEndDeltas.innerHTML = '';
   const sorted = [...players].sort((a, b) => (msg.scores[b.id] || 0) - (msg.scores[a.id] || 0));
   for (const p of sorted) {

@@ -428,6 +428,31 @@ h2 { margin: 4px 0 8px; font-size: 20px; color: #064e3b; }
 /* ── Round end ──────────────────────────────────────── */
 .round-end-panel { text-align: center; }
 .round-end-reason { color: #065f46; font-size: 12px; margin: 4px 0 12px; }
+
+/* ── 정답 리플레이 캔버스 ─────────────────────────────── */
+.replay-wrap {
+  margin: 8px auto 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.replay-canvas {
+  width: clamp(180px, 60vw, 260px);
+  aspect-ratio: 1;
+  background: #fff;
+  border: 2px solid #6ee7b7;
+  border-radius: 14px;
+  display: block;
+  box-shadow: 0 4px 14px rgba(6, 78, 59, 0.12);
+}
+.replay-caption {
+  font-size: 11px;
+  color: #047857;
+  font-weight: 600;
+  margin: 0;
+  letter-spacing: 0.04em;
+}
 .round-end-deltas { list-style: none; padding: 0; margin: 0; }
 .round-end-deltas li {
   display: flex;
