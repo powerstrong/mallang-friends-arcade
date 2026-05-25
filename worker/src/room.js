@@ -2048,22 +2048,31 @@ export class GameRoom {
 
     if (Array.isArray(msg.pickedBoostIds) && msg.pickedBoostIds.length > 0) {
       const picked = new Set(msg.pickedBoostIds.slice(0, 8).filter((id) => typeof id === 'string'));
-      const expected = Math.max(1, this.jumpGame.expectedPlayers || 1);
+      // Codex 리뷰 반영: expectedPlayers 고정값 대신 "현재 alive 한 slot 들이
+      // 모두 먹었는가" 로 판정. 한 명 죽고 한 명만 남았을 때 그 한 명이
+      // 먹으면 즉시 삭제되도록 — 안 그러면 죽은 사람 몫이 영원히 떠 있음.
+      const aliveSlots = [];
+      for (const p of Object.values(this.jumpGame.players)) {
+        if (p?.alive) aliveSlots.push(p.slot);
+      }
+      // 모두 죽거나 시작 전이면 fall back: expectedPlayers 슬롯 전체.
+      const requiredSlots = aliveSlots.length > 0
+        ? aliveSlots
+        : Array.from({ length: Math.max(1, this.jumpGame.expectedPlayers || 1) }, (_, i) => i);
+
       let mutated = false;
       const remaining = [];
       for (const boost of this.jumpGame.boosts) {
         if (!picked.has(boost.id)) { remaining.push(boost); continue; }
-        // sender slot 을 pickedBySlots 에 추가 (중복 방지)
         if (!Array.isArray(boost.pickedBySlots)) boost.pickedBySlots = [];
         if (!boost.pickedBySlots.includes(target.slot)) {
           boost.pickedBySlots.push(target.slot);
           mutated = true;
         }
-        // 모든 expected slot 이 다 먹었으면 완전 삭제. 1P 면 expected=1 이라
-        // 첫 픽업에 사라져 기존 동작 유지.
-        if (boost.pickedBySlots.length >= expected) {
+        const allRequiredPicked = requiredSlots.every((s) => boost.pickedBySlots.includes(s));
+        if (allRequiredPicked) {
           mutated = true;
-          continue; // skip — remove from remaining
+          continue;
         }
         remaining.push(boost);
       }

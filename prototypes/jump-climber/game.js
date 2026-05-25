@@ -688,10 +688,12 @@ function clearNetworkWorld() {
   state.network.lastSentDirection = null;
   state.network.localPhysicsRemainderMs = 0;
   state.network.pickedBoostIds.clear();
+  state.network.mySlot = null; // 재연결 안전성 (Codex 리뷰)
   state.cameraY = 0;
   state.isSpectator = false;
   state.effects = [];
   if (spectatorBadgeEl) spectatorBadgeEl.classList.add("is-hidden");
+  if (rivalGaugeEl) rivalGaugeEl.classList.add("is-hidden");
   // 채팅 오버레이는 startGame 단계에서 노출하므로 여기선 숨기지 않는다.
 }
 
@@ -802,6 +804,9 @@ function showNetworkResultsOverlay(results) {
 
   applyResultButtonLabels();
   resultsOverlay.classList.add("is-active");
+  // Codex 리뷰: 결과 오버레이 활성 시 라이벌 게이지 숨김 — z-index 명시
+  // 안 된 오버레이 위로 게이지가 떠 있을 수 있음.
+  if (rivalGaugeEl) rivalGaugeEl.classList.add("is-hidden");
 }
 
 // 결과 화면 버튼 레이블/표시 결정.
@@ -1339,13 +1344,18 @@ function updateRivalGauge(snapshot) {
 
   const myH = Number.isFinite(me.bestHeight) ? Math.max(0, me.bestHeight) : 0;
   const rivalH = Number.isFinite(rival.bestHeight) ? Math.max(0, rival.bestHeight) : 0;
-  // 최소 10m 까지는 빈 게이지로 보이게 — 시작 직후 둘 다 0 일 때 마커 겹침 방지.
+  // Codex 리뷰: 시작 직후 둘 다 0 이면 마커 겹쳐서 정보 없음. 둘 다 5m 미만이면
+  // 잠시 숨김 — 첫 도약 끝나면 자연스럽게 노출.
+  if (myH < 5 && rivalH < 5) {
+    rivalGaugeEl.classList.add("is-hidden");
+    return;
+  }
   const maxH = Math.max(myH, rivalH, 10);
-  const myPct = (myH / maxH) * 100;
-  const rivalPct = (rivalH / maxH) * 100;
+  // 마커가 트랙 위/아래 끝에서 반쯤 튀어나오지 않도록 0~92% 범위로 클램프.
+  const toPct = (h) => Math.max(0, Math.min(92, (h / maxH) * 100));
 
-  rivalMarkerMeEl.style.bottom = `${myPct}%`;
-  rivalMarkerRivalEl.style.bottom = `${rivalPct}%`;
+  rivalMarkerMeEl.style.bottom = `${toPct(myH)}%`;
+  rivalMarkerRivalEl.style.bottom = `${toPct(rivalH)}%`;
   rivalMarkerMeEl.classList.toggle("is-dead", me.alive === false);
   rivalMarkerRivalEl.classList.toggle("is-dead", rival.alive === false);
 }
