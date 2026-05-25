@@ -52,6 +52,7 @@ const myCharacterImg   = document.getElementById('myCharacterImg');
 const myCharacterName  = document.getElementById('myCharacterName');
 const gameExitBtn      = document.getElementById('gameExitBtn');
 const roundProgress    = document.getElementById('roundProgress');
+const roundDifficulty  = document.getElementById('roundDifficulty');
 const timerDisplay     = document.getElementById('timerDisplay');
 const countdownOverlay = document.getElementById('countdownOverlay');
 const countdownNumber  = document.getElementById('countdownNumber');
@@ -92,6 +93,19 @@ function setStatus(text, modifier) {
   bootStatus.textContent = text;
   bootStatus.classList.remove('is-connected', 'is-error');
   if (modifier) bootStatus.classList.add(modifier);
+}
+
+const DIFFICULTY_META = {
+  easy:   { stars: '★',   label: '쉬움',   className: 'is-easy'   },
+  medium: { stars: '★★',  label: '중간',   className: 'is-medium' },
+  hard:   { stars: '★★★', label: '어려움', className: 'is-hard'   },
+};
+function renderDifficultyBadge(difficulty) {
+  roundDifficulty.classList.remove('is-easy', 'is-medium', 'is-hard');
+  const meta = DIFFICULTY_META[difficulty];
+  if (!meta) { roundDifficulty.textContent = ''; return; }
+  roundDifficulty.textContent = `${meta.stars} ${meta.label}`;
+  roundDifficulty.classList.add(meta.className);
 }
 
 /* ── Roster ─────────────────────────────────────────── */
@@ -536,6 +550,7 @@ function handleMessage(msg) {
       currentRoundIdx = msg.roundIdx;
       totalRounds = msg.totalRounds;
       roundProgress.textContent = `Round ${msg.roundIdx + 1} / ${msg.totalRounds}`;
+      renderDifficultyBadge(msg.difficulty);
       timerDisplay.textContent = '';
       showSubPanel('volunteerPanel');
       volunteerBtn.disabled = false;
@@ -562,7 +577,9 @@ function handleMessage(msg) {
         drawerId: msg.drawerId,
         keyword: msg.keyword || null,
         syllableCount: msg.syllableCount,
+        difficulty: msg.difficulty || null,
       };
+      renderDifficultyBadge(msg.difficulty);
       showSubPanel('lotteryPanel');
       runLottery(msg.candidates, msg.drawerId, msg.lotteryMs || 2500);
       break;
@@ -573,9 +590,11 @@ function handleMessage(msg) {
       if (currentRound) {
         currentRound.drawerId = msg.drawerId;
         currentRound.syllableCount = msg.syllableCount;
+        if (msg.difficulty) currentRound.difficulty = msg.difficulty;
       } else {
-        currentRound = { drawerId: msg.drawerId, syllableCount: msg.syllableCount, keyword: null };
+        currentRound = { drawerId: msg.drawerId, syllableCount: msg.syllableCount, keyword: null, difficulty: msg.difficulty || null };
       }
+      renderDifficultyBadge(currentRound.difficulty);
       renderDrawingPhase(currentRound);
       startTimer(msg.timeLeftMs, 'normal');
       break;
@@ -639,6 +658,7 @@ function applyPhase() {
   showScreen('game');
   countdownOverlay.classList.add('is-hidden');
   roundProgress.textContent = `Round ${currentRoundIdx + 1} / ${totalRounds}`;
+  renderDifficultyBadge(currentRound?.difficulty);
   if (phase === 'drawing' && currentRound) {
     renderDrawingPhase(currentRound);
     if (currentRound.timeLeftMs) startTimer(currentRound.timeLeftMs, 'normal');

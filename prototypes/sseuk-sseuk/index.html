@@ -39,7 +39,10 @@
       <section id="gameScreen" class="screen screen--game">
         <header class="game-header">
           <button id="gameExitBtn" type="button" class="game-exit-btn" aria-label="방으로 돌아가기">← 나가기</button>
-          <span id="roundProgress" class="round-progress"></span>
+          <div class="round-info">
+            <span id="roundProgress" class="round-progress"></span>
+            <span id="roundDifficulty" class="round-difficulty" aria-live="polite"></span>
+          </div>
           <div id="timerDisplay" class="timer-display"></div>
         </header>
 

@@ -1,5 +1,11 @@
 import { QUIZ_BANK } from './quiz_bank.js';
-import { SS_KEYWORD_POOL } from './ss_keywords.js';
+import {
+  SS_KEYWORD_POOL,
+  SS_KEYWORDS_BY_DIFFICULTY,
+  SS_DIFFICULTY_BY_ROUND,
+  SS_DURATION_BY_DIFFICULTY,
+  SS_SCORE_MULTIPLIER_BY_DIFFICULTY,
+} from './ss_keywords.js';
 import { submitScore } from './leaderboard.js';
 import { pickGameCharacter } from './characters.js';
 
@@ -19,7 +25,7 @@ const QUIZ_VALID_CHARS = ['mochi-rabbit', 'pudding-hamster', 'peach-chick', 'lat
 const SS_VALID_CHARS = ['mochi-rabbit', 'pudding-hamster', 'peach-chick', 'latte-puppy', 'mint-kitten'];
 const SS_TOTAL_ROUNDS = 5;
 const SS_VOLUNTEER_TIMEOUT_MS = 8000;   // spec 8~10초 중 하한
-const SS_ROUND_DURATION_MS    = 75000;  // spec 60~90초 중앙
+const SS_ROUND_DURATION_DEFAULT_MS = 75000; // 난이도 정보가 없을 때만 사용되는 안전망
 const SS_BONUS_AFTER_FIRST_MS = 10000;
 const SS_HINT_LENGTH_AT_MS    = 20000;
 const SS_HINT_LETTER_AT_MS    = 40000;
@@ -2069,6 +2075,7 @@ export class GameRoom {
         // syllableCount: 출제자 또는 length 힌트가 이미 공개된 경우에만 송신.
         syllableCount: (isDrawer || lengthRevealed) ? r.syllableCount : null,
         keyword: isDrawer ? r.keyword : null,
+        difficulty: r.difficulty || null,
         timeLeftMs: this._sseukTimeLeftMs(),
         volunteersDeadlineAt: r.volunteersDeadlineAt || null,
         // letter 힌트도 이미 공개됐으면 함께 복원.
@@ -2088,7 +2095,8 @@ export class GameRoom {
       return Math.max(0, SS_BONUS_AFTER_FIRST_MS - (Date.now() - r.firstCorrectAt));
     }
     if (this.sseukGame.phase === 'drawing') {
-      return Math.max(0, SS_ROUND_DURATION_MS - (Date.now() - r.startedAt));
+      const dur = r.roundDurationMs || SS_ROUND_DURATION_DEFAULT_MS;
+      return Math.max(0, dur - (Date.now() - r.startedAt));
     }
     return 0;
   }
@@ -2132,6 +2140,8 @@ export class GameRoom {
     // Reset per-round mutable state.
     this.sseukGame.phase = 'volunteering';
     const deadlineAt = Date.now() + SS_VOLUNTEER_TIMEOUT_MS;
+    const difficulty = SS_DIFFICULTY_BY_ROUND[this.sseukGame.currentRoundIdx] || 'medium';
+    const roundDurationMs = SS_DURATION_BY_DIFFICULTY[difficulty] || SS_ROUND_DURATION_DEFAULT_MS;
     this.sseukGame.currentRound = {
       drawerId: null,
       keyword: null,
@@ -2142,11 +2152,14 @@ export class GameRoom {
       firstCorrectAt: null,
       correctOrder: [],
       strokes: [],
+      difficulty,
+      roundDurationMs,
     };
     this._broadcastGame({
       type: 'SS_VOLUNTEER_OPEN',
       roundIdx: this.sseukGame.currentRoundIdx,
       totalRounds: this.sseukGame.totalRounds,
+      difficulty,
       deadlineAt,
     }, 'sseuk-sseuk');
 
@@ -2210,7 +2223,7 @@ export class GameRoom {
       drawerId = candidates[Math.floor(Math.random() * candidates.length)].id;
     }
 
-    const keyword = this._pickSseukKeyword();
+    const keyword = this._pickSseukKeyword(r.difficulty);
     r.drawerId = drawerId;
     r.keyword = keyword;
     r.syllableCount = [...keyword].length; // 음절 단위 (Hangul은 코드포인트 1=1음절)
@@ -2221,6 +2234,7 @@ export class GameRoom {
     const animPayloadBase = {
       type: 'SS_DRAWER_SELECTED',
       drawerId,
+      difficulty: r.difficulty,
       lotteryMs: SS_LOTTERY_ANIM_MS,
       candidates: eligibleVolunteers.length >= 2 ? eligibleVolunteers : null,
     };
@@ -2240,10 +2254,18 @@ export class GameRoom {
     }, SS_LOTTERY_ANIM_MS);
   }
 
-  _pickSseukKeyword() {
+  _pickSseukKeyword(difficulty) {
     const used = new Set(this.sseukGame.usedKeywords || []);
-    const remaining = SS_KEYWORD_POOL.filter(w => !used.has(w));
-    const pool = remaining.length > 0 ? remaining : SS_KEYWORD_POOL;
+    // 난이도 풀에서 우선 뽑되, 모두 소진된 경우(또는 difficulty 누락) 전체 풀로 폴백.
+    const tierPool = SS_KEYWORDS_BY_DIFFICULTY[difficulty] || SS_KEYWORD_POOL;
+    const tierRemaining = tierPool.filter(w => !used.has(w));
+    let pool;
+    if (tierRemaining.length > 0) {
+      pool = tierRemaining;
+    } else {
+      const anyRemaining = SS_KEYWORD_POOL.filter(w => !used.has(w));
+      pool = anyRemaining.length > 0 ? anyRemaining : SS_KEYWORD_POOL;
+    }
     const pick = pool[Math.floor(Math.random() * pool.length)];
     this.sseukGame.usedKeywords.push(pick);
     return pick;
@@ -2535,12 +2557,14 @@ export class GameRoom {
     this.sseukGame.phase = 'drawing';
     const r = this.sseukGame.currentRound;
     r.startedAt = Date.now();
+    const roundDurationMs = r.roundDurationMs || SS_ROUND_DURATION_DEFAULT_MS;
     // syllableCount는 출제자에게만 — Codex MAJOR #4 (글자수 힌트 지연).
     const baseStart = {
       type: 'SS_ROUND_START',
       roundIdx: this.sseukGame.currentRoundIdx,
       drawerId: r.drawerId,
-      timeLeftMs: SS_ROUND_DURATION_MS,
+      difficulty: r.difficulty,
+      timeLeftMs: roundDurationMs,
     };
     for (const { ws, player } of this._getSessions()) {
       if (player.gameId !== 'sseuk-sseuk') continue;
@@ -2555,7 +2579,7 @@ export class GameRoom {
     this.sseukGame.timers.round = setTimeout(() => {
       if (!this.sseukGame || this.sseukGame.tokens.round !== token) return;
       this._endSseukRound('timeout').catch(() => {});
-    }, SS_ROUND_DURATION_MS);
+    }, roundDurationMs);
 
     // 시간 힌트 (20s, 40s).
     this._scheduleSseukHints(token);
@@ -2574,15 +2598,18 @@ export class GameRoom {
     const r = this.sseukGame.currentRound;
     const perPlayerDelta = {};
     // Phase A는 정답 파이프라인 미구현 → correctOrder는 항상 []. Phase D에서 채워짐.
+    // Phase F: HARD 라운드는 정답자·출제자 점수 모두 1.5배 (역전 재미 강화).
+    const multiplier = SS_SCORE_MULTIPLIER_BY_DIFFICULTY[r?.difficulty] || 1.0;
     const rankPoints = [100, 70, 50, 30];
     (r?.correctOrder || []).forEach((pid, i) => {
-      const gain = rankPoints[i] !== undefined ? rankPoints[i] : 30;
+      const base = rankPoints[i] !== undefined ? rankPoints[i] : 30;
+      const gain = Math.round(base * multiplier);
       perPlayerDelta[pid] = gain;
       const target = this.sseukGame.players.find(p => p.id === pid);
       if (target) target.score += gain;
     });
     if (r?.drawerId && r.correctOrder?.length > 0) {
-      const drawerGain = r.correctOrder.length * 30;
+      const drawerGain = Math.round(r.correctOrder.length * 30 * multiplier);
       perPlayerDelta[r.drawerId] = (perPlayerDelta[r.drawerId] || 0) + drawerGain;
       const drawer = this.sseukGame.players.find(p => p.id === r.drawerId);
       if (drawer) drawer.score += drawerGain;
@@ -2593,6 +2620,8 @@ export class GameRoom {
       reason,
       keyword: r?.keyword || null,
       drawerId: r?.drawerId || null,
+      difficulty: r?.difficulty || null,
+      multiplier,
       correctOrder: r?.correctOrder || [],
       perPlayerDelta,
       scores: Object.fromEntries(this.sseukGame.players.map(p => [p.id, p.score])),
