@@ -1,15 +1,8 @@
-/* World client — Commit 3 scope.
+/* World client — the 2D lounge UI.
  *
- * Responsibilities of this file in this commit:
- *   - Character/name picker UI -> WS connect to /api/world/:loungeId
- *   - Receive `welcome` and render YOUR character on the canvas
- *   - Local-only WASD/arrow movement (no broadcast yet)
- *   - Periodic pong heartbeat so the DO does not GC the session
- *
- * NOT in this commit:
- *   - Sending `move` to the server (Commit 4)
- *   - Rendering other players (Commit 4)
- *   - Chat / reactions / zone matching (later commits)
+ * Picker → WS connect → server-authoritative roster, chat, reactions, zone
+ * dwell + host-driven match modal → game handoff. Inputs: WASD/arrows and an
+ * on-screen virtual joystick (mobile). Pong heartbeat keeps the DO awake.
  */
 
 (function () {
@@ -134,7 +127,8 @@
   const boothImages = {};
   function getBoothImage(gameId) {
     const file = gameId === 'jump-climber' ? 'booth_jump.png'
-               : gameId === 'mallang-quiz-battle' ? 'booth_quiz.png' : null;
+               : gameId === 'mallang-quiz-battle' ? 'booth_quiz.png'
+               : gameId === 'sseuk-sseuk' ? 'booth_sseuk.png' : null;
     if (!file) return null;
     let entry = boothImages[gameId];
     if (entry) return entry;
@@ -406,7 +400,7 @@
   const reactions = new Map();  // id -> { glyph, until }
 
   // Active match proposal awaiting our response.
-  let activeProposal = null; // { matchId, gameId, title, members, deadline, responded }
+  let activeProposal = null; // { matchId, gameId, title, members, hostId }
   let matchCloseTimer = null; // delayed closeMatchModal handle (cancellation flow)
   let matchStartingAt = 0;    // performance.now() when 'match_starting' arrived; 0 = not in transition
 
@@ -500,26 +494,18 @@
 
     socket.addEventListener('open', () => {
       if (socket !== ws) return;
-      console.log('[world] ws open, sending join_world', joinParams);
       send({ t: 'join_world', d: joinParams });
     });
     socket.addEventListener('message', (ev) => {
       if (socket !== ws) return;
-      // 디버그용: 첫 몇 개 메시지만 로깅. welcome 안 오면 콘솔에서 무엇이
-      // 왔는지(혹은 안 왔는지) 확인 가능.
-      if (!worldStarted) {
-        try { console.log('[world] ws message (pre-welcome):', ev.data); } catch {}
-      }
       onMessage(ev);
     });
-    socket.addEventListener('close', (ev) => {
+    socket.addEventListener('close', () => {
       if (socket !== ws) return;
-      console.log('[world] ws close', { code: ev.code, reason: ev.reason, wasClean: ev.wasClean, worldStarted });
       onClose();
     });
-    socket.addEventListener('error', (ev) => {
+    socket.addEventListener('error', () => {
       if (socket !== ws) return;
-      console.warn('[world] ws error event', ev);
       // The `close` event fires right after and drives reconnect; only the
       // pre-join attempt needs to surface an error to the join panel.
       if (!worldStarted) showJoinError('연결 오류가 발생했습니다.');
@@ -978,11 +964,7 @@
   function handleMatchCancelled(d) {
     if (!d?.matchId) return;
     if (!activeProposal || activeProposal.matchId !== d.matchId) return;
-    const reasonText = ({
-      declined: '매칭이 취소되었습니다.',
-      invalid: '매칭이 취소되었습니다.',
-    })[d.reason] || '매칭이 취소되었습니다.';
-    matchStatus.textContent = reasonText;
+    matchStatus.textContent = '매칭이 취소되었습니다.';
     matchAcceptBtn.disabled = true;
     matchDeclineBtn.disabled = true;
     if (matchCloseTimer) clearTimeout(matchCloseTimer);

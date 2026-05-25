@@ -1,20 +1,15 @@
 /* WorldChannel — Durable Object backing the public 2D lounge.
  *
- * Scope of this commit (scaffold only):
- *   - WebSocket upgrade with Hibernation API
- *   - join_world / heartbeat / disconnect bookkeeping
- *   - server-authoritative roster (players keyed by sessionId)
- *
- * Out of scope (future commits):
- *   - position broadcast tick, chat, reactions, zone state machine,
- *     match proposals, GameRoom launch.
+ * WebSocket upgrade (Hibernation API), join/heartbeat/disconnect bookkeeping,
+ * server-authoritative roster, position broadcast, chat/reactions, zone
+ * state machine, host-driven match proposals, and GameRoom launch.
  *
  * The world state lives only in DO memory. Nothing here writes to D1.
  */
 
 import { GAME_ZONES, getZone, findZoneAt } from './worldZones.js';
 import { CHARACTERS, isValidCharacterId, randomCharacterId } from './characters.js';
-import { applyZonePresence, tryFormMatch, resolveProposal, compareReadyForSeat, PLAYER_STATUS } from './matcher.js';
+import { applyZonePresence, compareReadyForSeat, PLAYER_STATUS } from './matcher.js';
 import { toGameCharacterId } from './characters.js';
 
 // Mirrors GAME_PATHS in worker/src/room.js — keep these aligned so a new
@@ -48,10 +43,6 @@ const CHAT_HISTORY_KEY = 'chatHistory';
 const REACTION_THROTTLE_MS = 1500;
 const VALID_REACTIONS = new Set(['wave', 'heart', 'lol', 'wow', 'party', 'sleep']);
 
-// Match proposal lifetime — every member must accept before this deadline
-// passes. Single decline cancels immediately.
-const PROPOSAL_TIMEOUT_MS = 7000;
-
 function newMatchId() {
   return 'wm-' + crypto.randomUUID().replace(/-/g, '').slice(0, 12);
 }
@@ -71,8 +62,9 @@ export class WorldChannel {
     this.state = state;
     this.env = env;
     this.loungeId = null;
-    // Active match proposals. Memory-only — proposals are short-lived (7s) and
-    // tied to live WebSocket sessions which can't survive hibernation anyway.
+    // Active match proposals. Memory-only — tied to live WebSocket sessions
+    // which can't survive hibernation anyway. Host decides when to start; no
+    // server-side deadline.
     this.proposals = new Map();
 
     // Hibernation wake-up cleanup:

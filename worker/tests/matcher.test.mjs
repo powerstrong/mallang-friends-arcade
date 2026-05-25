@@ -4,10 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import {
-  PLAYER_STATUS, applyZonePresence, tryFormMatch, resolveProposal,
-  markProposed, markInGame, clearProposed,
-} from '../src/matcher.js';
+import { PLAYER_STATUS, applyZonePresence, compareReadyForSeat } from '../src/matcher.js';
 import { GAME_ZONES, getZone, findZoneAt, pointInRect } from '../src/worldZones.js';
 import { CHARACTERS, isValidCharacterId, toGameCharacterId, pickGameCharacter } from '../src/characters.js';
 
@@ -85,93 +82,38 @@ test('in_game status is not affected by movement updates', () => {
   assert.deepEqual(applyZonePresence(inGame, JUMP, 9999, HOLD), inGame);
 });
 
-// ── tryFormMatch ────────────────────────────────────────────────────────────
+// ── compareReadyForSeat ─────────────────────────────────────────────────────
+// 좌석 선정은 server _syncProposalForZone() 에서 이 comparator 로 정렬한 뒤
+// maxPlayers 만큼 자른다. proposal modal 과 launch set 이 어긋나지 않으려면
+// (a) earliest candidateSince 우선, (b) tie 는 id 알파벳 순으로 결정.
 
-test('tryFormMatch returns null when below minPlayers', () => {
-  const players = [];
-  assert.equal(tryFormMatch(players, QUIZ), null);
-  players.push({ id: 'a', status: PLAYER_STATUS.INTENT_READY, currentZoneId: QUIZ.id, candidateSince: 1000 });
-  // QUIZ minPlayers=2 — still below
-  assert.equal(tryFormMatch(players, QUIZ), null);
-});
-
-test('tryFormMatch slices to maxPlayers in candidateSince order', () => {
+test('compareReadyForSeat orders by candidateSince ascending', () => {
   const players = [
-    { id: 'late', status: PLAYER_STATUS.INTENT_READY, currentZoneId: 'mallang-quiz-battle', candidateSince: 5000 },
-    { id: 'early', status: PLAYER_STATUS.INTENT_READY, currentZoneId: 'mallang-quiz-battle', candidateSince: 1000 },
-    { id: 'mid', status: PLAYER_STATUS.INTENT_READY, currentZoneId: 'mallang-quiz-battle', candidateSince: 3000 },
+    { id: 'late', candidateSince: 5000 },
+    { id: 'early', candidateSince: 1000 },
+    { id: 'mid', candidateSince: 3000 },
   ];
-  const QUIZ = getZone('mallang-quiz-battle');
-  // Quiz max is 6 → all three fit
-  const m = tryFormMatch(players, QUIZ);
-  assert.deepEqual(m.players, ['early', 'mid', 'late']);
+  players.sort(compareReadyForSeat);
+  assert.deepEqual(players.map((p) => p.id), ['early', 'mid', 'late']);
 });
 
-test('tryFormMatch ignores candidates and players in other zones', () => {
+test('compareReadyForSeat breaks ties by id (deterministic seating)', () => {
   const players = [
-    { id: 'a', status: PLAYER_STATUS.INTENT_READY, currentZoneId: 'jump-climber', candidateSince: 1000 },
-    { id: 'b', status: PLAYER_STATUS.CANDIDATE,    currentZoneId: 'jump-climber', candidateSince: 2000 },
-    { id: 'c', status: PLAYER_STATUS.INTENT_READY, currentZoneId: 'mallang-quiz-battle', candidateSince: 500 },
+    { id: 'b', candidateSince: 1000 },
+    { id: 'a', candidateSince: 1000 },
+    { id: 'c', candidateSince: 1000 },
   ];
-  const m = tryFormMatch(players, JUMP);
-  assert.deepEqual(m.players, ['a']);
+  players.sort(compareReadyForSeat);
+  assert.deepEqual(players.map((p) => p.id), ['a', 'b', 'c']);
 });
 
-test('tryFormMatch tie-breaks ties on candidateSince by id (deterministic seating)', () => {
-  // Three players all became INTENT_READY at the exact same ms — comparator
-  // must fall back to id so the modal view and the launch set agree.
+test('compareReadyForSeat treats null candidateSince as last', () => {
   const players = [
-    { id: 'b', status: PLAYER_STATUS.INTENT_READY, currentZoneId: 'mallang-quiz-battle', candidateSince: 1000 },
-    { id: 'a', status: PLAYER_STATUS.INTENT_READY, currentZoneId: 'mallang-quiz-battle', candidateSince: 1000 },
-    { id: 'c', status: PLAYER_STATUS.INTENT_READY, currentZoneId: 'mallang-quiz-battle', candidateSince: 1000 },
+    { id: 'b', candidateSince: null },
+    { id: 'a', candidateSince: 5000 },
   ];
-  const m = tryFormMatch(players, QUIZ);
-  assert.deepEqual(m.players, ['a', 'b', 'c']);
-});
-
-test('tryFormMatch caps at maxPlayers and leaves the rest queued', () => {
-  // QUIZ maxPlayers = 6. Provide 8 to verify cap.
-  const players = Array.from({ length: 8 }, (_, i) => ({
-    id: `p${i}`,
-    status: PLAYER_STATUS.INTENT_READY,
-    currentZoneId: 'mallang-quiz-battle',
-    candidateSince: 1000 + i,
-  }));
-  const m = tryFormMatch(players, QUIZ);
-  assert.deepEqual(m.players, ['p0', 'p1', 'p2', 'p3', 'p4', 'p5']);
-});
-
-// ── resolveProposal ─────────────────────────────────────────────────────────
-
-const baseProposal = (overrides = {}) => ({
-  players: ['a', 'b'],
-  accepted: [],
-  declined: [],
-  deadline: 7000,
-  ...overrides,
-});
-
-test('proposal with all accepts launches', () => {
-  const r = resolveProposal(baseProposal({ accepted: ['a', 'b'] }), 5000);
-  assert.equal(r.kind, 'launch');
-  assert.deepEqual(r.players, ['a', 'b']);
-});
-
-test('proposal with any decline cancels even before deadline', () => {
-  const r = resolveProposal(baseProposal({ accepted: ['a'], declined: ['b'] }), 1000);
-  assert.equal(r.kind, 'cancel');
-  assert.equal(r.reason, 'declined');
-});
-
-test('proposal still pending before deadline', () => {
-  const r = resolveProposal(baseProposal({ accepted: ['a'] }), 5000);
-  assert.equal(r.kind, 'pending');
-});
-
-test('proposal at or past deadline without full accept cancels as timeout', () => {
-  const r = resolveProposal(baseProposal({ accepted: ['a'] }), 7000);
-  assert.equal(r.kind, 'cancel');
-  assert.equal(r.reason, 'timeout');
+  players.sort(compareReadyForSeat);
+  assert.deepEqual(players.map((p) => p.id), ['a', 'b']);
 });
 
 // ── zone geometry ───────────────────────────────────────────────────────────
@@ -258,72 +200,3 @@ test('applyZonePresence honors zone.holdMs when override is omitted', () => {
   assert.equal(at500.status, PLAYER_STATUS.INTENT_READY);
 });
 
-// ── resolveProposal hardening ───────────────────────────────────────────────
-
-test('empty proposal cancels as invalid (no vacuous launch)', () => {
-  const r = resolveProposal({ players: [], accepted: [], declined: [], deadline: 100 }, 0);
-  assert.equal(r.kind, 'cancel');
-  assert.equal(r.reason, 'invalid');
-});
-
-test('decline from a non-member is ignored', () => {
-  const r = resolveProposal(
-    { players: ['a', 'b'], accepted: ['a', 'b'], declined: ['outsider'], deadline: 1000 },
-    100
-  );
-  assert.equal(r.kind, 'launch');
-  assert.deepEqual(r.players, ['a', 'b']);
-});
-
-test('accept from a non-member does not count toward all-accepted', () => {
-  const r = resolveProposal(
-    { players: ['a', 'b'], accepted: ['a', 'outsider'], declined: [], deadline: 1000 },
-    500
-  );
-  assert.equal(r.kind, 'pending');
-});
-
-test('all accepts after deadline times out (deadline-first)', () => {
-  const r = resolveProposal(
-    { players: ['a', 'b'], accepted: [], declined: [], deadline: 100 },
-    200
-  );
-  assert.equal(r.kind, 'cancel');
-  assert.equal(r.reason, 'timeout');
-});
-
-test('all accepts before deadline launches even if resolved later', () => {
-  // accepts collected by time 50, deadline 100, resolver runs at 80
-  const r = resolveProposal(
-    { players: ['a', 'b'], accepted: ['a', 'b'], declined: [], deadline: 100 },
-    80
-  );
-  assert.equal(r.kind, 'launch');
-});
-
-// ── lifecycle helpers ───────────────────────────────────────────────────────
-
-test('markProposed + markInGame + clearProposed move through status only', () => {
-  const p = { id: 'a', status: PLAYER_STATUS.INTENT_READY, currentZoneId: JUMP.id, candidateSince: 1000 };
-  const proposed = markProposed(p);
-  assert.equal(proposed.status, PLAYER_STATUS.PROPOSED);
-  assert.equal(proposed.currentZoneId, JUMP.id);
-
-  const inGame = markInGame(proposed);
-  assert.equal(inGame.status, PLAYER_STATUS.IN_GAME);
-});
-
-test('clearProposed requeues player when still inside the zone', () => {
-  const proposed = { id: 'a', status: PLAYER_STATUS.PROPOSED, currentZoneId: JUMP.id, candidateSince: 1000 };
-  const cleared = clearProposed(proposed, JUMP, 9000);
-  assert.equal(cleared.status, PLAYER_STATUS.CANDIDATE);
-  assert.equal(cleared.candidateSince, 9000); // resets dwell timer
-});
-
-test('clearProposed sends player to roam when zone is gone', () => {
-  const proposed = { id: 'a', status: PLAYER_STATUS.PROPOSED, currentZoneId: JUMP.id, candidateSince: 1000 };
-  const cleared = clearProposed(proposed, null, 9000);
-  assert.equal(cleared.status, PLAYER_STATUS.ROAM);
-  assert.equal(cleared.currentZoneId, null);
-  assert.equal(cleared.candidateSince, null);
-});

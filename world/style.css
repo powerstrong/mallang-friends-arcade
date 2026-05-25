@@ -302,12 +302,12 @@ h1 {
 .canvas-wrap {
   position: relative;
   width: 100%;
-  /* 460px cap 제거 — 사용자 요구: 광장 화면이 전체 너비 잘 먹도록.
-   * 캐릭터 비율은 540:960 aspect-lock 으로 항상 보존되고, 캔버스가 닿지
-   * 못하는 좌우 여백은 body 의 stretched world_bg.png 가 채워줘서 시각적
-   * 단절 없음. 높이는 viewport 기준 cap (헤더/채팅/리액션/입력 여유 공간). */
-  max-width: min(100%, calc((100dvh - 240px) * 540 / 960));
-  max-height: calc(100dvh - 240px);
+  /* 사용자 요구: "위아래로 스크롤할 때 너비가 바뀌지 않게, 항상 전체 너비".
+   * 기존엔 max-width 가 100dvh 에 묶여 있어 모바일 chrome show/hide 로 dvh
+   * 가 변할 때마다 캔버스 width 가 출렁였다. height-coupled clamp 를 제거하고
+   * aspect-ratio 로 높이 결정. 데스크톱에서는 native 540px 캡 — 그 이상으로
+   * 키우면 캔버스 높이가 viewport 두 배가 되어 UI 가 화면 밖으로 밀린다. */
+  max-width: 540px;
   margin: 0 auto;
   background: #1f2c47;
   border-radius: 12px;
@@ -424,20 +424,9 @@ h1 {
   /* Squeeze outer chrome so the world canvas actually fills the phone width. */
   #app { padding: 6px 4px 56px; }
   .panel { padding: 8px; border-radius: 12px; }
-  /* Cap canvas height so the full UI (header + canvas + chat-log + reactions
-     + chat-form) fits on phones without forcing the page to scroll. 100dvh
-     adapts to mobile browser chrome.
-     주의: max-height 만 걸면 부모가 좁고 높이가 캡에 닿을 때 `width: 100%`
-     가 그대로 살아남아 540:960 aspect-ratio 가 깨진다 (가로가 남아 캐릭터가
-     넓적해 보이는 원인). max-width 도 함께 줄여 두 축 모두 동일 비율로
-     클램프되도록 한다. */
-  .canvas-wrap {
-    /* base 와 동일하게 240px reserve — 모바일에서 더 보수적이던 270 → 240
-     * 으로 통일. 모바일 chrome 자체가 더 작은데(헤더/패딩 축소) reserve 가
-     * 컸던 게 “폰에서 캔버스가 더 작아 보이는” 원인이었다. */
-    max-width: min(100%, calc((100dvh - 240px) * 540 / 960));
-    max-height: calc(100dvh - 240px);
-  }
+  /* 모바일에서도 canvas-wrap 은 base 규칙(width:100% + aspect-ratio)만으로
+   * 전체 너비를 유지한다 — dvh 기반 height cap 은 스크롤 중 너비 출렁임의
+   * 원인이라 제거. UI 가 viewport 보다 길어지면 페이지 스크롤로 받음. */
 
   /* Brand text + meta need to share a narrow header. */
   .world-header { font-size: 0.72rem; padding: 6px 10px; }
