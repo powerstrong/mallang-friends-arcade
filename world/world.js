@@ -47,9 +47,11 @@
   }
 
   // ── Character sprite sheets ───────────────────────────────────────────────
-  // 3x3 grid of 32px frames. row: 0=down 1=side(right) 2=up. col: 0=idle 1=stepA 2=stepB.
+  // 3x3 grid. row: 0=down 1=side(right) 2=up. col: 0=idle 1=stepA 2=stepB.
   // The `left` direction reuses the side row, mirrored horizontally.
-  const SPRITE_FRAME = window.CHARACTER_FRAME || { width: 32, height: 32 };
+  // Source frame size is derived from the loaded sheet dimensions so large
+  // AI-generated sprite atlases do not get cropped to an old fixed size.
+  const SPRITE_FRAME = window.CHARACTER_FRAME || { width: 32, height: 32, cols: 3, rows: 3 };
   const WALK_FRAME_MS = 150;
   const spriteCache = new Map(); // worldId -> { img, ready }
   function getSprite(worldId) {
@@ -65,6 +67,20 @@
       img.src = meta.sheet;
     }
     return s;
+  }
+  function getSpriteSourceFrame(sprite) {
+    const cols = Math.max(1, Number(SPRITE_FRAME.cols) || 1);
+    const rows = Math.max(1, Number(SPRITE_FRAME.rows) || 1);
+    const img = sprite?.img;
+    const fallbackWidth = Math.max(1, Number(SPRITE_FRAME.width) || 32);
+    const fallbackHeight = Math.max(1, Number(SPRITE_FRAME.height) || 32);
+    if (!img || !img.naturalWidth || !img.naturalHeight) {
+      return { width: fallbackWidth, height: fallbackHeight };
+    }
+    return {
+      width: Math.floor(img.naturalWidth / cols) || fallbackWidth,
+      height: Math.floor(img.naturalHeight / rows) || fallbackHeight,
+    };
   }
 
   // ── World background ──────────────────────────────────────────────────────
@@ -1494,7 +1510,7 @@
       const dir = p.dir || 'down';
       const row = dir === 'down' ? 0 : dir === 'up' ? 2 : 1; // left/right -> side
       const col = p.moving ? (Math.floor(performance.now() / WALK_FRAME_MS) % 2) + 1 : 0;
-      const fw = SPRITE_FRAME.width, fh = SPRITE_FRAME.height;
+      const { width: fw, height: fh } = getSpriteSourceFrame(sprite);
       const drawW = 100, drawH = 100;
       const destX = -drawW / 2;
       // 스프라이트 셀 하단에 ~15% 정도 빈 패딩이 있어 0.97 로 정렬하면

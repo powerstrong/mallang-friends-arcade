@@ -46,4 +46,6 @@ window.CHARACTERS = [
   },
 ];
 
-window.CHARACTER_FRAME = { width: 96, height: 96, cols: 3, rows: 3 };
+// World sprites are authored as a 3x3 atlas. Clients should derive the
+// source frame size from the loaded image dimensions instead of hardcoding it.
+window.CHARACTER_FRAME = { cols: 3, rows: 3 };
