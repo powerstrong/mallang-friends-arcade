@@ -39,6 +39,16 @@
       </p>
     </section>
 
+    <!-- Auto-enter splash — 게임에서 광장으로 복귀(from=game) 했을 때 picker
+         가 잠깐 보이는 깜빡임 없이 "광장 입장 중…" 안내만 표시. WS welcome
+         도착하면 worldPanel 로 교체. WS 실패하면 showJoinError 가 picker 로 복귀. -->
+    <section id="auto-enter-splash" class="auto-enter-splash hidden" aria-live="polite">
+      <div class="auto-enter-splash__inner">
+        <div class="auto-enter-splash__spinner" aria-hidden="true"></div>
+        <p class="auto-enter-splash__text">광장에 들어가는 중…</p>
+      </div>
+    </section>
+
     <!-- World (post-join) -->
     <section id="world-panel" class="panel hidden">
       <header class="world-header">

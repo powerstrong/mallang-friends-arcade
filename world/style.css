@@ -189,6 +189,43 @@ h1 {
   flex-shrink: 0;
 }
 
+/* ── Auto-enter splash ─────────────────────────────────
+ * 게임 종료 후 광장으로 자동 복귀할 때, picker 가 깜빡이며 보이지 않도록
+ * 그 자리에 잠깐 띄우는 미니멀 안내. WS welcome 도착하면 사라지고
+ * worldPanel 이 켜진다. */
+.auto-enter-splash {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+  padding: 24px;
+}
+.auto-enter-splash.hidden { display: none; }
+.auto-enter-splash__inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  color: var(--text);
+  opacity: 0.85;
+}
+.auto-enter-splash__spinner {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 217, 163, 0.25);
+  border-top-color: #ffb96b;
+  animation: auto-enter-spin 0.9s linear infinite;
+}
+@keyframes auto-enter-spin {
+  to { transform: rotate(360deg); }
+}
+.auto-enter-splash__text {
+  font-size: 0.95rem;
+  margin: 0;
+  letter-spacing: 0.02em;
+}
+
 .brand-title {
   font-size: 1.15rem;
   font-weight: 800;

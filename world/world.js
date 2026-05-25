@@ -320,14 +320,25 @@
   });
 
   // 게임에서 광장으로 복귀 (?from=game) 했고 닉네임·캐릭터가 둘 다 저장돼
-  // 있으면 picker 를 건너뛰고 바로 입장. joinPanel 은 일부러 숨기지 않는다
-  // — handleWelcome 이 도착해야 worldPanel 이 켜지므로, 미리 숨기면 WS
-  // 연결이 느리거나 실패할 때 빈 화면이 된다.
+  // 있으면 picker 를 건너뛰고 바로 입장. picker 를 즉시 숨기고 "광장에 들어가는
+  // 중…" 스플래시로 대체 — WS welcome 이 ~500ms~1s 걸리는 동안 character-select
+  // 가 깜빡이며 보였던 문제 해결. WS 가 실패하면 showJoinError 가 picker 를
+  // 복원하므로 빈 화면에 갇히는 케이스도 없음.
+  const autoEnterSplash = document.getElementById('auto-enter-splash');
+  function showAutoEnterSplash() {
+    if (!autoEnterSplash) return;
+    autoEnterSplash.classList.remove('hidden');
+    joinPanel.classList.add('hidden');
+  }
+  function hideAutoEnterSplash() {
+    if (autoEnterSplash) autoEnterSplash.classList.add('hidden');
+  }
   (function maybeAutoRejoin() {
     try {
       const from = new URLSearchParams(window.location.search).get('from');
       if (from !== 'game') return;
       if (joinBtn.disabled) return; // 저장된 닉/캐릭터가 없으면 평소대로 picker 노출
+      showAutoEnterSplash();
       tryJoin();
     } catch { /* ignore */ }
   })();
@@ -547,7 +558,9 @@
 
   function showJoinError(msg) {
     // 자동 입장 등으로 joinPanel 이 숨겨진 상태에서 실패하면 사용자가
-    // 빈 화면에 갇히므로, 무조건 join 패널을 복원한다.
+    // 빈 화면에 갇히므로, 무조건 join 패널을 복원한다. (자동 입장 스플래시도
+    // 함께 내려서 회전 스피너가 picker 와 같이 보이지 않도록.)
+    hideAutoEnterSplash();
     joinPanel.classList.remove('hidden');
     worldPanel.classList.add('hidden');
     joinStatus.textContent = msg;
@@ -617,6 +630,7 @@
     // Always show the world panel — handles both first join and re-join
     // after the user returned to the character picker.
     joinPanel.classList.add('hidden');
+    hideAutoEnterSplash();
     worldPanel.classList.remove('hidden');
 
     // One-time wiring — guarded so re-joins don't double-bind listeners
