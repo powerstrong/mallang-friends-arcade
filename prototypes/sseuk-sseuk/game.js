@@ -193,6 +193,8 @@ volunteerBtn.addEventListener('click', () => {
   sendIfOpen({ type: 'SS_VOLUNTEER' });
 });
 function leaveToRoom() {
+  intentionalClose = true;
+  if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
   try { ws?.close(); } catch {}
   Audio.stopBgm();
   // 광장에서 입장한 세션이면 광장으로 바로 복귀 (닉네임·캐릭터는 광장이 이미
@@ -687,13 +689,36 @@ function sendIfOpen(msg) {
   if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
 }
 
+/* 자동 재접속 — 모바일 백그라운드 / 일시적 네트워크 단절에서 사용자가
+ * 직접 광장으로 다녀오지 않아도 되도록. 서버측 _handleSseukJoinGame 가 같은
+ * playerId 로 join_game 이 다시 오면 phase-aware 스냅샷을 돌려보내고
+ * connected=true 로 표시하므로, 클라는 동일 url 로 다시 붙기만 하면 된다.
+ * (단, 출제자가 끊긴 경우 서버가 즉시 'drawer-disconnect' 로 라운드 종료
+ * 시키는 정책은 그대로 — 재접속이 빨리 돼도 그 라운드는 이미 끝나 있다.) */
+const RECONNECT_BASE_MS = 500;
+const RECONNECT_MAX_MS  = 8000;
+const RECONNECT_MAX_ATTEMPTS = 10;
+let reconnectTimer = null;
+let reconnectAttempts = 0;
+let intentionalClose = false;       // leaveToRoom 가 true 로 세팅 → 재접속 안 함.
+let everJoined = false;             // 첫 SS_JOINED 도착 후 true. 그 전 실패는 단순 연결 오류.
+
 function connect() {
   if (!isMultiplayer) { setStatus('단일 플레이는 아직 지원하지 않아요.', 'is-error'); return; }
+  openSocket();
+}
+
+function openSocket() {
   const url = WORKER_URL.replace(/^http/, 'ws') + `/api/rooms/${code}`;
-  ws = new WebSocket(url);
+  try {
+    ws = new WebSocket(url);
+  } catch {
+    scheduleReconnect();
+    return;
+  }
 
   ws.addEventListener('open', () => {
-    setStatus('방에 합류 중…');
+    setStatus(everJoined ? '재접속 중…' : '방에 합류 중…');
     ws.send(JSON.stringify({
       type: 'join_game',
       gameId: 'sseuk-sseuk',
@@ -704,11 +729,45 @@ function connect() {
   ws.addEventListener('message', (e) => {
     let msg;
     try { msg = JSON.parse(e.data); } catch { return; }
+    if (msg && msg.type === 'SS_JOINED') {
+      everJoined = true;
+      reconnectAttempts = 0;
+      if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+    }
     handleMessage(msg);
   });
 
-  ws.addEventListener('close', () => setStatus('연결이 끊겼어요.', 'is-error'));
-  ws.addEventListener('error', () => setStatus('연결 오류가 발생했어요.', 'is-error'));
+  ws.addEventListener('close', () => {
+    if (intentionalClose) return;       // leaveToRoom 호출됨 — 재접속 금지.
+    if (everJoined) {
+      setStatus('연결이 끊겼어요. 재접속 중…', 'is-error');
+      scheduleReconnect();
+    } else {
+      setStatus('연결이 끊겼어요.', 'is-error');
+      scheduleReconnect();              // 첫 연결도 한두 번은 재시도.
+    }
+  });
+
+  // error 이벤트는 close 가 뒤따라 와서 처리하므로 여기서는 status 만.
+  ws.addEventListener('error', () => {
+    if (!everJoined) setStatus('연결 오류가 발생했어요.', 'is-error');
+  });
+}
+
+function scheduleReconnect() {
+  if (intentionalClose) return;
+  if (reconnectTimer) return;
+  reconnectAttempts += 1;
+  if (reconnectAttempts > RECONNECT_MAX_ATTEMPTS) {
+    setStatus('재접속 실패 — 새로고침해주세요.', 'is-error');
+    return;
+  }
+  const delay = Math.min(RECONNECT_BASE_MS * 2 ** (reconnectAttempts - 1), RECONNECT_MAX_MS);
+  setStatus(`재접속 중… (${reconnectAttempts})`, 'is-error');
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    openSocket();
+  }, delay);
 }
 
 function handleMessage(msg) {
@@ -875,14 +934,24 @@ function applyPhase() {
   renderDifficultyBadge(currentRound?.difficulty);
   if (phase === 'drawing' && currentRound) {
     renderDrawingPhase(currentRound);
+    restoreSnapshotStrokes(currentRound);
     if (currentRound.timeLeftMs) startTimer(currentRound.timeLeftMs, 'normal');
   } else if (phase === 'volunteering' && currentRound?.volunteersDeadlineAt) {
     showSubPanel('volunteerPanel');
     startVolunteerCountdown(currentRound.volunteersDeadlineAt);
   } else if (phase === 'bonus' && currentRound) {
     renderDrawingPhase(currentRound);
+    restoreSnapshotStrokes(currentRound);
     startTimer(currentRound.timeLeftMs || 0, 'bonus');
   }
+}
+
+/* SS_JOINED 스냅샷의 strokes 를 캔버스에 다시 그려넣는다. renderDrawingPhase
+ * 가 캔버스를 한 번 비우므로, 그 이후에 호출해야 안전하다. */
+function restoreSnapshotStrokes(round) {
+  if (!round || !Array.isArray(round.strokes) || round.strokes.length === 0) return;
+  allStrokes = round.strokes.slice();
+  redrawAll();
 }
 
 connect();

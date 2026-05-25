@@ -2082,6 +2082,11 @@ export class GameRoom {
         revealedLetter: (r.hintRevealed?.letterIdx != null && !isDrawer)
           ? { position: r.hintRevealed.letterIdx, value: [...r.keyword][r.hintRevealed.letterIdx] }
           : null,
+        // drawing 또는 bonus phase 면 지금까지 그려진 스트로크 전체를 함께 보낸다.
+        // 재접속 사용자가 빈 캔버스를 보고 혼란스럽지 않도록.
+        strokes: (this.sseukGame.phase === 'drawing' || this.sseukGame.phase === 'bonus')
+          ? (r.strokes || [])
+          : [],
       };
     }
     ws.send(JSON.stringify(snapshot));
@@ -3156,6 +3161,19 @@ export class GameRoom {
     if (player.role === 'game' && player.gameId === 'sseuk-sseuk' && this.sseukGame) {
       const ssPlayer = this.sseukGame.players.find(p => p.id === player.id);
       if (ssPlayer) {
+        // Race guard: 클라이언트 자동 재접속으로 같은 playerId 의 새 소켓이
+        // 이미 _handleSseukJoinGame 에서 connected=true 로 살려뒀는데, 묵은
+        // 소켓의 close 이벤트가 늦게 도착해서 false 로 덮어쓰면 사용자가 화면
+        // 상으로는 살아 있는데 서버 로스터에선 끊긴 상태가 된다. 같은 playerId
+        // 의 다른 활성 sseuk-sseuk 소켓이 있으면 이 close 는 stale 로 보고
+        // disconnect 부작용을 모두 건너뛴다.
+        const otherLive = this._getSessions().some(({ ws: otherWs, player: other }) =>
+          otherWs !== ws
+          && otherWs.readyState === 1 /* WebSocket.OPEN */
+          && other && other.id === player.id
+          && other.gameId === 'sseuk-sseuk'
+        );
+        if (otherLive) return;
         ssPlayer.connected = false;
         ssPlayer.ready = false;
         this._broadcastGame({ type: 'SS_PLAYER_UPDATE', players: this.sseukGame.players }, 'sseuk-sseuk');
