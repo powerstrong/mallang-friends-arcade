@@ -228,21 +228,124 @@ h2 { margin: 4px 0 8px; font-size: 20px; color: #064e3b; }
   color: #064e3b;
 }
 .keyword-slot__cell.is-revealed { border-color: #10b981; }
-.canvas-placeholder {
-  background: #f0fdf4;
-  border: 2px dashed #6ee7b7;
+/* ── Canvas ─────────────────────────────────────────── */
+.canvas-wrap {
+  background: #ffffff;
+  border: 2px solid #6ee7b7;
   border-radius: 16px;
   aspect-ratio: 1;
+  overflow: hidden;
+  position: relative;
+  touch-action: none;
+}
+#drawCanvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  background: #fff;
+  cursor: crosshair;
+}
+.canvas-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 6px;
+  flex-wrap: wrap;
+}
+.tool-group { display: flex; gap: 5px; align-items: center; }
+.color-btn {
+  width: 28px; height: 28px; border-radius: 50%;
+  border: 2px solid #d1fae5;
+  transition: transform 0.1s;
+}
+.color-btn.is-selected { border-color: #064e3b; transform: scale(1.15); }
+.thick-btn {
+  width: 28px; height: 28px; border-radius: 8px;
+  background: #fff; border: 2px solid #d1fae5;
+  display: flex; align-items: center; justify-content: center;
+}
+.thick-btn span { background: #064e3b; border-radius: 50%; display: block; }
+.thick-btn.is-selected { border-color: #10b981; background: #ecfdf5; }
+.tool-btn {
+  width: 28px; height: 28px; border-radius: 8px;
+  background: #fff; border: 1.5px solid #d1fae5;
+  font-size: 15px;
+  display: flex; align-items: center; justify-content: center;
+}
+.tool-btn:active { background: #ecfdf5; }
+
+/* ── Chat (Phase D minimal — Phase E에서 월드 오버레이 스타일로 폴리시) ─ */
+.chat-box {
+  margin-top: 10px;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  color: #047857;
-  text-align: center;
-  padding: 16px;
+  gap: 6px;
 }
-.canvas-placeholder p { margin: 4px 0; font-size: 14px; }
-.canvas-placeholder__small { font-size: 11px; color: #065f46; opacity: 0.8; }
+.chat-messages {
+  background: rgba(236, 253, 245, 0.6);
+  border-radius: 10px;
+  padding: 8px 10px;
+  max-height: 120px;
+  overflow-y: auto;
+  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.chat-msg {
+  line-height: 1.4;
+  word-break: break-word;
+}
+.chat-msg__name { font-weight: 700; color: #047857; margin-right: 4px; }
+.chat-msg__name.is-me { color: #064e3b; }
+.chat-msg__name.is-me::after { content: '(나)'; font-size: 10px; margin-left: 2px; color: #10b981; }
+.chat-msg.is-drawer .chat-msg__name { color: #92400e; background: #fef3c7; padding: 1px 5px; border-radius: 5px; }
+.chat-msg.is-drawer .chat-msg__name::before { content: '✏️ '; }
+.chat-msg.is-system { color: #047857; font-style: italic; font-size: 12px; padding-left: 4px; }
+.chat-msg.is-system.is-correct { color: #047857; font-weight: 700; font-style: normal; background: #d1fae5; padding: 2px 6px; border-radius: 6px; }
+.chat-msg.is-side { opacity: 0.7; font-style: italic; }
+
+.chat-input-bar {
+  display: flex;
+  gap: 6px;
+  align-items: stretch;
+}
+.chat-input-field {
+  flex: 1;
+  padding: 9px 12px;
+  border-radius: 10px;
+  border: 1.5px solid #6ee7b7;
+  font-size: 14px;
+  background: #fff;
+  font-family: inherit;
+}
+.chat-input-field:focus { outline: none; border-color: #10b981; }
+.chat-input-field:disabled { background: #f3f4f6; color: #9ca3af; }
+.chat-send-btn {
+  padding: 9px 14px;
+  background: #10b981;
+  color: #fff;
+  border-radius: 10px;
+  font-weight: 700;
+  font-size: 14px;
+}
+.chat-send-btn:disabled { background: #6ee7b7; }
+
+/* ── Keyword slot 펄스 (Phase D) ─────────────────────── */
+.keyword-slot__cell.is-pulse {
+  animation: slotPulse 0.6s ease-out;
+}
+@keyframes slotPulse {
+  0%   { background: #fef3c7; transform: scale(1); }
+  40%  { background: #fbbf24; transform: scale(1.25); border-color: #d97706; color: #92400e; }
+  100% { background: transparent; transform: scale(1); }
+}
+.keyword-slot__cell.is-revealed-letter {
+  background: #ecfdf5;
+  border-color: #10b981;
+  color: #064e3b;
+}
 
 /* ── Round end ──────────────────────────────────────── */
 .round-end-panel { text-align: center; }

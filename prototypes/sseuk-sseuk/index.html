@@ -69,9 +69,35 @@
         <section id="drawingPanel" class="panel drawing-panel is-hidden">
           <div id="drawerBanner" class="drawer-banner"></div>
           <div id="keywordSlot" class="keyword-slot" aria-live="polite"></div>
-          <div id="canvasPlaceholder" class="canvas-placeholder">
-            <p>🎨 캔버스는 Phase B에서 등장해요.</p>
-            <p class="canvas-placeholder__small">지금은 라운드 흐름만 검증 중.</p>
+          <div class="canvas-wrap">
+            <canvas id="drawCanvas" width="1000" height="1000" aria-label="그림판"></canvas>
+          </div>
+          <div id="canvasToolbar" class="canvas-toolbar is-hidden" aria-label="그리기 도구">
+            <div class="tool-group color-group">
+              <button type="button" class="color-btn is-selected" data-color="#000000" style="background:#000"></button>
+              <button type="button" class="color-btn" data-color="#ef4444" style="background:#ef4444"></button>
+              <button type="button" class="color-btn" data-color="#3b82f6" style="background:#3b82f6"></button>
+              <button type="button" class="color-btn" data-color="#22c55e" style="background:#22c55e"></button>
+              <button type="button" class="color-btn" data-color="#f59e0b" style="background:#f59e0b"></button>
+            </div>
+            <div class="tool-group thickness-group">
+              <button type="button" class="thick-btn" data-thickness="3"><span style="width:6px;height:6px"></span></button>
+              <button type="button" class="thick-btn is-selected" data-thickness="8"><span style="width:12px;height:12px"></span></button>
+              <button type="button" class="thick-btn" data-thickness="16"><span style="width:18px;height:18px"></span></button>
+            </div>
+            <div class="tool-group">
+              <button type="button" id="undoBtn" class="tool-btn">↶</button>
+              <button type="button" id="clearBtn" class="tool-btn">🗑</button>
+            </div>
+          </div>
+
+          <!-- 채팅 (drawing/bonus phase 동안만 표시) -->
+          <div id="chatBox" class="chat-box">
+            <div id="chatMessages" class="chat-messages" aria-live="polite"></div>
+            <form id="chatForm" class="chat-input-bar" autocomplete="off">
+              <input id="chatInput" type="text" class="chat-input-field" placeholder="추측을 입력…" maxlength="80" autocomplete="off" />
+              <button id="chatSend" type="submit" class="chat-send-btn">보내기</button>
+            </form>
           </div>
         </section>
 

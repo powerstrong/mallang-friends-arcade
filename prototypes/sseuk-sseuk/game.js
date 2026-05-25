@@ -1,9 +1,10 @@
-/* 말랑프렌즈 슥슥 — Phase A client.
+/* 말랑프렌즈 슥슥 — Phase B + C + D 통합.
  *
- * 흐름: setup(캐릭터/ready) → countdown → game(volunteering → lottery → drawing → roundEnd) × 5 → result
- * Phase B: canvas + stroke 동기화 추가.
- * Phase D: chat + 정답/근접 힌트 + 자리 일치 펄스.
- * Phase E: mobile 폴리시 + 채팅 오버레이.
+ * Phase B: 캔버스 1000x1000 + 도구바 + 스트로크 broadcast/apply.
+ * Phase C: 시간 힌트 슬롯 채우기 (글자 수 / 한 글자 공개).
+ * Phase D: 채팅 입력(SS_GUESS) + 정답/근접 판정 결과 렌더링 + 자리 일치 펄스.
+ *
+ * Phase E: 채팅 오버레이 페이드아웃 / 입력 바 포커스 확장 / 모바일 풀스크린 등.
  */
 
 const CHAR_IMAGES = {
@@ -25,17 +26,20 @@ const { code, name, playerId, isMultiplayer } = window.GameBoot;
 const WORKER_URL = window.WORKER_URL;
 
 let ws = null;
-let myCharacterId = null;   // 서버가 SS_JOINED에서 알려줌
+let myCharacterId = null;
 let isReady = false;
 let players = [];
 let phase = 'waiting';
 let currentRoundIdx = 0;
 let totalRounds = 5;
-let currentRound = null;   // { drawerId, keyword?(나만), syllableCount, ... }
+let currentRound = null;
+let amIDrawer = false;
+let iGuessedCorrect = false;
 let timerInterval = null;
 let timerDeadlineAt = null;
-let timerMode = 'normal';  // 'normal' | 'bonus'
+let timerMode = 'normal';
 let lotteryInterval = null;
+let volunteerCountdownInterval = null;
 
 /* ── DOM ─────────────────────────────────────────────── */
 const setupScreen      = document.getElementById('setupScreen');
@@ -60,6 +64,14 @@ const lotteryRoulette  = document.getElementById('lotteryRoulette');
 const drawingPanel     = document.getElementById('drawingPanel');
 const drawerBanner     = document.getElementById('drawerBanner');
 const keywordSlot      = document.getElementById('keywordSlot');
+const drawCanvas       = document.getElementById('drawCanvas');
+const canvasToolbar    = document.getElementById('canvasToolbar');
+const undoBtn          = document.getElementById('undoBtn');
+const clearBtn         = document.getElementById('clearBtn');
+const chatMessages     = document.getElementById('chatMessages');
+const chatForm         = document.getElementById('chatForm');
+const chatInput        = document.getElementById('chatInput');
+const chatSend         = document.getElementById('chatSend');
 const roundEndPanel    = document.getElementById('roundEndPanel');
 const roundEndKeyword  = document.getElementById('roundEndKeyword');
 const roundEndReason   = document.getElementById('roundEndReason');
@@ -67,7 +79,7 @@ const roundEndDeltas   = document.getElementById('roundEndDeltas');
 const rankingsList     = document.getElementById('rankingsList');
 const exitBtn          = document.getElementById('exitBtn');
 
-/* ── 화면 전환 ───────────────────────────────────────── */
+/* ── Screen helpers ─────────────────────────────────── */
 function showScreen(which) {
   for (const s of [setupScreen, gameScreen, resultScreen]) s.classList.remove('is-active');
   ({ setup: setupScreen, game: gameScreen, result: resultScreen })[which].classList.add('is-active');
@@ -76,14 +88,13 @@ function showSubPanel(which) {
   for (const p of [volunteerPanel, lotteryPanel, drawingPanel, roundEndPanel]) p.classList.add('is-hidden');
   if (which) document.getElementById(which).classList.remove('is-hidden');
 }
-
 function setStatus(text, modifier) {
   bootStatus.textContent = text;
   bootStatus.classList.remove('is-connected', 'is-error');
   if (modifier) bootStatus.classList.add(modifier);
 }
 
-/* ── Roster / 본인 라벨 ─────────────────────────────── */
+/* ── Roster ─────────────────────────────────────────── */
 function renderRoster() {
   waitingPlayers.innerHTML = '';
   for (const p of players) {
@@ -95,8 +106,6 @@ function renderRoster() {
     waitingPlayers.appendChild(chip);
   }
 }
-
-/* ── 본인 캐릭터 표시 (서버에서 랜덤 배정) ─────────── */
 function applyMyCharacter() {
   if (!myCharacterId) return;
   myCharacterImg.src = CHAR_IMAGES[myCharacterId] || '';
@@ -104,24 +113,19 @@ function applyMyCharacter() {
   myCharacterName.textContent = CHAR_LABELS[myCharacterId] || myCharacterId;
 }
 
-/* ── Ready ──────────────────────────────────────────── */
+/* ── Ready / Volunteer / Exit ───────────────────────── */
 readyBtn.addEventListener('click', () => {
   isReady = !isReady;
   readyBtn.textContent = isReady ? '취소' : 'Ready!';
   readyBtn.classList.toggle('is-ready', isReady);
   sendIfOpen({ type: 'SS_READY', ready: isReady });
 });
-
-/* ── Volunteer ──────────────────────────────────────── */
 volunteerBtn.addEventListener('click', () => {
   volunteerBtn.disabled = true;
   volunteerBtn.textContent = '✋ 신청 완료';
   sendIfOpen({ type: 'SS_VOLUNTEER' });
 });
-
-/* ── Exit (결과 화면 + 게임 중 헤더 둘 다) ─────────── */
 function leaveToRoom() {
-  // 깔끔하게 끊고 로비로.
   try { ws?.close(); } catch {}
   window.location.href = `/?code=${encodeURIComponent(code || '')}`;
 }
@@ -151,8 +155,6 @@ function stopTimer() {
   timerDeadlineAt = null;
 }
 
-/* ── Volunteer 타이머 ───────────────────────────────── */
-let volunteerCountdownInterval = null;
 function startVolunteerCountdown(deadlineAt) {
   if (volunteerCountdownInterval) clearInterval(volunteerCountdownInterval);
   const tick = () => {
@@ -185,31 +187,247 @@ function runLottery(candidates, finalDrawerId, durationMs) {
   }, Math.max(300, durationMs - 200));
 }
 
-/* ── Drawing phase 표시 ─────────────────────────────── */
+/* ── Keyword slot ───────────────────────────────────── */
+let slotCells = [];
+function renderKeywordSlot(round) {
+  keywordSlot.innerHTML = '';
+  slotCells = [];
+  const n = round.syllableCount || 0;
+  const drawerKeywordChars = (amIDrawer && round.keyword) ? [...round.keyword] : null;
+  for (let i = 0; i < n; i++) {
+    const cell = document.createElement('span');
+    cell.className = 'keyword-slot__cell';
+    cell.textContent = drawerKeywordChars ? drawerKeywordChars[i] : '_';
+    if (drawerKeywordChars) cell.classList.add('is-revealed-letter');
+    keywordSlot.appendChild(cell);
+    slotCells.push(cell);
+  }
+}
+function revealLengthHint() {
+  // length 힌트는 슬롯이 이미 글자 수만큼 깔려 있으므로, 시각 강조만 살짝.
+  for (const c of slotCells) c.classList.add('is-revealed-letter');
+  setTimeout(() => {
+    if (amIDrawer) return; // 출제자는 글자가 보이므로 굳이 빼지 않음.
+    for (const c of slotCells) c.classList.remove('is-revealed-letter');
+  }, 900);
+}
+function revealLetterHint(position, value) {
+  if (amIDrawer) return;
+  const c = slotCells[position];
+  if (!c) return;
+  c.textContent = value;
+  c.classList.add('is-revealed-letter');
+}
+function pulseMatchedSlots(positions) {
+  if (amIDrawer) return;
+  for (const pos of positions) {
+    const c = slotCells[pos];
+    if (!c) continue;
+    c.classList.remove('is-pulse');
+    void c.offsetWidth; // restart animation
+    c.classList.add('is-pulse');
+    setTimeout(() => c.classList.remove('is-pulse'), 700);
+  }
+}
+
+/* ── Canvas (Phase B) ───────────────────────────────── */
+const ctx = drawCanvas.getContext('2d');
+ctx.lineCap = 'round';
+ctx.lineJoin = 'round';
+let currentColor = '#000000';
+let currentThickness = 8;
+let isDrawing = false;
+let currentStroke = null;        // { points, color, thickness }
+let allStrokes = [];             // 라운드별로 보관 (clear/undo/round 종료 시 초기화)
+
+function clearCanvasVisual() {
+  ctx.clearRect(0, 0, 1000, 1000);
+}
+function drawStrokeOnCtx(s) {
+  if (!s.points || s.points.length === 0) return;
+  ctx.strokeStyle = s.color;
+  ctx.lineWidth = s.thickness;
+  ctx.beginPath();
+  ctx.moveTo(s.points[0][0], s.points[0][1]);
+  for (let i = 1; i < s.points.length; i++) ctx.lineTo(s.points[i][0], s.points[i][1]);
+  // 단일 점도 보이도록 dot 처리.
+  if (s.points.length === 1) {
+    const [x, y] = s.points[0];
+    ctx.arc(x, y, s.thickness / 2, 0, Math.PI * 2);
+    ctx.fillStyle = s.color;
+    ctx.fill();
+  } else {
+    ctx.stroke();
+  }
+}
+function redrawAll() {
+  clearCanvasVisual();
+  for (const s of allStrokes) drawStrokeOnCtx(s);
+}
+
+function canvasToLogical(e) {
+  const rect = drawCanvas.getBoundingClientRect();
+  let clientX, clientY;
+  if (e.touches && e.touches[0]) { clientX = e.touches[0].clientX; clientY = e.touches[0].clientY; }
+  else { clientX = e.clientX; clientY = e.clientY; }
+  const x = ((clientX - rect.left) / rect.width) * 1000;
+  const y = ((clientY - rect.top) / rect.height) * 1000;
+  return [Math.round(x), Math.round(y)];
+}
+
+function startStroke(e) {
+  if (!amIDrawer) return;
+  if (phase !== 'drawing' && phase !== 'bonus') return;
+  e.preventDefault();
+  isDrawing = true;
+  currentStroke = { points: [canvasToLogical(e)], color: currentColor, thickness: currentThickness };
+  // 즉시 dot 한 점 찍어두기.
+  drawStrokeOnCtx(currentStroke);
+}
+function moveStroke(e) {
+  if (!isDrawing || !currentStroke) return;
+  e.preventDefault();
+  const pt = canvasToLogical(e);
+  currentStroke.points.push(pt);
+  // 점진 렌더 — 마지막 두 점 잇기.
+  const pts = currentStroke.points;
+  ctx.strokeStyle = currentStroke.color;
+  ctx.lineWidth = currentStroke.thickness;
+  ctx.beginPath();
+  ctx.moveTo(pts[pts.length - 2][0], pts[pts.length - 2][1]);
+  ctx.lineTo(pts[pts.length - 1][0], pts[pts.length - 1][1]);
+  ctx.stroke();
+}
+function endStroke(e) {
+  if (!isDrawing) return;
+  if (e) e.preventDefault();
+  isDrawing = false;
+  if (!currentStroke) return;
+  allStrokes.push(currentStroke);
+  sendIfOpen({
+    type: 'SS_STROKE_ADD',
+    points: currentStroke.points,
+    color: currentStroke.color,
+    thickness: currentStroke.thickness,
+  });
+  currentStroke = null;
+}
+
+drawCanvas.addEventListener('pointerdown', startStroke);
+drawCanvas.addEventListener('pointermove', moveStroke);
+drawCanvas.addEventListener('pointerup', endStroke);
+drawCanvas.addEventListener('pointercancel', endStroke);
+drawCanvas.addEventListener('pointerleave', endStroke);
+
+/* Toolbar */
+document.querySelectorAll('.color-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.color-btn').forEach(b => b.classList.remove('is-selected'));
+    btn.classList.add('is-selected');
+    currentColor = btn.dataset.color;
+  });
+});
+document.querySelectorAll('.thick-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.thick-btn').forEach(b => b.classList.remove('is-selected'));
+    btn.classList.add('is-selected');
+    currentThickness = Number(btn.dataset.thickness) || 8;
+  });
+});
+undoBtn?.addEventListener('click', () => {
+  if (!amIDrawer) return;
+  if (allStrokes.length === 0) return;
+  allStrokes.pop();
+  redrawAll();
+  sendIfOpen({ type: 'SS_STROKE_UNDO' });
+});
+clearBtn?.addEventListener('click', () => {
+  if (!amIDrawer) return;
+  allStrokes = [];
+  clearCanvasVisual();
+  sendIfOpen({ type: 'SS_CANVAS_CLEAR' });
+});
+
+function applyIncomingStroke(msg) {
+  if (msg.kind === 'add' && msg.stroke) {
+    allStrokes.push(msg.stroke);
+    drawStrokeOnCtx(msg.stroke);
+  } else if (msg.kind === 'clear') {
+    allStrokes = [];
+    clearCanvasVisual();
+  } else if (msg.kind === 'undo') {
+    if (allStrokes.length > 0) allStrokes.pop();
+    redrawAll();
+  }
+}
+
+/* ── Drawing phase 진입 ─────────────────────────────── */
 function renderDrawingPhase(round) {
   showScreen('game');
   showSubPanel('drawingPanel');
-  const isMe = round.drawerId === playerId;
+  amIDrawer = round.drawerId === playerId;
+  iGuessedCorrect = false;
+
   const drawer = players.find(p => p.id === round.drawerId);
-  drawerBanner.classList.toggle('is-me', isMe);
-  drawerBanner.textContent = isMe
+  drawerBanner.classList.toggle('is-me', amIDrawer);
+  drawerBanner.textContent = amIDrawer
     ? `당신이 그릴 차례! 키워드: ${round.keyword || '?'}`
     : `${drawer ? drawer.name : '?'}님이 그리는 중…`;
-  // 글자 수 슬롯.
-  keywordSlot.innerHTML = '';
-  for (let i = 0; i < round.syllableCount; i++) {
-    const cell = document.createElement('span');
-    cell.className = 'keyword-slot__cell';
-    cell.textContent = '_';
-    keywordSlot.appendChild(cell);
-  }
+
+  renderKeywordSlot(round);
+
+  // 캔버스 초기화 + 도구바 출제자만.
+  allStrokes = [];
+  clearCanvasVisual();
+  canvasToolbar.classList.toggle('is-hidden', !amIDrawer);
+  drawCanvas.style.cursor = amIDrawer ? 'crosshair' : 'not-allowed';
+
+  // 채팅: 출제자도 자유 입력 (치팅 허용). 정답자는 사이드 채널만.
+  chatInput.disabled = false;
+  chatSend.disabled = false;
+  chatInput.placeholder = amIDrawer ? '아무 말이나… (정답 단어도 OK)' : '추측을 입력…';
 }
+
+/* ── Chat ──────────────────────────────────────────── */
+function appendChat({ text, name: nm, system, correct, drawer, side, isMe }) {
+  const div = document.createElement('div');
+  div.className = 'chat-msg';
+  if (system) div.classList.add('is-system');
+  if (correct) div.classList.add('is-correct');
+  if (drawer) div.classList.add('is-drawer');
+  if (side) div.classList.add('is-side');
+  if (nm && !system) {
+    const span = document.createElement('span');
+    span.className = 'chat-msg__name';
+    if (isMe) span.classList.add('is-me');
+    span.textContent = nm;
+    div.appendChild(span);
+  }
+  const t = document.createElement('span');
+  t.textContent = text;
+  div.appendChild(t);
+  chatMessages.appendChild(div);
+  // Auto-scroll to bottom.
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+  // 최근 N줄만 유지.
+  while (chatMessages.children.length > 50) chatMessages.removeChild(chatMessages.firstChild);
+}
+
+chatForm.addEventListener('submit', (e) => {
+  e.preventDefault();
+  const text = chatInput.value.trim();
+  if (!text) return;
+  if (phase !== 'drawing' && phase !== 'bonus') return;
+  sendIfOpen({ type: 'SS_GUESS', text });
+  chatInput.value = '';
+});
 
 /* ── Round end / Game end ───────────────────────────── */
 function renderRoundEnd(msg) {
   showSubPanel('roundEndPanel');
   const reasonText = {
     timeout: '시간 종료',
+    'bonus-timeout': '보너스 시간 종료',
     'drawer-disconnect': '출제자가 나갔어요',
     'all-correct': '모두 맞혔어요!',
     'insufficient-players': '인원이 부족했어요',
@@ -217,7 +435,6 @@ function renderRoundEnd(msg) {
   roundEndKeyword.textContent = msg.keyword ? `정답: ${msg.keyword}` : '정답 없음';
   roundEndReason.textContent = reasonText;
   roundEndDeltas.innerHTML = '';
-  // 점수 정렬해서 표시.
   const sorted = [...players].sort((a, b) => (msg.scores[b.id] || 0) - (msg.scores[a.id] || 0));
   for (const p of sorted) {
     const li = document.createElement('li');
@@ -244,16 +461,13 @@ function renderGameEnd(rankings) {
   }
 }
 
-/* ── WS ──────────────────────────────────────────── */
+/* ── WS ─────────────────────────────────────────────── */
 function sendIfOpen(msg) {
   if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
 }
 
 function connect() {
-  if (!isMultiplayer) {
-    setStatus('단일 플레이는 아직 지원하지 않아요.', 'is-error');
-    return;
-  }
+  if (!isMultiplayer) { setStatus('단일 플레이는 아직 지원하지 않아요.', 'is-error'); return; }
   const url = WORKER_URL.replace(/^http/, 'ws') + `/api/rooms/${code}`;
   ws = new WebSocket(url);
 
@@ -263,7 +477,6 @@ function connect() {
       type: 'join_game',
       gameId: 'sseuk-sseuk',
       playerId,
-      // characterId는 서버가 랜덤 배정 — 클라가 보내도 무시됨.
     }));
   });
 
@@ -285,13 +498,11 @@ function handleMessage(msg) {
       phase = msg.phase;
       currentRoundIdx = msg.currentRoundIdx || 0;
       totalRounds = msg.totalRounds || 5;
-      // 본인 캐릭터(서버 랜덤 배정) 반영.
       {
         const me = players.find(p => p.id === playerId);
         if (me) { myCharacterId = me.characterId; applyMyCharacter(); }
       }
       renderRoster();
-      // 중간 합류 시 라운드 상태 즉시 복원.
       if (msg.round && phase !== 'waiting') {
         currentRound = msg.round;
         applyPhase();
@@ -299,7 +510,6 @@ function handleMessage(msg) {
       break;
     case 'SS_PLAYER_UPDATE':
       players = msg.players;
-      // SS_PLAYER_UPDATE에는 항상 최신 배정 결과가 들어 있음.
       {
         const me = players.find(p => p.id === playerId);
         if (me && me.characterId !== myCharacterId) { myCharacterId = me.characterId; applyMyCharacter(); }
@@ -343,7 +553,7 @@ function handleMessage(msg) {
       phase = 'lottery';
       currentRound = {
         drawerId: msg.drawerId,
-        keyword: msg.keyword || null,   // 출제자에게만 옴
+        keyword: msg.keyword || null,
         syllableCount: msg.syllableCount,
       };
       showSubPanel('lotteryPanel');
@@ -351,6 +561,8 @@ function handleMessage(msg) {
       break;
     case 'SS_ROUND_START':
       phase = 'drawing';
+      // 채팅창 초기화 (라운드별).
+      chatMessages.innerHTML = '';
       if (currentRound) {
         currentRound.drawerId = msg.drawerId;
         currentRound.syllableCount = msg.syllableCount;
@@ -360,10 +572,47 @@ function handleMessage(msg) {
       renderDrawingPhase(currentRound);
       startTimer(msg.timeLeftMs, 'normal');
       break;
+    case 'SS_STROKE_APPLIED':
+      // 출제자가 아니면 캔버스에 반영. 출제자도 clear/undo는 본인이 누른 경우 이미 처리됐으니 무시 가능.
+      if (!amIDrawer) applyIncomingStroke(msg);
+      break;
+    case 'SS_HINT_REVEAL':
+      if (msg.kind === 'length') revealLengthHint();
+      else if (msg.kind === 'letter') revealLetterHint(msg.position, msg.value);
+      break;
+    case 'SS_HINT_FEEDBACK':
+      pulseMatchedSlots(msg.matchedPositions || []);
+      break;
+    case 'SS_CHAT': {
+      const isMe = msg.playerId === playerId;
+      appendChat({
+        text: msg.text,
+        name: msg.name,
+        system: !!msg.system,
+        drawer: !!msg.drawer,
+        side: !!msg.sideChannel,
+        isMe,
+      });
+      break;
+    }
+    case 'SS_CORRECT':
+      if (msg.playerId === playerId) {
+        iGuessedCorrect = true;
+        // 본인이 맞히면 입력은 그대로 둬도 됨 (사이드 채널로 전송됨).
+      }
+      // 시스템 메시지로 정답 알림.
+      appendChat({
+        text: `🎉 ${msg.name}님 정답 (${msg.rank}등)`,
+        system: true, correct: true,
+      });
+      break;
+    case 'SS_BONUS_START':
+      phase = 'bonus';
+      startTimer(msg.bonusMs || 10000, 'bonus');
+      break;
     case 'SS_ROUND_END':
       phase = 'roundEnd';
       stopTimer();
-      // 점수 최신화.
       for (const p of players) {
         if (msg.scores[p.id] !== undefined) p.score = msg.scores[p.id];
       }
@@ -379,7 +628,6 @@ function handleMessage(msg) {
   }
 }
 
-/* 중간 합류 시 현재 phase로 즉시 점프 */
 function applyPhase() {
   showScreen('game');
   countdownOverlay.classList.add('is-hidden');

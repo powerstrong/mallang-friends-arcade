@@ -1,4 +1,5 @@
 import { QUIZ_BANK } from './quiz_bank.js';
+import { SS_KEYWORD_POOL } from './ss_keywords.js';
 import { submitScore } from './leaderboard.js';
 import { pickGameCharacter } from './characters.js';
 
@@ -24,11 +25,11 @@ const SS_HINT_LENGTH_AT_MS    = 20000;
 const SS_HINT_LETTER_AT_MS    = 40000;
 const SS_LOTTERY_ANIM_MS      = 2500;
 
-// Phase A 임시 키워드 풀 (Phase C에서 ./ss_keywords.js로 분리).
-const SS_KEYWORDS_PLACEHOLDER = [
-  '사과','바나나','피아노','자전거','우산','컴퓨터','병아리','강아지',
-  '아이스크림','학교','비행기','수박','책상','우주선','거북이','로봇',
-];
+const SS_STROKE_POINTS_CAP     = 500;   // 단일 스트로크 최대 포인트 수
+const SS_STROKES_PER_ROUND_CAP = 200;   // 라운드당 최대 스트로크 수
+
+// 정답에 가까운 단어를 가리킬 때 쓰는 "거의 다 왔어요!" 임계 — 정답 길이 - 1 일치.
+const SS_PROXIMITY_NEAR_DIFF   = 1;
 const QUIZ_QUESTION_COUNT = 10;
 const QUIZ_TIME_LIMIT_MS = 10000;
 const QUIZ_REVEAL_MS = 3500;
@@ -2226,13 +2227,260 @@ export class GameRoom {
   }
 
   _pickSseukKeyword() {
-    // Phase A: 임시 인라인 풀. Phase C에서 ss_keywords.js로 교체.
     const used = new Set(this.sseukGame.usedKeywords || []);
-    const remaining = SS_KEYWORDS_PLACEHOLDER.filter(w => !used.has(w));
-    const pool = remaining.length > 0 ? remaining : SS_KEYWORDS_PLACEHOLDER;
+    const remaining = SS_KEYWORD_POOL.filter(w => !used.has(w));
+    const pool = remaining.length > 0 ? remaining : SS_KEYWORD_POOL;
     const pick = pool[Math.floor(Math.random() * pool.length)];
     this.sseukGame.usedKeywords.push(pick);
     return pick;
+  }
+
+  // ── Phase B: 스트로크 동기화 ────────────────────────────────
+
+  _handleSseukStrokeAdd(player, msg) {
+    if (!this.sseukGame || this.sseukGame.phase !== 'drawing') return;
+    const r = this.sseukGame.currentRound;
+    if (!r || r.drawerId !== player.id) return;       // 출제자만 그릴 수 있다.
+    const points = Array.isArray(msg.points) ? msg.points.slice(0, SS_STROKE_POINTS_CAP) : null;
+    if (!points || points.length === 0) return;
+    if (r.strokes.length >= SS_STROKES_PER_ROUND_CAP) return; // 무시 (cap).
+    const stroke = {
+      points,
+      color: typeof msg.color === 'string' ? msg.color.slice(0, 16) : '#000',
+      thickness: typeof msg.thickness === 'number' ? Math.max(1, Math.min(64, msg.thickness)) : 4,
+      order: r.strokes.length,
+    };
+    r.strokes.push(stroke);
+    // 출제자 본인은 로컬에 이미 그려진 상태 — 다른 참가자에게만 보낸다.
+    for (const { ws, player: p } of this._getSessions()) {
+      if (p.gameId !== 'sseuk-sseuk') continue;
+      if (p.id === r.drawerId) continue;
+      try { ws.send(JSON.stringify({ type: 'SS_STROKE_APPLIED', kind: 'add', stroke })); } catch {}
+    }
+  }
+
+  _handleSseukCanvasClear(player, _msg) {
+    if (!this.sseukGame || this.sseukGame.phase !== 'drawing') return;
+    const r = this.sseukGame.currentRound;
+    if (!r || r.drawerId !== player.id) return;
+    r.strokes = [];
+    this._broadcastGame({ type: 'SS_STROKE_APPLIED', kind: 'clear' }, 'sseuk-sseuk');
+  }
+
+  _handleSseukStrokeUndo(player, _msg) {
+    if (!this.sseukGame || this.sseukGame.phase !== 'drawing') return;
+    const r = this.sseukGame.currentRound;
+    if (!r || r.drawerId !== player.id) return;
+    if (r.strokes.length === 0) return;
+    r.strokes.pop();
+    this._broadcastGame({ type: 'SS_STROKE_APPLIED', kind: 'undo' }, 'sseuk-sseuk');
+  }
+
+  // ── Phase C: 시간 경과 힌트 ────────────────────────────────
+
+  _scheduleSseukHints(capturedRoundToken) {
+    if (!this.sseukGame) return;
+    const r = this.sseukGame.currentRound;
+    if (!r) return;
+    this.sseukGame.tokens.hint++;
+    const hintToken = this.sseukGame.tokens.hint;
+    r.hintRevealed = { length: false, letterIdx: null };
+
+    // 20s: 글자 수 공개.
+    const t1 = setTimeout(() => {
+      if (!this.sseukGame) return;
+      if (this.sseukGame.tokens.round !== capturedRoundToken) return;
+      if (this.sseukGame.tokens.hint !== hintToken) return;
+      if (this.sseukGame.phase !== 'drawing') return;
+      r.hintRevealed.length = true;
+      this._broadcastGame({
+        type: 'SS_HINT_REVEAL',
+        kind: 'length',
+        value: r.syllableCount,
+      }, 'sseuk-sseuk');
+    }, SS_HINT_LENGTH_AT_MS);
+
+    // 40s: 한 글자 공개 (랜덤 위치).
+    const t2 = setTimeout(() => {
+      if (!this.sseukGame) return;
+      if (this.sseukGame.tokens.round !== capturedRoundToken) return;
+      if (this.sseukGame.tokens.hint !== hintToken) return;
+      if (this.sseukGame.phase !== 'drawing') return;
+      const syllables = [...r.keyword];
+      const idx = Math.floor(Math.random() * syllables.length);
+      r.hintRevealed.letterIdx = idx;
+      this._broadcastGame({
+        type: 'SS_HINT_REVEAL',
+        kind: 'letter',
+        position: idx,
+        value: syllables[idx],
+      }, 'sseuk-sseuk');
+    }, SS_HINT_LETTER_AT_MS);
+
+    this.sseukGame.timers.hint.push(t1, t2);
+  }
+
+  // ── Phase D: 정답 / 근접 / 채팅 파이프라인 ──────────────────
+
+  _handleSseukGuess(player, msg) {
+    if (!this.sseukGame) return;
+    const text = (msg.text || '').toString().slice(0, 80).trim();
+    if (!text) return;
+    const r = this.sseukGame.currentRound;
+    const phaseAllowsGuess = (this.sseukGame.phase === 'drawing' || this.sseukGame.phase === 'bonus');
+
+    // 1) 출제자: 자유 발화 (필터 없음). 시각 구분만.
+    if (r && r.drawerId === player.id) {
+      this._broadcastGame({
+        type: 'SS_CHAT',
+        playerId: player.id,
+        name: player.name,
+        text,
+        drawer: true,
+      }, 'sseuk-sseuk');
+      return;
+    }
+
+    // 2) 이미 정답을 맞힌 사람: 정답자끼리만 보이는 사이드 채널.
+    const alreadyCorrect = r && Array.isArray(r.correctOrder) && r.correctOrder.includes(player.id);
+    if (alreadyCorrect) {
+      const visibleTo = new Set([r.drawerId, ...r.correctOrder]);
+      for (const { ws, player: p } of this._getSessions()) {
+        if (p.gameId !== 'sseuk-sseuk') continue;
+        if (!visibleTo.has(p.id)) continue;
+        try {
+          ws.send(JSON.stringify({
+            type: 'SS_CHAT',
+            playerId: player.id,
+            name: player.name,
+            text,
+            sideChannel: true,
+          }));
+        } catch {}
+      }
+      return;
+    }
+
+    // 3) 정답/근접 판정은 phase가 drawing 또는 bonus 일 때만.
+    if (!phaseAllowsGuess || !r || !r.keyword) {
+      // 그 외 phase는 일반 채팅으로.
+      this._broadcastGame({
+        type: 'SS_CHAT', playerId: player.id, name: player.name, text,
+      }, 'sseuk-sseuk');
+      return;
+    }
+
+    const norm = (s) => s.normalize('NFKC').replace(/\s+/g, '');
+    const guess = norm(text);
+    const answer = norm(r.keyword);
+
+    if (guess === answer) {
+      this._handleSseukCorrectGuess(player, text);
+      return;
+    }
+
+    // 자리 일치 근접 — 본인에게만 SS_HINT_FEEDBACK + 시스템 메시지.
+    const guessChars = [...guess];
+    const answerChars = [...answer];
+    const cmpLen = Math.min(guessChars.length, answerChars.length);
+    const matchedPositions = [];
+    for (let i = 0; i < cmpLen; i++) {
+      if (guessChars[i] === answerChars[i]) matchedPositions.push(i);
+    }
+    // 일반 채팅으로는 전원에게 추측 자체는 보임.
+    this._broadcastGame({
+      type: 'SS_CHAT', playerId: player.id, name: player.name, text,
+    }, 'sseuk-sseuk');
+    if (matchedPositions.length > 0) {
+      // 본인에게만: 자리 일치 펄스 + 시스템 메시지.
+      const targetWs = this._findPlayerWs(player.id);
+      if (targetWs) {
+        try {
+          targetWs.send(JSON.stringify({
+            type: 'SS_HINT_FEEDBACK',
+            matchCount: matchedPositions.length,
+            matchedPositions,
+            syllableCount: answerChars.length,
+          }));
+          const isNear = matchedPositions.length >= answerChars.length - SS_PROXIMITY_NEAR_DIFF;
+          targetWs.send(JSON.stringify({
+            type: 'SS_CHAT',
+            system: true,
+            text: isNear ? '거의 다 왔어요!' : `오? ${matchedPositions.length}글자 맞았어요`,
+          }));
+        } catch {}
+      }
+    }
+  }
+
+  _handleSseukCorrectGuess(player, originalText) {
+    const r = this.sseukGame.currentRound;
+    if (!r.correctOrder) r.correctOrder = [];
+    if (r.correctOrder.includes(player.id)) return; // 중복 방지.
+    r.correctOrder.push(player.id);
+    const rank = r.correctOrder.length;
+
+    // 1) 본인에게는 원문 그대로.
+    const myWs = this._findPlayerWs(player.id);
+    if (myWs) {
+      try {
+        myWs.send(JSON.stringify({
+          type: 'SS_CHAT',
+          playerId: player.id,
+          name: player.name,
+          text: originalText,
+        }));
+      } catch {}
+    }
+    // 2) 타인에게는 마스킹된 시스템 메시지.
+    for (const { ws, player: p } of this._getSessions()) {
+      if (p.gameId !== 'sseuk-sseuk') continue;
+      if (p.id === player.id) continue;
+      try {
+        ws.send(JSON.stringify({
+          type: 'SS_CHAT',
+          system: true,
+          text: `${player.name}님이 맞혔어요!`,
+        }));
+      } catch {}
+    }
+    // 3) 모두에게 SS_CORRECT (점수 미리보기/연출용).
+    this._broadcastGame({
+      type: 'SS_CORRECT',
+      playerId: player.id,
+      name: player.name,
+      rank,
+    }, 'sseuk-sseuk');
+
+    // 첫 정답이면 bonus 타이머 가동 + phase 전환.
+    if (rank === 1) {
+      r.firstCorrectAt = Date.now();
+      this.sseukGame.phase = 'bonus';
+      // round 타이머 정리 (남은 시간 대신 bonus 10초로).
+      if (this.sseukGame.timers.round) { clearTimeout(this.sseukGame.timers.round); this.sseukGame.timers.round = null; }
+      this._broadcastGame({
+        type: 'SS_BONUS_START',
+        bonusMs: SS_BONUS_AFTER_FIRST_MS,
+      }, 'sseuk-sseuk');
+      const token = ++this.sseukGame.tokens.bonus;
+      this.sseukGame.timers.bonus = setTimeout(() => {
+        if (!this.sseukGame || this.sseukGame.tokens.bonus !== token) return;
+        this._endSseukRound('bonus-timeout').catch(() => {});
+      }, SS_BONUS_AFTER_FIRST_MS);
+    }
+
+    // 모든 비-출제자가 맞혔으면 즉시 종료.
+    const guessers = this.sseukGame.players.filter(p => p.connected && p.id !== r.drawerId);
+    if (guessers.length > 0 && r.correctOrder.length >= guessers.length) {
+      this._endSseukRound('all-correct').catch(() => {});
+    }
+  }
+
+  _findPlayerWs(playerId) {
+    for (const { ws, player } of this._getSessions()) {
+      if (player.id === playerId) return ws;
+    }
+    return null;
   }
 
   _startSseukDrawing() {
@@ -2255,9 +2503,8 @@ export class GameRoom {
       this._endSseukRound('timeout').catch(() => {});
     }, SS_ROUND_DURATION_MS);
 
-    // 시간 힌트 — Phase C에서 본격 구현. Phase A는 스케줄만 잡아 두기 (token 가드 동작 검증).
-    // TODO(Phase C): SS_HINT_REVEAL { type:'length' | 'letter' } 송신.
-    // const hintToken = ++this.sseukGame.tokens.hint;  // 비활성: Phase C 활성화.
+    // 시간 힌트 (20s, 40s).
+    this._scheduleSseukHints(token);
   }
 
   async _endSseukRound(reason) {
@@ -2535,10 +2782,16 @@ export class GameRoom {
         if (player?.gameId === 'sseuk-sseuk') await this._handleSseukVolunteer(player, msg);
         break;
       case 'SS_STROKE_ADD':
+        if (player?.gameId === 'sseuk-sseuk') this._handleSseukStrokeAdd(player, msg);
+        break;
       case 'SS_CANVAS_CLEAR':
+        if (player?.gameId === 'sseuk-sseuk') this._handleSseukCanvasClear(player, msg);
+        break;
       case 'SS_STROKE_UNDO':
+        if (player?.gameId === 'sseuk-sseuk') this._handleSseukStrokeUndo(player, msg);
+        break;
       case 'SS_GUESS':
-        // Phase B(스트로크)/Phase D(채팅·정답)에서 채워짐.
+        if (player?.gameId === 'sseuk-sseuk') this._handleSseukGuess(player, msg);
         break;
       case 'submit_result': if (player) await this._handleSubmitResult(player, msg);      break;
       case 'rematch':       if (player) await this._handleRematch();                       break;
@@ -2603,6 +2856,8 @@ export class GameRoom {
   }
 
   async _handleChat(player, msg) {
+    // 슥슥 게임 세션 플레이어는 SS_GUESS 파이프라인만 사용 (정답 누수 봉쇄).
+    if (player?.gameId === 'sseuk-sseuk') return;
     const text = (msg.text || '').slice(0, 256).trim();
     if (!text) return;
 
