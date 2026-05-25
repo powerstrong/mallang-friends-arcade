@@ -117,6 +117,24 @@ function setStatus(text, modifier) {
   if (modifier) bootStatus.classList.add(modifier);
 }
 
+/* waiting/ready 단계에서 사용자에게 "왜 카운트다운이 안 도는지" 알려준다.
+ * 서버 _handleSseukReady 는 connected≥2 + 모두 ready 일 때만 시작하므로,
+ * 솔로 URL 입장이나 다른 사람을 기다리는 케이스를 명시적으로 안내. */
+const SS_MIN_PLAYERS = 2;
+function updateWaitingStatus() {
+  if (phase !== 'waiting') return;
+  const connected = players.filter(p => p.connected);
+  const ready = connected.filter(p => p.ready);
+  if (connected.length < SS_MIN_PLAYERS) {
+    const need = SS_MIN_PLAYERS - connected.length;
+    setStatus(`다른 ${need}명을 기다리는 중… (현재 ${connected.length}명)`, 'is-connected');
+  } else if (ready.length < connected.length) {
+    setStatus(`준비 ${ready.length}/${connected.length} — 모두 Ready 하면 시작해요`, 'is-connected');
+  } else {
+    setStatus('곧 시작합니다…', 'is-connected');
+  }
+}
+
 const DIFFICULTY_META = {
   easy:   { stars: '★',   label: '쉬움',   className: 'is-easy'   },
   medium: { stars: '★★',  label: '중간',   className: 'is-medium' },
@@ -156,7 +174,10 @@ function appendCharAvatar(parent, characterId, size, extraClass) {
 /* ── Roster ─────────────────────────────────────────── */
 function renderRoster() {
   waitingPlayers.innerHTML = '';
+  // 대기 화면 칩은 현재 connected 인 사람만 — bootStatus 카운트와 일치 시켜
+  // 끊긴 사람이 calp 처럼 남는 불일치(코덱스 MEDIUM) 제거.
   for (const p of players) {
+    if (!p.connected) continue;
     const chip = document.createElement('span');
     chip.className = 'player-chip';
     if (p.id === playerId) chip.classList.add('is-me');
@@ -773,7 +794,6 @@ function scheduleReconnect() {
 function handleMessage(msg) {
   switch (msg.type) {
     case 'SS_JOINED':
-      setStatus(`연결됨 — phase: ${msg.phase}`, 'is-connected');
       players = msg.players;
       phase = msg.phase;
       currentRoundIdx = msg.currentRoundIdx || 0;
@@ -783,6 +803,7 @@ function handleMessage(msg) {
         if (me) { myCharacterId = me.characterId; applyMyCharacter(); }
       }
       renderRoster();
+      updateWaitingStatus();
       if (msg.round && phase !== 'waiting') {
         currentRound = msg.round;
         applyPhase();
@@ -795,6 +816,7 @@ function handleMessage(msg) {
         if (me && me.characterId !== myCharacterId) { myCharacterId = me.characterId; applyMyCharacter(); }
       }
       renderRoster();
+      updateWaitingStatus();
       break;
     case 'SS_COUNTDOWN':
       showScreen('game');

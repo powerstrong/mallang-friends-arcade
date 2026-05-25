@@ -4,6 +4,10 @@
 
 *, *::before, *::after { box-sizing: border-box; }
 
+/* 슥슥은 전적으로 라이트 톤으로 디자인됐다. 브라우저 자동 다크 모드가
+ * 캔버스/일러스트를 어둡게 뒤집어 캐릭터가 깨져 보이는 문제 봉쇄. */
+:root { color-scheme: light only; }
+
 html, body {
   margin: 0;
   padding: 0;
@@ -212,6 +216,20 @@ h2 { margin: 4px 0 8px; font-size: 20px; color: #064e3b; }
 .mute-btn[aria-pressed="true"] { opacity: 0.45; }
 
 /* ── 슥슥 일러스트 (codex imagegen + white→alpha 후처리) ──── */
+/* 일러스트 자체는 알파 PNG/WebP 라 배경이 비치는데, 다크 모드·강제 다크·
+ * accessibility invert 환경에서 캐릭터 가장자리 잔여 픽셀이 어둡게 도드라져
+ * 보였다. 명시적 라이트 패드를 깔아 안전망. */
+.hero-draw,
+.hero-celebrate,
+.hero-trophy {
+  background: #ffffff;
+  /* 50% 원형 마스킹은 hero_trophy 좌우 confetti 같은 가장자리 디테일을
+   * 잘라먹어서 round-rect 로 완화. 배경 패드는 그대로 다크모드 backdrop 역할.
+   * (코덱스 LOW: 원형 클립으로 트로피 confetti 잘림 회피) */
+  border-radius: 24px;
+  padding: 6px;
+  box-shadow: 0 2px 10px rgba(6, 78, 59, 0.10);
+}
 .hero-draw {
   display: block;
   margin: 4px auto 8px;
