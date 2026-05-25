@@ -535,6 +535,85 @@ button {
   background-image: url("./assets/boost_star.png");
 }
 
+/* 2P 에서 친구가 이미 먹은 부스트 — 나는 아직 먹을 수 있음.
+ * 시각적으로만 옅게 처리해 "친구가 다녀간 길" 인 걸 알린다. */
+.boost.is-friend-picked {
+  opacity: 0.45;
+  filter: grayscale(0.6) brightness(0.95);
+}
+.boost.is-friend-picked::after {
+  content: "✓";
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.92);
+  color: #6b7280;
+  font-size: 0.78rem;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+}
+
+/* ─ 라이벌 위치 게이지 (1-b) ─────────────────────────────────────────────
+ * 2P 에서만 노출. 화면 우측 가장자리 세로 게이지 위에 두 캐릭터의 현재
+ * 베스트 높이를 작은 마커로 보여준다. 숫자 격차 표시는 절망감을 주니까
+ * 시각적 거리감으로만. 친구가 위면 위, 내가 위면 내가 위.
+ */
+.rival-gauge {
+  position: absolute;
+  right: 10px;
+  top: 70px;
+  bottom: 110px;
+  width: 26px;
+  pointer-events: none;
+  z-index: 6;
+}
+.rival-gauge.is-hidden { display: none; }
+.rival-gauge__track {
+  position: absolute;
+  left: 11px;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: linear-gradient(to bottom, rgba(255,255,255,0.32), rgba(255,255,255,0.10));
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.06);
+}
+.rival-gauge__marker {
+  position: absolute;
+  width: 30px;
+  height: 30px;
+  left: -2px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.6rem;
+  font-weight: 900;
+  color: #fff;
+  letter-spacing: 0.04em;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.35), 0 0 0 2px rgba(255,255,255,0.7);
+  transition: bottom 220ms ease;
+  /* marker 의 가운데가 bottom 좌표에 오도록 */
+  transform: translateY(50%);
+}
+.rival-gauge__marker--me {
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+}
+.rival-gauge__marker--rival {
+  background: linear-gradient(135deg, #ef4444, #dc2626);
+}
+.rival-gauge__marker.is-dead {
+  opacity: 0.45;
+  filter: grayscale(0.7);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+}
+
 .player {
   width: 46px;
   height: 46px;

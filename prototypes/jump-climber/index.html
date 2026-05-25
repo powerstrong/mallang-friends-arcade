@@ -71,6 +71,15 @@
               <img src="./assets/badge_spectator.png" alt="관전" draggable="false" />
             </div>
 
+            <!-- 2P 라이벌 위치 인디케이터. 친구가 어디쯤 있는지 작게 시각화.
+                 1P/관전 모드에선 숨김. 텍스트 격차 대신 직관적 게이지로. -->
+            <div id="rivalGauge" class="rival-gauge is-hidden" aria-hidden="true">
+              <div class="rival-gauge__track">
+                <div class="rival-gauge__marker rival-gauge__marker--rival" id="rivalMarkerRival">친구</div>
+                <div class="rival-gauge__marker rival-gauge__marker--me" id="rivalMarkerMe">나</div>
+              </div>
+            </div>
+
             <div id="chatOverlay" class="chat-overlay is-hidden" aria-label="채팅">
               <div id="chatMessages" class="chat-messages" aria-live="polite"></div>
               <div class="chat-input-bar">

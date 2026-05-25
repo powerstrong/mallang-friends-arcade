@@ -457,6 +457,10 @@ export class GameRoom {
       y: platform.y - 68,
       size: 60,
       kind,
+      // 어떤 slot 들이 이미 먹었는지. 2P 에선 한 명이 먹어도 다른 사람은
+      // 또 먹을 수 있다 (snowball 완화). 모든 expected slot 이 채워지면
+      // 서버에서 완전 삭제. 1P 에선 expectedPlayers=1 이라 첫 픽업에 사라짐.
+      pickedBySlots: [],
     });
   }
 
@@ -2044,9 +2048,29 @@ export class GameRoom {
 
     if (Array.isArray(msg.pickedBoostIds) && msg.pickedBoostIds.length > 0) {
       const picked = new Set(msg.pickedBoostIds.slice(0, 8).filter((id) => typeof id === 'string'));
-      const before = this.jumpGame.boosts.length;
-      this.jumpGame.boosts = this.jumpGame.boosts.filter((boost) => !picked.has(boost.id));
-      if (this.jumpGame.boosts.length !== before) this.jumpGame.worldDirty = true;
+      const expected = Math.max(1, this.jumpGame.expectedPlayers || 1);
+      let mutated = false;
+      const remaining = [];
+      for (const boost of this.jumpGame.boosts) {
+        if (!picked.has(boost.id)) { remaining.push(boost); continue; }
+        // sender slot 을 pickedBySlots 에 추가 (중복 방지)
+        if (!Array.isArray(boost.pickedBySlots)) boost.pickedBySlots = [];
+        if (!boost.pickedBySlots.includes(target.slot)) {
+          boost.pickedBySlots.push(target.slot);
+          mutated = true;
+        }
+        // 모든 expected slot 이 다 먹었으면 완전 삭제. 1P 면 expected=1 이라
+        // 첫 픽업에 사라져 기존 동작 유지.
+        if (boost.pickedBySlots.length >= expected) {
+          mutated = true;
+          continue; // skip — remove from remaining
+        }
+        remaining.push(boost);
+      }
+      if (mutated) {
+        this.jumpGame.boosts = remaining;
+        this.jumpGame.worldDirty = true;
+      }
     }
 
     const cameraY = Number(msg.cameraY);

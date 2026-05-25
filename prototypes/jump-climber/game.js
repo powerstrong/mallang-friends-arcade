@@ -28,6 +28,9 @@ const chatToggleBtn = document.getElementById("chatToggle");
 const chatInputWrap = document.getElementById("chatInputWrap");
 const chatInputEl = document.getElementById("chatInput");
 const chatSendBtn = document.getElementById("chatSend");
+const rivalGaugeEl = document.getElementById("rivalGauge");
+const rivalMarkerMeEl = document.getElementById("rivalMarkerMe");
+const rivalMarkerRivalEl = document.getElementById("rivalMarkerRival");
 const gameBoot = window.GameBoot || null;
 const isRoomSession = Boolean(gameBoot && gameBoot.isMultiplayer);
 
@@ -284,6 +287,7 @@ const state = {
     lastSentDirection: null,
     localPhysicsRemainderMs: 0,
     pickedBoostIds: new Set(),
+    mySlot: null, // server 가 jump_joined 로 통보. friend-picked boost 판정용.
     inputIntervalId: 0,
     pingIntervalId: 0,
     renderFrameId: 0,
@@ -1120,24 +1124,42 @@ function updateNetworkTargets(snapshot) {
   }
 
   if (Array.isArray(snapshot.boosts)) {
-    const serverBoostIds = new Set(snapshot.boosts.map((boost) => boost.id));
+    const mySlot = state.network.mySlot;
+    const serverBoostMap = new Map(snapshot.boosts.map((boost) => [boost.id, boost]));
+    // pickedBoostIds 정리: 서버에서 완전 사라졌거나 (모두 픽업), 서버가 내
+    // pick 을 인정한 경우엔 local set 에서 제거. 그 외엔 유지 (낙관적 hide).
     state.network.pickedBoostIds.forEach((id) => {
-      if (!serverBoostIds.has(id)) state.network.pickedBoostIds.delete(id);
+      const b = serverBoostMap.get(id);
+      if (!b) {
+        state.network.pickedBoostIds.delete(id);
+      } else if (mySlot != null && Array.isArray(b.pickedBySlots) && b.pickedBySlots.includes(mySlot)) {
+        state.network.pickedBoostIds.delete(id);
+      }
     });
-    const visibleBoosts = snapshot.boosts.filter((boost) => !state.network.pickedBoostIds.has(boost.id));
+    // 내가 (local 또는 서버 확인) 먹은 boost 는 렌더에서 제외. 친구만 먹은
+    // boost 는 남겨두고 is-friend-picked 로 표시.
+    const visibleBoosts = snapshot.boosts.filter((boost) => {
+      if (state.network.pickedBoostIds.has(boost.id)) return false;
+      if (mySlot != null && Array.isArray(boost.pickedBySlots) && boost.pickedBySlots.includes(mySlot)) return false;
+      return true;
+    });
+    const isFriendPicked = (boost) => {
+      if (mySlot == null || !Array.isArray(boost.pickedBySlots)) return false;
+      return boost.pickedBySlots.some((s) => s !== mySlot);
+    };
     syncEntityMap(
       state.network.boostEls,
       visibleBoosts,
       (boost) => {
         const el = document.createElement("div");
-        el.className = `boost boost--${boost.kind}`;
+        el.className = `boost boost--${boost.kind}${isFriendPicked(boost) ? ' is-friend-picked' : ''}`;
         el.textContent = BOOST_META[boost.kind]?.label || "";
         worldEl.appendChild(el);
         return { el, id: boost.id, worldX: boost.x, worldY: boost.y, size: boost.size, kind: boost.kind };
       },
       (entry, boost) => {
         const el = entry.el;
-        el.className = `boost boost--${boost.kind}`;
+        el.className = `boost boost--${boost.kind}${isFriendPicked(boost) ? ' is-friend-picked' : ''}`;
         el.textContent = BOOST_META[boost.kind]?.label || "";
         entry.id = boost.id;
         entry.worldX = boost.x;
@@ -1278,6 +1300,7 @@ function updateNetworkTargets(snapshot) {
   );
 
   updateHudFromSnapshot(snapshot.players || []);
+  updateRivalGauge(snapshot);
 
   if (!snapshot.running && snapshot.waitingFor > 0) {
     setStatus(`친구 접속 대기 중... ${snapshot.expectedPlayers - snapshot.waitingFor}/${snapshot.expectedPlayers} 준비`);
@@ -1291,6 +1314,40 @@ function updateNetworkTargets(snapshot) {
       cb();
     }
   }
+}
+
+/* 2P 라이벌 게이지 갱신. 1P/관전/snapshot 부족 시 숨김.
+ * 마커 위치 = bestHeight / max(둘 다, 최소 10m) 비율. 죽으면 회색.
+ * 게이지 자체는 절대 위치값을 만들지 않고 비례만 보여줘서 "30m 뒤처짐!"
+ * 같은 절망감 대신 "쟤 어디 있나" 정도의 가벼운 시각 신호만 준다.
+ */
+function updateRivalGauge(snapshot) {
+  if (!rivalGaugeEl || !isRoomSession) return;
+  const mySlot = state.network.mySlot;
+  const players = Array.isArray(snapshot?.players) ? snapshot.players : [];
+  if (mySlot == null || state.isSpectator || players.length < 2) {
+    rivalGaugeEl.classList.add("is-hidden");
+    return;
+  }
+  const me = players.find((p) => p.slot === mySlot);
+  const rival = players.find((p) => p.slot !== mySlot);
+  if (!me || !rival) {
+    rivalGaugeEl.classList.add("is-hidden");
+    return;
+  }
+  rivalGaugeEl.classList.remove("is-hidden");
+
+  const myH = Number.isFinite(me.bestHeight) ? Math.max(0, me.bestHeight) : 0;
+  const rivalH = Number.isFinite(rival.bestHeight) ? Math.max(0, rival.bestHeight) : 0;
+  // 최소 10m 까지는 빈 게이지로 보이게 — 시작 직후 둘 다 0 일 때 마커 겹침 방지.
+  const maxH = Math.max(myH, rivalH, 10);
+  const myPct = (myH / maxH) * 100;
+  const rivalPct = (rivalH / maxH) * 100;
+
+  rivalMarkerMeEl.style.bottom = `${myPct}%`;
+  rivalMarkerRivalEl.style.bottom = `${rivalPct}%`;
+  rivalMarkerMeEl.classList.toggle("is-dead", me.alive === false);
+  rivalMarkerRivalEl.classList.toggle("is-dead", rival.alive === false);
 }
 
 function applyJumpInitFrame(frame) {
@@ -1617,6 +1674,7 @@ function handleNetworkMessage(msg) {
       break;
     case "jump_joined":
       state.network.joined = true;
+      state.network.mySlot = Number.isFinite(msg.slot) ? msg.slot : null;
       state.isSpectator = msg.role === "spectator";
       if (state.isSpectator) {
         stopNetworkInputLoop();
