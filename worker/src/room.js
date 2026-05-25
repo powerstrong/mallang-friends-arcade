@@ -1994,6 +1994,9 @@ export class GameRoom {
 
   _initSseukGame(roster) {
     if (this.sseukGame) return;
+    // 캐릭터는 랜덤 셔플 배정 (첫 5명 중복 없음). 클라가 보내준 characterId는
+    // 이번 게임에서는 무시 — UI에서도 선택을 제공하지 않는다.
+    const shuffled = [...SS_VALID_CHARS].sort(() => Math.random() - 0.5);
     this.sseukGame = {
       phase: 'waiting',
       currentRoundIdx: 0,
@@ -2002,7 +2005,7 @@ export class GameRoom {
         id: p.id,
         name: p.name,
         colorIndex: i % COLORS.length,
-        characterId: 'mochi-rabbit',
+        characterId: shuffled[i % shuffled.length],
         connected: false,
         ready: false,
         score: 0,
@@ -2042,7 +2045,7 @@ export class GameRoom {
     const ssPlayer = this.sseukGame.players.find(p => p.id === msg.playerId);
     if (ssPlayer) {
       ssPlayer.connected = true;
-      if (SS_VALID_CHARS.includes(msg.characterId)) ssPlayer.characterId = msg.characterId;
+      // 랜덤 배정 정책 — 클라의 characterId는 무시 (서버 측 shuffle 결과 유지).
     }
 
     ws.serializeAttachment({ ...rosterPlayer, role: 'game', gameId: 'sseuk-sseuk', isSpectator: false });
@@ -2156,6 +2159,12 @@ export class GameRoom {
       type: 'SS_VOLUNTEER_UPDATE',
       volunteers: r.volunteers,
     }, 'sseuk-sseuk');
+
+    // 연결된 전원이 손들었으면 8초 안 기다리고 즉시 추첨.
+    const connected = this.sseukGame.players.filter(p => p.connected);
+    if (connected.length > 0 && connected.every(p => r.volunteers.includes(p.id))) {
+      this._resolveDrawer().catch(() => {});
+    }
   }
 
   async _resolveDrawer() {
@@ -2284,17 +2293,17 @@ export class GameRoom {
       scores: Object.fromEntries(this.sseukGame.players.map(p => [p.id, p.score])),
     }, 'sseuk-sseuk');
 
-    // 다음 라운드 또는 게임 종료.
+    // 다음 라운드 또는 게임 종료. disconnect/insufficient-players 사유는
+    // 사용자가 메시지를 읽을 시간을 더 주기 위해 길게.
+    const pauseMs = (reason === 'drawer-disconnect' || reason === 'insufficient-players') ? 2500 : 1500;
     this.sseukGame.currentRoundIdx += 1;
     if (this.sseukGame.currentRoundIdx >= this.sseukGame.totalRounds) {
-      // 라운드 결과 화면 시간을 잠시 두고 종료.
-      await new Promise(rs => setTimeout(rs, 1500));
+      await new Promise(rs => setTimeout(rs, pauseMs));
       if (!this.sseukGame) return;
       await this._finishSseukGame();
       return;
     }
-    // 다음 라운드 자동 진행 (1.5s 정도 여유).
-    await new Promise(rs => setTimeout(rs, 1500));
+    await new Promise(rs => setTimeout(rs, pauseMs));
     if (!this.sseukGame) return;
     this._startSseukRound();
   }

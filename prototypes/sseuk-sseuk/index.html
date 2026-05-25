@@ -18,27 +18,12 @@
           <h1 id="setupTitle">말랑프렌즈 슥슥</h1>
           <p class="setup-copy">캐릭터를 고르고 Ready를 누르면 시작해요. 한 명이 그리고 나머지가 맞혀요!</p>
 
-          <div class="character-grid" aria-label="캐릭터 선택">
-            <button class="character-card is-selected" type="button" data-character="mochi-rabbit">
-              <img src="/prototypes/jump-climber/assets/토끼 메인 이미지.png" alt="모찌 토끼" class="character-card__img" />
-              <strong>모찌 토끼</strong>
-            </button>
-            <button class="character-card" type="button" data-character="pudding-hamster">
-              <img src="/prototypes/jump-climber/assets/햄스터 메인 이미지.png" alt="푸딩 햄스터" class="character-card__img" />
-              <strong>푸딩 햄스터</strong>
-            </button>
-            <button class="character-card" type="button" data-character="peach-chick">
-              <img src="/prototypes/jump-climber/assets/병아리 메인 이미지.png" alt="피치 병아리" class="character-card__img" />
-              <strong>피치 병아리</strong>
-            </button>
-            <button class="character-card" type="button" data-character="latte-puppy">
-              <img src="/prototypes/jump-climber/assets/라떼 메인 이미지.png" alt="라떼 강아지" class="character-card__img" />
-              <strong>라떼 강아지</strong>
-            </button>
-            <button class="character-card" type="button" data-character="mint-kitten">
-              <img src="/prototypes/jump-climber/assets/고양이 메인이미지.png" alt="민트 고양이" class="character-card__img" />
-              <strong>민트 고양이</strong>
-            </button>
+          <div id="myCharacterCard" class="my-character" aria-live="polite">
+            <img id="myCharacterImg" class="my-character__img" src="" alt="" />
+            <div class="my-character__info">
+              <p class="eyebrow">랜덤 배정</p>
+              <strong id="myCharacterName">…</strong>
+            </div>
           </div>
 
           <div id="bootStatus" class="boot-status" aria-live="polite">연결 대기 중…</div>
@@ -53,6 +38,7 @@
       <!-- Game: 라운드 / 출제자 모집 / 그리는 중 -->
       <section id="gameScreen" class="screen screen--game">
         <header class="game-header">
+          <button id="gameExitBtn" type="button" class="game-exit-btn" aria-label="방으로 돌아가기">← 나가기</button>
           <span id="roundProgress" class="round-progress"></span>
           <div id="timerDisplay" class="timer-display"></div>
         </header>

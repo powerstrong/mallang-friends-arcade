@@ -13,12 +13,19 @@ const CHAR_IMAGES = {
   'latte-puppy':     '/prototypes/jump-climber/assets/라떼 메인 이미지.png',
   'mint-kitten':     '/prototypes/jump-climber/assets/고양이 메인이미지.png',
 };
+const CHAR_LABELS = {
+  'mochi-rabbit':    '모찌 토끼',
+  'pudding-hamster': '푸딩 햄스터',
+  'peach-chick':     '피치 병아리',
+  'latte-puppy':     '라떼 강아지',
+  'mint-kitten':     '민트 고양이',
+};
 
 const { code, name, playerId, isMultiplayer } = window.GameBoot;
 const WORKER_URL = window.WORKER_URL;
 
 let ws = null;
-let selectedChar = 'mochi-rabbit';
+let myCharacterId = null;   // 서버가 SS_JOINED에서 알려줌
 let isReady = false;
 let players = [];
 let phase = 'waiting';
@@ -37,6 +44,9 @@ const resultScreen     = document.getElementById('resultScreen');
 const bootStatus       = document.getElementById('bootStatus');
 const waitingPlayers   = document.getElementById('waitingPlayers');
 const readyBtn         = document.getElementById('readyBtn');
+const myCharacterImg   = document.getElementById('myCharacterImg');
+const myCharacterName  = document.getElementById('myCharacterName');
+const gameExitBtn      = document.getElementById('gameExitBtn');
 const roundProgress    = document.getElementById('roundProgress');
 const timerDisplay     = document.getElementById('timerDisplay');
 const countdownOverlay = document.getElementById('countdownOverlay');
@@ -86,15 +96,13 @@ function renderRoster() {
   }
 }
 
-/* ── 캐릭터 선택 ────────────────────────────────────── */
-document.querySelectorAll('.character-card').forEach(card => {
-  card.addEventListener('click', () => {
-    document.querySelectorAll('.character-card').forEach(c => c.classList.remove('is-selected'));
-    card.classList.add('is-selected');
-    selectedChar = card.dataset.character;
-    sendIfOpen({ type: 'SS_SELECT_CHARACTER', characterId: selectedChar });
-  });
-});
+/* ── 본인 캐릭터 표시 (서버에서 랜덤 배정) ─────────── */
+function applyMyCharacter() {
+  if (!myCharacterId) return;
+  myCharacterImg.src = CHAR_IMAGES[myCharacterId] || '';
+  myCharacterImg.alt = CHAR_LABELS[myCharacterId] || '';
+  myCharacterName.textContent = CHAR_LABELS[myCharacterId] || myCharacterId;
+}
 
 /* ── Ready ──────────────────────────────────────────── */
 readyBtn.addEventListener('click', () => {
@@ -111,9 +119,15 @@ volunteerBtn.addEventListener('click', () => {
   sendIfOpen({ type: 'SS_VOLUNTEER' });
 });
 
-/* ── Exit ──────────────────────────────────────────── */
-exitBtn?.addEventListener('click', () => {
+/* ── Exit (결과 화면 + 게임 중 헤더 둘 다) ─────────── */
+function leaveToRoom() {
+  // 깔끔하게 끊고 로비로.
+  try { ws?.close(); } catch {}
   window.location.href = `/?code=${encodeURIComponent(code || '')}`;
+}
+exitBtn?.addEventListener('click', leaveToRoom);
+gameExitBtn?.addEventListener('click', () => {
+  if (confirm('정말 방으로 돌아갈까요? 진행 중인 라운드에서 빠지게 됩니다.')) leaveToRoom();
 });
 
 /* ── Timer ─────────────────────────────────────────── */
@@ -249,7 +263,7 @@ function connect() {
       type: 'join_game',
       gameId: 'sseuk-sseuk',
       playerId,
-      characterId: selectedChar,
+      // characterId는 서버가 랜덤 배정 — 클라가 보내도 무시됨.
     }));
   });
 
@@ -271,6 +285,11 @@ function handleMessage(msg) {
       phase = msg.phase;
       currentRoundIdx = msg.currentRoundIdx || 0;
       totalRounds = msg.totalRounds || 5;
+      // 본인 캐릭터(서버 랜덤 배정) 반영.
+      {
+        const me = players.find(p => p.id === playerId);
+        if (me) { myCharacterId = me.characterId; applyMyCharacter(); }
+      }
       renderRoster();
       // 중간 합류 시 라운드 상태 즉시 복원.
       if (msg.round && phase !== 'waiting') {
@@ -280,6 +299,11 @@ function handleMessage(msg) {
       break;
     case 'SS_PLAYER_UPDATE':
       players = msg.players;
+      // SS_PLAYER_UPDATE에는 항상 최신 배정 결과가 들어 있음.
+      {
+        const me = players.find(p => p.id === playerId);
+        if (me && me.characterId !== myCharacterId) { myCharacterId = me.characterId; applyMyCharacter(); }
+      }
       renderRoster();
       break;
     case 'SS_COUNTDOWN':
