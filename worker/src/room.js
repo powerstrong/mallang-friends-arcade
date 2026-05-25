@@ -2354,23 +2354,30 @@ export class GameRoom {
     }, SS_HINT_LENGTH_AT_MS);
 
     // 40s: 한 글자 공개 (랜덤 위치).
-    const t2 = setTimeout(() => {
-      if (!this.sseukGame) return;
-      if (this.sseukGame.tokens.round !== capturedRoundToken) return;
-      if (this.sseukGame.tokens.hint !== hintToken) return;
-      if (this.sseukGame.phase !== 'drawing') return;
-      const syllables = [...r.keyword];
-      const idx = Math.floor(Math.random() * syllables.length);
-      r.hintRevealed.letterIdx = idx;
-      this._broadcastGame({
-        type: 'SS_HINT_REVEAL',
-        kind: 'letter',
-        position: idx,
-        value: syllables[idx],
-      }, 'sseuk-sseuk');
-    }, SS_HINT_LETTER_AT_MS);
-
-    this.sseukGame.timers.hint.push(t1, t2);
+    // 1자 키워드는 letter 힌트가 곧 정답 그대로라서 letter 힌트를 보내지 않는다.
+    // 1자 단어는 그림으로만 풀어야 하는 도전이 되도록 한다 (length 힌트로 1자라는
+    // 사실만 공개됨).
+    const syllableCount = [...r.keyword].length;
+    if (syllableCount > 1) {
+      const t2 = setTimeout(() => {
+        if (!this.sseukGame) return;
+        if (this.sseukGame.tokens.round !== capturedRoundToken) return;
+        if (this.sseukGame.tokens.hint !== hintToken) return;
+        if (this.sseukGame.phase !== 'drawing') return;
+        const syllables = [...r.keyword];
+        const idx = Math.floor(Math.random() * syllables.length);
+        r.hintRevealed.letterIdx = idx;
+        this._broadcastGame({
+          type: 'SS_HINT_REVEAL',
+          kind: 'letter',
+          position: idx,
+          value: syllables[idx],
+        }, 'sseuk-sseuk');
+      }, SS_HINT_LETTER_AT_MS);
+      this.sseukGame.timers.hint.push(t1, t2);
+    } else {
+      this.sseukGame.timers.hint.push(t1);
+    }
   }
 
   // ── Phase D: 정답 / 근접 / 채팅 파이프라인 ──────────────────
