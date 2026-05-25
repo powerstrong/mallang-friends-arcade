@@ -183,6 +183,90 @@ h2 { margin: 4px 0 8px; font-size: 20px; color: #064e3b; }
 .timer-display { font-size: 20px; font-weight: 700; color: #064e3b; font-variant-numeric: tabular-nums; }
 .timer-display.is-bonus { color: #d97706; }
 
+/* 헤더 우측 묶음 — mute 토글 + 타이머. */
+.header-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.mute-btn {
+  font-size: 16px;
+  padding: 2px 6px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  line-height: 1;
+  opacity: 0.7;
+  transition: opacity 0.15s, transform 0.1s;
+}
+.mute-btn:hover { opacity: 1; }
+.mute-btn:active { transform: scale(0.92); }
+.mute-btn:focus-visible {
+  outline: 2px solid #10b981;
+  outline-offset: 2px;
+  border-radius: 6px;
+  opacity: 1;
+}
+.mute-btn.is-muted { opacity: 0.45; }
+.mute-btn[aria-pressed="true"] { opacity: 0.45; }
+
+/* ── 슥슥 일러스트 (codex imagegen + white→alpha 후처리) ──── */
+.hero-draw {
+  display: block;
+  margin: 4px auto 8px;
+  width: clamp(140px, 36vw, 200px);
+  height: auto;
+  pointer-events: none;
+  user-select: none;
+}
+.hero-draw--mini { width: clamp(110px, 28vw, 150px); margin-bottom: 4px; }
+.hero-celebrate {
+  display: block;
+  margin: 0 auto 6px;
+  width: clamp(160px, 42vw, 220px);
+  height: auto;
+  pointer-events: none;
+  user-select: none;
+}
+.hero-trophy {
+  display: block;
+  margin: 6px auto 10px;
+  width: clamp(160px, 44vw, 240px);
+  height: auto;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* 가벼운 부유 애니메이션 — 위아래로 천천히 흔들. */
+@keyframes float-soft {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-6px); }
+}
+.float-anim { animation: float-soft 3.2s ease-in-out infinite; }
+
+/* 정답 폭죽 — 살짝 튀어오르며 반짝. is-hidden 해제 시점에 1회 재생. */
+@keyframes pop-bounce {
+  0%   { transform: scale(0.4) rotate(-8deg); opacity: 0; }
+  60%  { transform: scale(1.12) rotate(4deg); opacity: 1; }
+  80%  { transform: scale(0.96) rotate(-2deg); }
+  100% { transform: scale(1) rotate(0deg); opacity: 1; }
+}
+.pop-anim { animation: pop-bounce 0.65s cubic-bezier(.34, 1.56, .64, 1) both; }
+
+/* 트로피 등장 — 작은 스핀 + 줌인. */
+@keyframes spin-in {
+  0%   { transform: scale(0.3) rotate(-180deg); opacity: 0; }
+  60%  { transform: scale(1.08) rotate(8deg); opacity: 1; }
+  100% { transform: scale(1) rotate(0deg); opacity: 1; }
+}
+.spin-in-anim { animation: spin-in 0.9s cubic-bezier(.34, 1.56, .64, 1) both; }
+
+/* 모션 감소 사용자 설정 존중 — 애니메이션 비활성. */
+@media (prefers-reduced-motion: reduce) {
+  .float-anim, .pop-anim, .spin-in-anim { animation: none; }
+}
+
 .countdown-overlay {
   position: fixed;
   inset: 0;

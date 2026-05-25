@@ -16,6 +16,7 @@
         <section class="panel setup-panel" aria-labelledby="setupTitle">
           <p class="eyebrow">MALLANG SSEUK-SSEUK</p>
           <h1 id="setupTitle">말랑프렌즈 슥슥</h1>
+          <img class="hero-draw float-anim" src="./assets/hero_draw.webp" alt="" aria-hidden="true" />
           <p class="setup-copy">캐릭터를 고르고 Ready를 누르면 시작해요. 한 명이 그리고 나머지가 맞혀요!</p>
 
           <div id="myCharacterCard" class="my-character" aria-live="polite">
@@ -43,7 +44,10 @@
             <span id="roundProgress" class="round-progress"></span>
             <span id="roundDifficulty" class="round-difficulty" aria-live="polite"></span>
           </div>
-          <div id="timerDisplay" class="timer-display"></div>
+          <div class="header-meta">
+            <button id="muteBtn" type="button" class="mute-btn" aria-label="음소거 토글" aria-pressed="false" title="음소거">🔊</button>
+            <div id="timerDisplay" class="timer-display"></div>
+          </div>
         </header>
 
         <!-- Countdown overlay -->
@@ -56,6 +60,7 @@
         <section id="volunteerPanel" class="panel volunteer-panel is-hidden">
           <p class="eyebrow">출제자 모집 중</p>
           <h2>이번 라운드, 누가 그릴래요?</h2>
+          <img class="hero-draw hero-draw--mini float-anim" src="./assets/hero_draw.webp" alt="" aria-hidden="true" loading="lazy" decoding="async" />
           <p class="volunteer-copy">그리고 싶은 사람은 손 들어요!</p>
           <button id="volunteerBtn" type="button" class="primary-action">✋ 그리고 싶어요!</button>
           <div id="volunteerList" class="volunteer-list" aria-live="polite"></div>
@@ -107,6 +112,7 @@
         <!-- Round result -->
         <section id="roundEndPanel" class="panel round-end-panel is-hidden" aria-live="polite">
           <p class="eyebrow">라운드 종료</p>
+          <img id="celebrateImg" class="hero-celebrate pop-anim is-hidden" src="./assets/hero_celebrate.webp" alt="" aria-hidden="true" loading="lazy" decoding="async" />
           <h2 id="roundEndKeyword"></h2>
           <p id="roundEndReason" class="round-end-reason"></p>
           <!-- 정답 리플레이: SS_ROUND_END 도착 시 클라이언트 측 allStrokes 를
@@ -124,6 +130,7 @@
       <section id="resultScreen" class="screen screen--result">
         <section class="panel rankings-panel" aria-labelledby="rankingsTitle">
           <p class="eyebrow">최종 결과</p>
+          <img class="hero-trophy spin-in-anim" src="./assets/hero_trophy.webp" alt="" aria-hidden="true" loading="lazy" decoding="async" />
           <h2 id="rankingsTitle">슥슥 한 판 끝!</h2>
           <ol id="rankingsList" class="rankings-list"></ol>
           <div class="result-actions">
@@ -137,6 +144,7 @@
     <script src="/games/registry.js"></script>
     <script src="/shared/bootstrap.js"></script>
     <script src="/shared/config.js"></script>
+    <script src="./audio.js"></script>
     <script src="./game.js"></script>
   </body>
 </html>

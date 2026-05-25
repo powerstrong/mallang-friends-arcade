@@ -80,6 +80,25 @@ const roundEndDeltas   = document.getElementById('roundEndDeltas');
 const replayWrap       = document.getElementById('replayWrap');
 const replayCanvas     = document.getElementById('replayCanvas');
 const replayCtx        = replayCanvas ? replayCanvas.getContext('2d') : null;
+const celebrateImg     = document.getElementById('celebrateImg');
+const muteBtn          = document.getElementById('muteBtn');
+
+/* ── Audio (window.SseukAudio from audio.js) ──────────── */
+const Audio = window.SseukAudio || { unlockAudio: () => {}, setMuted: () => {}, isMuted: () => false, startBgm: () => {}, stopBgm: () => {}, SFX: { correct: () => {}, countdownTick: () => {}, countdownGo: () => {}, roundEnd: () => {}, hint: () => {}, click: () => {}, gameEnd: () => {} } };
+function applyMuteBtn() {
+  if (!muteBtn) return;
+  const m = Audio.isMuted();
+  muteBtn.textContent = m ? '🔇' : '🔊';
+  muteBtn.classList.toggle('is-muted', m);
+  muteBtn.setAttribute('aria-pressed', m ? 'true' : 'false');
+  muteBtn.setAttribute('aria-label', m ? '음소거 해제' : '음소거');
+}
+applyMuteBtn();
+muteBtn?.addEventListener('click', () => {
+  Audio.unlockAudio();
+  Audio.setMuted(!Audio.isMuted());
+  applyMuteBtn();
+});
 const rankingsList     = document.getElementById('rankingsList');
 const exitBtn          = document.getElementById('exitBtn');
 
@@ -158,18 +177,24 @@ function applyMyCharacter() {
 
 /* ── Ready / Volunteer / Exit ───────────────────────── */
 readyBtn.addEventListener('click', () => {
+  // 모바일 AudioContext 는 사용자 제스처에서 resume 해야 동작 — Ready 가 첫 기회.
+  Audio.unlockAudio();
+  Audio.SFX.click();
   isReady = !isReady;
   readyBtn.textContent = isReady ? '취소' : 'Ready!';
   readyBtn.classList.toggle('is-ready', isReady);
   sendIfOpen({ type: 'SS_READY', ready: isReady });
 });
 volunteerBtn.addEventListener('click', () => {
+  Audio.unlockAudio();
+  Audio.SFX.click();
   volunteerBtn.disabled = true;
   volunteerBtn.textContent = '✋ 신청 완료';
   sendIfOpen({ type: 'SS_VOLUNTEER' });
 });
 function leaveToRoom() {
   try { ws?.close(); } catch {}
+  Audio.stopBgm();
   // 광장에서 입장한 세션이면 광장으로 바로 복귀 (닉네임·캐릭터는 광장이 이미
   // localStorage 에 저장해두므로 from=game 으로 진입하면 picker 를 건너뛰고
   // 자동 입장). 직접 링크 등 그 외는 브랜드 랜딩으로 fallback.
@@ -600,6 +625,18 @@ function renderRoundEnd(msg) {
   }[msg.reason] || '라운드 종료';
   roundEndKeyword.textContent = msg.keyword ? `정답: ${msg.keyword}` : '정답 없음';
   roundEndReason.textContent = reasonText;
+  // 다 맞춘 경우에만 폭죽 일러스트 한 번 튀어오르듯 표시. 같은 라운드 결과
+  // 패널이 재사용되므로 is-hidden 토글 + 애니메이션 재시작 트릭 사용.
+  if (celebrateImg) {
+    if (msg.reason === 'all-correct') {
+      celebrateImg.classList.remove('is-hidden');
+      celebrateImg.classList.remove('pop-anim');
+      void celebrateImg.offsetWidth;  // reflow → 애니메이션 재시작
+      celebrateImg.classList.add('pop-anim');
+    } else {
+      celebrateImg.classList.add('is-hidden');
+    }
+  }
   // 정답 그림 리플레이 재생 (그릴 게 없으면 함수가 wrap을 숨김).
   playReplay(allStrokes);
   roundEndDeltas.innerHTML = '';
@@ -704,7 +741,11 @@ function handleMessage(msg) {
       showScreen('game');
       countdownOverlay.classList.remove('is-hidden');
       countdownNumber.textContent = String(msg.seconds);
-      if (msg.seconds <= 1) setTimeout(() => countdownOverlay.classList.add('is-hidden'), 800);
+      Audio.SFX.countdownTick();
+      if (msg.seconds <= 1) {
+        Audio.startBgm();
+        setTimeout(() => countdownOverlay.classList.add('is-hidden'), 800);
+      }
       break;
     case 'SS_VOLUNTEER_OPEN':
       showScreen('game');
@@ -751,6 +792,7 @@ function handleMessage(msg) {
       break;
     case 'SS_ROUND_START':
       phase = 'drawing';
+      Audio.SFX.countdownGo();
       // 채팅창 초기화 (라운드별).
       chatMessages.innerHTML = '';
       if (currentRound) {
@@ -769,6 +811,7 @@ function handleMessage(msg) {
       if (!amIDrawer) applyIncomingStroke(msg);
       break;
     case 'SS_HINT_REVEAL':
+      Audio.SFX.hint();
       if (msg.kind === 'length') revealLengthHint(msg.value);
       else if (msg.kind === 'letter') revealLetterHint(msg.position, msg.value);
       break;
@@ -789,6 +832,7 @@ function handleMessage(msg) {
       break;
     }
     case 'SS_CORRECT':
+      Audio.SFX.correct();
       if (msg.playerId === playerId) {
         iGuessedCorrect = true;
         // 본인이 맞히면 입력은 그대로 둬도 됨 (사이드 채널로 전송됨).
@@ -805,6 +849,7 @@ function handleMessage(msg) {
       break;
     case 'SS_ROUND_END':
       phase = 'roundEnd';
+      Audio.SFX.roundEnd();
       stopTimer();
       for (const p of players) {
         if (msg.scores[p.id] !== undefined) p.score = msg.scores[p.id];
@@ -812,6 +857,8 @@ function handleMessage(msg) {
       renderRoundEnd(msg);
       break;
     case 'SS_GAME_END':
+      Audio.stopBgm();
+      Audio.SFX.gameEnd();
       stopTimer();
       renderGameEnd(msg.rankings);
       break;
