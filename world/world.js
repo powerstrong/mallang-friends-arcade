@@ -325,25 +325,43 @@
   // 가 깜빡이며 보였던 문제 해결. WS 가 실패하면 showJoinError 가 picker 를
   // 복원하므로 빈 화면에 갇히는 케이스도 없음.
   const autoEnterSplash = document.getElementById('auto-enter-splash');
-  // 자동입장 splash 가 무한 로딩에 갇히지 않게 timeout fallback. 7초 안에
-  // welcome 이 도착하지 않으면 (서버가 ALREADY_JOINED 같은 error 를 안 보내고
-  // 그냥 멈춘 케이스 포함) splash 를 내리고 picker + 재시도 안내로 전환.
+  // 자동입장 splash 가 무한 로딩에 갇히지 않게 timeout fallback.
+  // 1차 8초 안에 welcome 안 오면 ws 끊고 한 번 더 시도 (cold start / 첫 connection
+  // race 회복). 2차도 12초 더 안 오면 showJoinError 로 picker 복구.
   let autoEnterFallbackTimer = null;
+  let autoEnterRetried = false;
+  const AUTO_ENTER_FIRST_TIMEOUT_MS  = 8000;
+  const AUTO_ENTER_RETRY_TIMEOUT_MS  = 12000;
   function showAutoEnterSplash() {
     if (!autoEnterSplash) return;
     autoEnterSplash.classList.remove('hidden');
     joinPanel.classList.add('hidden');
+    armAutoEnterTimeout(AUTO_ENTER_FIRST_TIMEOUT_MS);
+  }
+  function armAutoEnterTimeout(ms) {
     if (autoEnterFallbackTimer) clearTimeout(autoEnterFallbackTimer);
     autoEnterFallbackTimer = setTimeout(() => {
       autoEnterFallbackTimer = null;
-      // me 가 채워졌으면 이미 정상 입장 완료. welcome 가 안 왔으면 강제 회복.
-      if (me) return;
+      if (me) return;                       // 이미 입장 성공.
+      if (!autoEnterRetried) {
+        // 1차 timeout — 한 번 더 시도. WS 강제 종료 후 새로 openSocket.
+        autoEnterRetried = true;
+        console.warn('[world] auto-enter 1st timeout, retrying...');
+        try { if (ws) ws.close(); } catch { /* ignore */ }
+        ws = null;
+        openSocket();
+        armAutoEnterTimeout(AUTO_ENTER_RETRY_TIMEOUT_MS);
+        return;
+      }
+      // 2차도 실패 — picker 로 복원.
+      console.warn('[world] auto-enter 2nd timeout, falling back to picker');
       try { if (ws) ws.close(); } catch { /* ignore */ }
       showJoinError('광장 입장이 늦어집니다. 다시 시도해 주세요.');
-    }, 7000);
+    }, ms);
   }
   function hideAutoEnterSplash() {
     if (autoEnterFallbackTimer) { clearTimeout(autoEnterFallbackTimer); autoEnterFallbackTimer = null; }
+    autoEnterRetried = false;
     if (autoEnterSplash) autoEnterSplash.classList.add('hidden');
   }
   (function maybeAutoRejoin() {
@@ -462,21 +480,39 @@
   function openSocket() {
     const base = (window.WORKER_URL || window.location.origin).replace(/^http/, 'ws');
     const url = `${base}/api/world/${encodeURIComponent(LOUNGE_ID)}`;
+    let socket;
 
     try {
-      ws = new WebSocket(url);
+      socket = new WebSocket(url);
+      ws = socket;
     } catch (err) {
       if (worldStarted) scheduleReconnect();
       else showJoinError(`연결 실패: ${err.message}`);
       return;
     }
 
-    ws.addEventListener('open', () => {
+    socket.addEventListener('open', () => {
+      if (socket !== ws) return;
+      console.log('[world] ws open, sending join_world', joinParams);
       send({ t: 'join_world', d: joinParams });
     });
-    ws.addEventListener('message', onMessage);
-    ws.addEventListener('close', onClose);
-    ws.addEventListener('error', () => {
+    socket.addEventListener('message', (ev) => {
+      if (socket !== ws) return;
+      // 디버그용: 첫 몇 개 메시지만 로깅. welcome 안 오면 콘솔에서 무엇이
+      // 왔는지(혹은 안 왔는지) 확인 가능.
+      if (!worldStarted) {
+        try { console.log('[world] ws message (pre-welcome):', ev.data); } catch {}
+      }
+      onMessage(ev);
+    });
+    socket.addEventListener('close', (ev) => {
+      if (socket !== ws) return;
+      console.log('[world] ws close', { code: ev.code, reason: ev.reason, wasClean: ev.wasClean, worldStarted });
+      onClose();
+    });
+    socket.addEventListener('error', (ev) => {
+      if (socket !== ws) return;
+      console.warn('[world] ws error event', ev);
       // The `close` event fires right after and drives reconnect; only the
       // pre-join attempt needs to surface an error to the join panel.
       if (!worldStarted) showJoinError('연결 오류가 발생했습니다.');
@@ -1109,6 +1145,7 @@
   }
 
   function onClose() {
+    ws = null;
     setConnStatus(false);
     stopHeartbeat();
     // Tear down any open match proposal so its card + countdown don't linger.

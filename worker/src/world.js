@@ -217,24 +217,35 @@ export class WorldChannel {
     const d = envelope.d ?? {};
     const attach = ws.deserializeAttachment() || {};
 
-    switch (t) {
-      case 'join_world':
-        return this._handleJoin(ws, attach, d);
-      case 'move':
-        return this._handleMove(ws, attach, d);
-      case 'chat':
-        return this._handleChat(ws, attach, d);
-      case 'reaction':
-        return this._handleReaction(ws, attach, d);
-      case 'match_start':
-        return this._handleMatchStart(ws, attach, d);
-      case 'match_leave':
-        return this._handleMatchLeave(ws, attach, d);
-      case 'pong':
-        ws.serializeAttachment({ ...attach, lastHeartbeat: Date.now() });
-        return;
-      default:
-        return this._sendError(ws, 'UNKNOWN_TYPE', `unknown message type: ${String(t)}`);
+    // 전역 try/catch — 핸들러 안에서 예외가 throw 되면 async 가 silently
+    // 삼켜져 클라가 welcome/error 둘 다 못 받고 무한 로딩에 빠진다. 어떤
+    // 경우든 SERVER_ERROR 로 응답해 클라가 picker 로 복원하도록 보장.
+    try {
+      switch (t) {
+        case 'join_world':
+          return await this._handleJoin(ws, attach, d);
+        case 'move':
+          return await this._handleMove(ws, attach, d);
+        case 'chat':
+          return await this._handleChat(ws, attach, d);
+        case 'reaction':
+          return await this._handleReaction(ws, attach, d);
+        case 'match_start':
+          return await this._handleMatchStart(ws, attach, d);
+        case 'match_leave':
+          return await this._handleMatchLeave(ws, attach, d);
+        case 'pong':
+          ws.serializeAttachment({ ...attach, lastHeartbeat: Date.now() });
+          return;
+        default:
+          return this._sendError(ws, 'UNKNOWN_TYPE', `unknown message type: ${String(t)}`);
+      }
+    } catch (err) {
+      // Cloudflare worker logs (wrangler tail) 에서 추적 가능.
+      console.error('[world] handler threw for type', t, err && err.stack ? err.stack : err);
+      try {
+        this._sendError(ws, 'SERVER_ERROR', '서버에서 처리 중 오류가 발생했어요.');
+      } catch { /* socket closed — nothing to do */ }
     }
   }
 
