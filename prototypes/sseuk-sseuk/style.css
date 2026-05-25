@@ -184,8 +184,144 @@ h2 { margin: 4px 0 8px; font-size: 20px; color: #064e3b; }
 .round-difficulty.is-easy   { background: #ecfdf5; color: #047857; border-color: #6ee7b7; }
 .round-difficulty.is-medium { background: #fef3c7; color: #92400e; border-color: #fbbf24; }
 .round-difficulty.is-hard   { background: #fee2e2; color: #b91c1c; border-color: #fca5a5; }
-.timer-display { font-size: 20px; font-weight: 700; color: #064e3b; font-variant-numeric: tabular-nums; }
+.timer-display { font-size: 20px; font-weight: 700; color: #064e3b; font-variant-numeric: tabular-nums; transition: color 0.18s; }
 .timer-display.is-bonus { color: #d97706; }
+.timer-display.is-warning { color: #b45309; }
+.timer-display.is-critical { color: #b91c1c; animation: timer-num-pulse 0.6s ease-in-out infinite; }
+@keyframes timer-num-pulse {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.12); }
+}
+
+/* 헤더 바로 아래 가로 진행바 — 라운드 남은 시간 시각화. */
+.timer-bar-track {
+  position: relative;
+  width: 100%;
+  height: 6px;
+  background: rgba(6, 78, 59, 0.10);
+  border-radius: 999px;
+  overflow: hidden;
+  margin: 2px 0 6px;
+}
+.timer-bar-track.is-hidden { display: none; }
+.timer-bar-fill {
+  display: block;
+  height: 100%;
+  width: 100%;
+  background: #10b981;
+  border-radius: inherit;
+  transform-origin: left center;
+  transition: transform 0.22s linear, background-color 0.3s;
+}
+.timer-bar-track.is-warning  .timer-bar-fill { background: #f59e0b; }
+.timer-bar-track.is-critical .timer-bar-fill { background: #ef4444; animation: timer-bar-pulse 0.6s ease-in-out infinite; }
+.timer-bar-track.is-bonus    .timer-bar-fill { background: #facc15; }
+@keyframes timer-bar-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.55; }
+}
+
+/* 보너스 phase 진입 알림 — 첫 정답 직후 700ms 중앙에 띄움. */
+.bonus-banner {
+  position: fixed;
+  top: 22%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0.6);
+  background: linear-gradient(135deg, #facc15, #fb923c);
+  color: #7c2d12;
+  font-weight: 900;
+  font-size: 28px;
+  padding: 14px 28px;
+  border-radius: 999px;
+  box-shadow: 0 12px 32px rgba(251, 146, 60, 0.45);
+  letter-spacing: 0.02em;
+  z-index: 90;
+  pointer-events: none;
+  opacity: 0;
+}
+.bonus-banner.is-hidden { display: none; }
+.bonus-banner.is-show {
+  animation: bonus-pop 1200ms cubic-bezier(.34, 1.56, .64, 1) forwards;
+}
+@keyframes bonus-pop {
+  0%   { transform: translate(-50%, -50%) scale(0.5); opacity: 0; }
+  20%  { transform: translate(-50%, -50%) scale(1.12); opacity: 1; }
+  80%  { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+  100% { transform: translate(-50%, -55%) scale(0.95); opacity: 0; }
+}
+
+/* 미니 리더보드 — drawer banner 아래 1줄 칩. SS_CORRECT 받으면 추가. */
+.mini-leaderboard {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  margin: 4px 0 8px;
+}
+.mini-leaderboard.is-hidden { display: none; }
+.mini-leaderboard__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px 2px 4px;
+  border-radius: 999px;
+  background: rgba(16, 185, 129, 0.10);
+  border: 1px solid rgba(16, 185, 129, 0.30);
+  color: #047857;
+  font-weight: 700;
+}
+.mini-leaderboard__chip.is-me {
+  background: #10b981;
+  color: #fff;
+  border-color: #047857;
+}
+.mini-leaderboard__rank {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  background: #fff;
+  color: #047857;
+  border-radius: 50%;
+  font-size: 10px;
+  font-weight: 800;
+}
+.mini-leaderboard__chip.is-me .mini-leaderboard__rank { background: #fef3c7; color: #92400e; }
+
+/* 정답 토스트 — chatBox 안에서 입력바 위에 잠시 띄움. */
+.correct-toast {
+  align-self: center;
+  margin-bottom: 6px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #047857;
+  background: #d1fae5;
+  border: 1px solid #6ee7b7;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.22);
+  opacity: 0;
+  transform: translateY(8px);
+}
+.correct-toast.is-hidden { display: none; }
+.correct-toast.is-show {
+  display: inline-block;
+  animation: toast-pop 1400ms cubic-bezier(.34, 1.56, .64, 1) forwards;
+}
+.correct-toast.is-me {
+  background: #10b981;
+  color: #fff;
+  border-color: #047857;
+}
+@keyframes toast-pop {
+  0%   { opacity: 0; transform: translateY(8px) scale(0.9); }
+  15%  { opacity: 1; transform: translateY(0) scale(1.05); }
+  75%  { opacity: 1; transform: translateY(0) scale(1); }
+  100% { opacity: 0; transform: translateY(-4px) scale(0.98); }
+}
 
 /* 헤더 우측 묶음 — mute 토글 + 타이머. */
 .header-meta {
@@ -374,19 +510,22 @@ h2 { margin: 4px 0 8px; font-size: 20px; color: #064e3b; }
 .keyword-slot {
   display: flex;
   justify-content: center;
-  gap: 6px;
-  margin-bottom: 12px;
-  font-size: 22px;
-  font-weight: 700;
+  gap: 10px;
+  margin: 4px 0 14px;
+  font-size: 28px;
+  font-weight: 800;
+  /* 추측자가 가장 먼저 봐야 하는 정보 — 헤더급 우선순위로 시인성 강화. */
 }
 .keyword-slot__cell {
-  min-width: 28px;
-  height: 36px;
-  border-bottom: 3px solid #6ee7b7;
+  min-width: 36px;
+  height: 48px;
+  padding: 0 6px;
+  border-bottom: 4px solid #6ee7b7;
   display: flex;
   align-items: center;
   justify-content: center;
   color: #064e3b;
+  letter-spacing: 0.04em;
 }
 .keyword-slot__cell.is-revealed { border-color: #10b981; }
 .keyword-slot__placeholder {

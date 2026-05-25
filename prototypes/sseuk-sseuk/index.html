@@ -53,6 +53,13 @@
             <div id="timerDisplay" class="timer-display"></div>
           </div>
         </header>
+        <!-- 헤더 아래 가로 진행바 — 시간 흐름 시각화 + 마지막 10초 펄스. -->
+        <div id="timerBarTrack" class="timer-bar-track is-hidden" aria-hidden="true">
+          <span id="timerBarFill" class="timer-bar-fill"></span>
+        </div>
+
+        <!-- 첫 정답으로 보너스 phase 진입할 때 1번 띄우는 중앙 배너. -->
+        <div id="bonusBanner" class="bonus-banner is-hidden" aria-live="assertive">+10초 BONUS!</div>
 
         <!-- Countdown overlay -->
         <div id="countdownOverlay" class="countdown-overlay is-hidden" aria-live="assertive">
@@ -80,6 +87,8 @@
         <!-- Drawing phase -->
         <section id="drawingPanel" class="panel drawing-panel is-hidden">
           <div id="drawerBanner" class="drawer-banner"></div>
+          <!-- 정답 누구·언제 맞혔는지 칩으로 1줄. SS_CORRECT 마다 업데이트, 라운드 시작 시 리셋. -->
+          <div id="miniLeaderboard" class="mini-leaderboard is-hidden" aria-live="polite"></div>
           <div id="keywordSlot" class="keyword-slot" aria-live="polite"></div>
           <div class="canvas-wrap">
             <canvas id="drawCanvas" width="1000" height="1000" aria-label="그림판"></canvas>
@@ -107,6 +116,8 @@
           <!-- 채팅 (drawing/bonus phase 동안만 표시) -->
           <div id="chatBox" class="chat-box">
             <div id="chatMessages" class="chat-messages" aria-live="polite"></div>
+            <!-- 정답 발생 시 1.2s 띄우는 상단 토스트 (입력바 바로 위). -->
+            <div id="correctToast" class="correct-toast is-hidden" aria-live="assertive"></div>
             <form id="chatForm" class="chat-input-bar" autocomplete="off">
               <input id="chatInput" type="text" class="chat-input-field" placeholder="추측을 입력…" maxlength="80" autocomplete="off" />
               <button id="chatSend" type="submit" class="chat-send-btn">보내기</button>

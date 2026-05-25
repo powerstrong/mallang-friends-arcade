@@ -37,6 +37,7 @@ let amIDrawer = false;
 let iGuessedCorrect = false;
 let timerInterval = null;
 let timerDeadlineAt = null;
+let timerTotalMs = 0;       // 진행바 fill 비율 계산용 — startTimer 의 durationMs 보관.
 let timerMode = 'normal';
 let lotteryInterval = null;
 let volunteerCountdownInterval = null;
@@ -54,6 +55,11 @@ const gameExitBtn      = document.getElementById('gameExitBtn');
 const roundProgress    = document.getElementById('roundProgress');
 const roundDifficulty  = document.getElementById('roundDifficulty');
 const timerDisplay     = document.getElementById('timerDisplay');
+const timerBarTrack    = document.getElementById('timerBarTrack');
+const timerBarFill     = document.getElementById('timerBarFill');
+const bonusBanner      = document.getElementById('bonusBanner');
+const miniLeaderboard  = document.getElementById('miniLeaderboard');
+const correctToast     = document.getElementById('correctToast');
 const countdownOverlay = document.getElementById('countdownOverlay');
 const countdownNumber  = document.getElementById('countdownNumber');
 const volunteerPanel   = document.getElementById('volunteerPanel');
@@ -171,6 +177,65 @@ function appendCharAvatar(parent, characterId, size, extraClass) {
   if (av) parent.appendChild(av);
 }
 
+/* ── UX 미니 컴포넌트 (bonus 배너 / 정답 토스트 / 미니 리더보드) ── */
+
+/* 첫 정답으로 bonus phase 진입할 때 1회 표시. CSS 애니메이션이 끝나면
+ * is-show 만 제거 — display:none 으로 다시 가려 다음 라운드에서 재사용. */
+let bonusBannerHideTimer = null;
+function showBonusBanner() {
+  if (!bonusBanner) return;
+  bonusBanner.classList.remove('is-hidden', 'is-show');
+  void bonusBanner.offsetWidth;  // restart animation
+  bonusBanner.classList.add('is-show');
+  if (bonusBannerHideTimer) clearTimeout(bonusBannerHideTimer);
+  bonusBannerHideTimer = setTimeout(() => {
+    bonusBanner.classList.remove('is-show');
+    bonusBanner.classList.add('is-hidden');
+  }, 1300);
+}
+
+/* 입력바 위 1.2s 토스트 — 정답 발생 시 누가 N등 정답인지 즉시 인지. */
+let correctToastHideTimer = null;
+function showCorrectToast(text, isMe) {
+  if (!correctToast) return;
+  correctToast.textContent = text;
+  correctToast.classList.remove('is-hidden', 'is-show', 'is-me');
+  if (isMe) correctToast.classList.add('is-me');
+  void correctToast.offsetWidth;
+  correctToast.classList.add('is-show');
+  if (correctToastHideTimer) clearTimeout(correctToastHideTimer);
+  correctToastHideTimer = setTimeout(() => {
+    correctToast.classList.remove('is-show');
+    correctToast.classList.add('is-hidden');
+  }, 1500);
+}
+
+/* 미니 리더보드 — SS_CORRECT 들어올 때마다 칩 1개 추가. SS_ROUND_START 에서 리셋. */
+const correctOrder = [];        // [{ id, name, rank }]
+function resetMiniLeaderboard() {
+  correctOrder.length = 0;
+  if (!miniLeaderboard) return;
+  miniLeaderboard.innerHTML = '';
+  miniLeaderboard.classList.add('is-hidden');
+}
+function addToMiniLeaderboard(entry) {
+  if (!miniLeaderboard) return;
+  if (correctOrder.some(e => e.id === entry.id)) return;  // 중복 방지.
+  correctOrder.push(entry);
+  miniLeaderboard.classList.remove('is-hidden');
+  const chip = document.createElement('span');
+  chip.className = 'mini-leaderboard__chip';
+  if (entry.id === playerId) chip.classList.add('is-me');
+  const rank = document.createElement('span');
+  rank.className = 'mini-leaderboard__rank';
+  rank.textContent = String(entry.rank);
+  chip.appendChild(rank);
+  const nm = document.createElement('span');
+  nm.textContent = entry.id === playerId ? '나' : entry.name;
+  chip.appendChild(nm);
+  miniLeaderboard.appendChild(chip);
+}
+
 /* ── Roster ─────────────────────────────────────────── */
 function renderRoster() {
   waitingPlayers.innerHTML = '';
@@ -236,21 +301,47 @@ gameExitBtn?.addEventListener('click', () => {
 function startTimer(durationMs, mode = 'normal') {
   stopTimer();
   timerMode = mode;
+  timerTotalMs = Math.max(1, durationMs);
   timerDeadlineAt = Date.now() + Math.max(0, durationMs);
   timerDisplay.classList.toggle('is-bonus', mode === 'bonus');
+  // 진행바 노출 + 모드별 색상 클래스 초기화.
+  if (timerBarTrack) {
+    timerBarTrack.classList.remove('is-hidden', 'is-warning', 'is-critical', 'is-bonus');
+    if (mode === 'bonus') timerBarTrack.classList.add('is-bonus');
+  }
+  if (timerBarFill) timerBarFill.style.transform = 'scaleX(1)';
   updateTimer();
-  timerInterval = setInterval(updateTimer, 250);
+  timerInterval = setInterval(updateTimer, 200);
 }
 function updateTimer() {
   if (timerDeadlineAt === null) return;
   const remaining = Math.max(0, timerDeadlineAt - Date.now());
   const seconds = Math.ceil(remaining / 1000);
   timerDisplay.textContent = timerMode === 'bonus' ? `+${seconds}s` : `${seconds}s`;
+  // 진행바 fill — 0~1, scaleX 로 부드럽게.
+  const ratio = Math.max(0, Math.min(1, remaining / timerTotalMs));
+  if (timerBarFill) timerBarFill.style.transform = `scaleX(${ratio})`;
+  // 색·펄스 클래스 토글 (normal 모드 한정).
+  if (timerBarTrack && timerMode === 'normal') {
+    timerBarTrack.classList.toggle('is-warning',  remaining > 0   && remaining <= 20000 && remaining > 10000);
+    timerBarTrack.classList.toggle('is-critical', remaining > 0   && remaining <= 10000);
+  }
+  if (timerMode === 'normal') {
+    timerDisplay.classList.toggle('is-warning',  remaining > 0   && remaining <= 20000 && remaining > 10000);
+    timerDisplay.classList.toggle('is-critical', remaining > 0   && remaining <= 10000);
+  } else {
+    timerDisplay.classList.remove('is-warning', 'is-critical');
+  }
   if (remaining <= 0) stopTimer();
 }
 function stopTimer() {
   if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
   timerDeadlineAt = null;
+  if (timerBarTrack) {
+    timerBarTrack.classList.add('is-hidden');
+    timerBarTrack.classList.remove('is-warning', 'is-critical', 'is-bonus');
+  }
+  timerDisplay.classList.remove('is-warning', 'is-critical', 'is-bonus');
 }
 
 function startVolunteerCountdown(deadlineAt) {
@@ -876,6 +967,7 @@ function handleMessage(msg) {
       Audio.SFX.countdownGo();
       // 채팅창 초기화 (라운드별).
       chatMessages.innerHTML = '';
+      resetMiniLeaderboard();
       if (currentRound) {
         currentRound.drawerId = msg.drawerId;
         currentRound.syllableCount = msg.syllableCount;
@@ -912,20 +1004,27 @@ function handleMessage(msg) {
       });
       break;
     }
-    case 'SS_CORRECT':
+    case 'SS_CORRECT': {
       Audio.SFX.correct();
-      if (msg.playerId === playerId) {
-        iGuessedCorrect = true;
-        // 본인이 맞히면 입력은 그대로 둬도 됨 (사이드 채널로 전송됨).
-      }
-      // 시스템 메시지로 정답 알림.
+      const isMe = msg.playerId === playerId;
+      if (isMe) iGuessedCorrect = true;
+      // 1) 입력바 위 토스트 — 본인은 강조, 타인은 중립색.
+      const toastText = isMe
+        ? `🎉 나 ${msg.rank}등 정답!`
+        : `🎉 ${msg.name}님 ${msg.rank}등!`;
+      showCorrectToast(toastText, isMe);
+      // 2) 미니 리더보드에 칩 추가.
+      addToMiniLeaderboard({ id: msg.playerId, name: msg.name, rank: msg.rank });
+      // 3) 시스템 메시지 (기록용, 채팅 로그에).
       appendChat({
         text: `🎉 ${msg.name}님 정답 (${msg.rank}등)`,
         system: true, correct: true,
       });
       break;
+    }
     case 'SS_BONUS_START':
       phase = 'bonus';
+      showBonusBanner();
       startTimer(msg.bonusMs || 10000, 'bonus');
       break;
     case 'SS_ROUND_END':
