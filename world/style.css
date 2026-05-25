@@ -22,10 +22,21 @@ html, body {
   overscroll-behavior: none;
 }
 
+/* 광장 캔버스 좌우 빈 공간을 어두운 색으로 두지 않고 같은 풀밭 배경으로
+ * 채운다. 배경 자체는 비율 깨져도 OK (사용자 명시 허용) — 캐릭터 비율은
+ * 캔버스 안쪽이 aspect-lock 되어 있어 영향 없음. */
+body {
+  background-image: url('./assets/world_bg.png');
+  background-size: cover;
+  background-position: center;
+  /* iOS Safari 의 background-attachment: fixed + cover 조합이 unreliably 늘어남.
+   * 페이지 자체가 viewport-locked 라 fixed 없이도 시각적 차이 없음. */
+}
+
 #app {
-  max-width: 980px;
+  max-width: 1200px;
   margin: 0 auto;
-  padding: 24px 16px 80px;
+  padding: 16px 12px 60px;
 }
 
 .panel {
@@ -270,7 +281,12 @@ h1 {
 .canvas-wrap {
   position: relative;
   width: 100%;
-  max-width: 460px;
+  /* 460px cap 제거 — 사용자 요구: 광장 화면이 전체 너비 잘 먹도록.
+   * 캐릭터 비율은 540:960 aspect-lock 으로 항상 보존되고, 캔버스가 닿지
+   * 못하는 좌우 여백은 body 의 stretched world_bg.png 가 채워줘서 시각적
+   * 단절 없음. 높이는 viewport 기준 cap (헤더/채팅/리액션/입력 여유 공간). */
+  max-width: min(100%, calc((100dvh - 240px) * 540 / 960));
+  max-height: calc(100dvh - 240px);
   margin: 0 auto;
   background: #1f2c47;
   border-radius: 12px;
@@ -395,8 +411,11 @@ h1 {
      넓적해 보이는 원인). max-width 도 함께 줄여 두 축 모두 동일 비율로
      클램프되도록 한다. */
   .canvas-wrap {
-    max-width: min(100%, calc((100dvh - 270px) * 540 / 960));
-    max-height: calc(100dvh - 270px);
+    /* base 와 동일하게 240px reserve — 모바일에서 더 보수적이던 270 → 240
+     * 으로 통일. 모바일 chrome 자체가 더 작은데(헤더/패딩 축소) reserve 가
+     * 컸던 게 “폰에서 캔버스가 더 작아 보이는” 원인이었다. */
+    max-width: min(100%, calc((100dvh - 240px) * 540 / 960));
+    max-height: calc(100dvh - 240px);
   }
 
   /* Brand text + meta need to share a narrow header. */
@@ -453,22 +472,34 @@ h1 {
 
 .reactions {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  /* 항상 한 줄 — 좁은 폰에서 2줄로 늘어나면 채팅창이 스크롤 없이 안 보였다.
+   * 어차피 이모지는 6개 정도라 nowrap + 좁은 폰에서 패딩만 줄이면 한 줄에 들어감. */
+  flex-wrap: nowrap;
+  gap: 6px;
   justify-content: center;
   margin-top: 12px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
 }
+.reactions::-webkit-scrollbar { display: none; }
 
 .reactions button {
-  font-size: 1.1rem;
+  font-size: 1.05rem;
   background: var(--panel-2);
   color: var(--text);
   border: none;
   border-radius: 999px;
-  padding: 8px 14px;
+  padding: 7px 12px;
   cursor: pointer;
   transition: background 0.15s, transform 0.05s;
   font-family: inherit;
+  flex-shrink: 0;
+}
+@media (max-width: 480px) {
+  /* 매우 좁은 폰에서도 6개 이모지가 한 줄에 들어가도록 패딩 축소. */
+  .reactions { gap: 4px; }
+  .reactions button { padding: 6px 9px; font-size: 0.98rem; }
 }
 .reactions button:hover { background: #2b3c63; }
 .reactions button:active { transform: scale(0.95); }

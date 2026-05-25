@@ -490,9 +490,13 @@ h2 { margin: 4px 0 8px; font-size: 20px; color: #064e3b; }
   display: flex;
   gap: 6px;
   align-items: stretch;
+  /* 폴드 반쪽처럼 매우 좁은 폰에서 입력 placeholder 가 너무 길어 보내기
+   * 버튼이 잘리던 문제 — flex item 들에 min-width:0 / flex-shrink 조정. */
+  min-width: 0;
 }
 .chat-input-field {
-  flex: 1;
+  flex: 1 1 0;
+  min-width: 0;
   padding: 9px 12px;
   border-radius: 10px;
   border: 1.5px solid #6ee7b7;
@@ -509,6 +513,8 @@ h2 { margin: 4px 0 8px; font-size: 20px; color: #064e3b; }
   border-radius: 10px;
   font-weight: 700;
   font-size: 14px;
+  /* 좁은 폰에서도 절대 잘리지 않도록 고정 너비 보장. */
+  flex-shrink: 0;
 }
 .chat-send-btn:disabled { background: #6ee7b7; }
 

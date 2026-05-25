@@ -480,7 +480,7 @@ function renderDrawingPhase(round) {
   const text = document.createElement('span');
   text.className = 'drawer-banner__text';
   text.textContent = amIDrawer
-    ? `당신이 그릴 차례! 키워드: ${round.keyword || '?'}`
+    ? `내가 그릴 차례! 키워드: ${round.keyword || '?'}`
     : `${drawer ? drawer.name : '?'}님이 그리는 중…`;
   drawerBanner.appendChild(text);
 
