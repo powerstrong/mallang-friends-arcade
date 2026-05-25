@@ -11,14 +11,15 @@
  */
 
 export const GAME_ZONES = [
-  // Portrait (540x960) layout: booths laid side-by-side at the top so the
-  // bottom 2/3 of the world stays clear as a play space. When the game roster
-  // grows past ~4 we'll switch to a camera-followed scrolling world.
+  // Portrait (540x960) layout: 세 부스를 모두 상단에 가로로 배치해 스폰
+  // 지점(SPAWN_POINT y=520)에서 충분히 떨어뜨린다. 부스 폭을 165 로 줄여
+  // 540 안에 3 열로 들어가도록 한 결과 — 일러스트가 약간 작아지지만
+  // 스폰 직후 슥슥 부스에 강제로 끌려들어가는 문제가 사라진다.
   {
     id: 'jump-climber',
     gameId: 'jump-climber',
     title: '말랑프렌즈 점프',
-    rect: { x: 25, y: 100, w: 235, h: 200 },
+    rect: { x: 15, y: 80, w: 165, h: 200 },
     minPlayers: 1,
     maxPlayers: 2,
     holdMs: 3000,
@@ -27,7 +28,7 @@ export const GAME_ZONES = [
     id: 'mallang-quiz-battle',
     gameId: 'mallang-quiz-battle',
     title: '말랑프렌즈 퀴즈배틀',
-    rect: { x: 280, y: 100, w: 235, h: 200 },
+    rect: { x: 188, y: 80, w: 165, h: 200 },
     minPlayers: 2,
     maxPlayers: 6,
     holdMs: 3000,
@@ -36,7 +37,7 @@ export const GAME_ZONES = [
     id: 'sseuk-sseuk',
     gameId: 'sseuk-sseuk',
     title: '말랑프렌즈 슥슥',
-    rect: { x: 152, y: 320, w: 235, h: 200 },
+    rect: { x: 361, y: 80, w: 165, h: 200 },
     minPlayers: 2,
     maxPlayers: 6,
     holdMs: 3000,

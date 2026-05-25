@@ -237,6 +237,38 @@ h2 { margin: 4px 0 8px; font-size: 20px; color: #064e3b; }
   margin-bottom: 10px;
 }
 .drawer-banner.is-me { background: #fef3c7; border-color: #fbbf24; color: #92400e; font-weight: 700; }
+.drawer-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.drawer-banner__avatar {
+  border-radius: 50%;
+  background: #fff;
+  border: 1.5px solid #6ee7b7;
+  flex-shrink: 0;
+  object-fit: cover;
+}
+.drawer-banner.is-me .drawer-banner__avatar { border-color: #fbbf24; }
+.drawer-banner__text { line-height: 1.3; }
+
+/* ── 캐릭터 미니 아바타 (chip/list/chat에서 공통) ─── */
+.char-avatar {
+  border-radius: 50%;
+  background: #fff;
+  border: 1px solid #d1fae5;
+  object-fit: cover;
+  flex-shrink: 0;
+  vertical-align: middle;
+}
+.player-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.player-chip .char-avatar { border-color: rgba(6, 78, 59, 0.15); }
+.chat-msg__avatar { margin-right: 4px; vertical-align: -3px; }
 .keyword-slot {
   display: flex;
   justify-content: center;
@@ -406,6 +438,12 @@ h2 { margin: 4px 0 8px; font-size: 20px; color: #064e3b; }
 }
 .round-end-deltas li:last-child { border-bottom: none; }
 .round-end-deltas .delta-gain { color: #047857; font-weight: 700; }
+.round-end-deltas__who {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.round-end-deltas__avatar { border-color: rgba(6, 78, 59, 0.15); }
 
 /* ── Rankings ───────────────────────────────────────── */
 .rankings-list { list-style: none; padding: 0; margin: 12px 0; }

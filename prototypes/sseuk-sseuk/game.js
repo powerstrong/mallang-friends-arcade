@@ -108,6 +108,29 @@ function renderDifficultyBadge(difficulty) {
   roundDifficulty.classList.add(meta.className);
 }
 
+function getPlayerCharId(id) {
+  const p = players.find(x => x.id === id);
+  return p ? p.characterId : null;
+}
+function makeCharAvatar(characterId, size = 22, extraClass = '') {
+  // 알 수 없는 characterId 면 아예 element 를 만들지 않는다 — src='' 면 일부
+  // 브라우저가 broken image 아이콘을 띄우거나 현재 문서를 재요청한다.
+  const src = CHAR_IMAGES[characterId];
+  if (!src) return null;
+  const img = document.createElement('img');
+  img.className = 'char-avatar' + (extraClass ? ' ' + extraClass : '');
+  img.src = src;
+  img.alt = '';
+  img.width = size;
+  img.height = size;
+  img.loading = 'lazy';
+  return img;
+}
+function appendCharAvatar(parent, characterId, size, extraClass) {
+  const av = makeCharAvatar(characterId, size, extraClass);
+  if (av) parent.appendChild(av);
+}
+
 /* ── Roster ─────────────────────────────────────────── */
 function renderRoster() {
   waitingPlayers.innerHTML = '';
@@ -116,7 +139,10 @@ function renderRoster() {
     chip.className = 'player-chip';
     if (p.id === playerId) chip.classList.add('is-me');
     if (p.ready) chip.classList.add('is-ready');
-    chip.textContent = p.name;
+    appendCharAvatar(chip, p.characterId, 20);
+    const nm = document.createElement('span');
+    nm.textContent = p.name;
+    chip.appendChild(nm);
     waitingPlayers.appendChild(chip);
   }
 }
@@ -141,7 +167,14 @@ volunteerBtn.addEventListener('click', () => {
 });
 function leaveToRoom() {
   try { ws?.close(); } catch {}
-  window.location.href = `/?code=${encodeURIComponent(code || '')}`;
+  // 광장에서 입장한 세션이면 광장으로 바로 복귀 (닉네임·캐릭터는 광장이 이미
+  // localStorage 에 저장해두므로 from=game 으로 진입하면 picker 를 건너뛰고
+  // 자동 입장). 직접 링크 등 그 외는 브랜드 랜딩으로 fallback.
+  if (window.GameBoot && typeof window.GameBoot.exit === 'function') {
+    window.GameBoot.exit();
+    return;
+  }
+  window.location.href = '/';
 }
 exitBtn?.addEventListener('click', leaveToRoom);
 gameExitBtn?.addEventListener('click', () => {
@@ -391,9 +424,14 @@ function renderDrawingPhase(round) {
 
   const drawer = players.find(p => p.id === round.drawerId);
   drawerBanner.classList.toggle('is-me', amIDrawer);
-  drawerBanner.textContent = amIDrawer
+  drawerBanner.innerHTML = '';
+  appendCharAvatar(drawerBanner, drawer?.characterId, 32, 'drawer-banner__avatar');
+  const text = document.createElement('span');
+  text.className = 'drawer-banner__text';
+  text.textContent = amIDrawer
     ? `당신이 그릴 차례! 키워드: ${round.keyword || '?'}`
     : `${drawer ? drawer.name : '?'}님이 그리는 중…`;
+  drawerBanner.appendChild(text);
 
   renderKeywordSlot(round);
 
@@ -410,7 +448,7 @@ function renderDrawingPhase(round) {
 }
 
 /* ── Chat ──────────────────────────────────────────── */
-function appendChat({ text, name: nm, system, correct, drawer, side, isMe }) {
+function appendChat({ text, name: nm, system, correct, drawer, side, isMe, playerId: pid }) {
   const div = document.createElement('div');
   div.className = 'chat-msg';
   if (system) div.classList.add('is-system');
@@ -418,6 +456,7 @@ function appendChat({ text, name: nm, system, correct, drawer, side, isMe }) {
   if (drawer) div.classList.add('is-drawer');
   if (side) div.classList.add('is-side');
   if (nm && !system) {
+    if (pid) appendCharAvatar(div, getPlayerCharId(pid), 18, 'chat-msg__avatar');
     const span = document.createElement('span');
     span.className = 'chat-msg__name';
     if (isMe) span.classList.add('is-me');
@@ -460,7 +499,11 @@ function renderRoundEnd(msg) {
   for (const p of sorted) {
     const li = document.createElement('li');
     const left = document.createElement('span');
-    left.textContent = (p.id === playerId ? `${p.name} (나)` : p.name);
+    left.className = 'round-end-deltas__who';
+    appendCharAvatar(left, p.characterId, 24, 'round-end-deltas__avatar');
+    const nm = document.createElement('span');
+    nm.textContent = (p.id === playerId ? `${p.name} (나)` : p.name);
+    left.appendChild(nm);
     const right = document.createElement('span');
     const delta = msg.perPlayerDelta[p.id] || 0;
     const total = msg.scores[p.id] || 0;
@@ -477,7 +520,19 @@ function renderGameEnd(rankings) {
   for (const r of rankings) {
     const li = document.createElement('li');
     if (r.id === playerId) li.classList.add('is-me');
-    li.innerHTML = `<span class="rank-num">${r.rank}</span><span class="rank-name">${r.name}${r.id === playerId ? ' (나)' : ''}</span><span class="rank-score">${r.score}점</span>`;
+    const num = document.createElement('span');
+    num.className = 'rank-num';
+    num.textContent = String(r.rank);
+    li.appendChild(num);
+    appendCharAvatar(li, r.characterId, 32, 'rank-avatar');
+    const nm = document.createElement('span');
+    nm.className = 'rank-name';
+    nm.textContent = r.name + (r.id === playerId ? ' (나)' : '');
+    li.appendChild(nm);
+    const sc = document.createElement('span');
+    sc.className = 'rank-score';
+    sc.textContent = `${r.score}점`;
+    li.appendChild(sc);
     rankingsList.appendChild(li);
   }
 }
@@ -566,7 +621,10 @@ function handleMessage(msg) {
         const chip = document.createElement('span');
         chip.className = 'player-chip';
         if (p.id === playerId) chip.classList.add('is-me');
-        chip.textContent = p.name;
+        appendCharAvatar(chip, p.characterId, 20);
+        const nm = document.createElement('span');
+        nm.textContent = p.name;
+        chip.appendChild(nm);
         volunteerList.appendChild(chip);
       }
       break;
@@ -614,6 +672,7 @@ function handleMessage(msg) {
       appendChat({
         text: msg.text,
         name: msg.name,
+        playerId: msg.playerId,
         system: !!msg.system,
         drawer: !!msg.drawer,
         side: !!msg.sideChannel,
