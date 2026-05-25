@@ -370,7 +370,14 @@
       if (from !== 'game') return;
       if (joinBtn.disabled) return; // 저장된 닉/캐릭터가 없으면 평소대로 picker 노출
       showAutoEnterSplash();
-      tryJoin();
+      // **중요**: 이 IIFE 는 아래 `let ws = null;` / `let joinParams = null;`
+      // 선언 라인보다 위에서 실행되므로, 여기서 곧바로 tryJoin() 을 호출하면
+      // joinParams 할당 시 TDZ ReferenceError 가 throw 되고 외부 try/catch
+      // 가 silent 하게 삼킨다. 결과로 joinParams 가 null 인 채 8초 대기 후
+      // retry 가 'join_world null' 을 송신해 서버가 BAD_NAME 으로 응답.
+      // setTimeout 0 으로 defer 해 현재 macrotask(=이 스크립트 본문) 가 끝나
+      // 모든 let 초기화가 완료된 다음에 tryJoin 이 실행되도록 한다.
+      setTimeout(() => tryJoin(), 0);
     } catch { /* ignore */ }
   })();
 
