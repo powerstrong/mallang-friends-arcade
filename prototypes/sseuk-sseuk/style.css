@@ -1,5 +1,5 @@
-/* 말랑프렌즈 슥슥 — Phase 0 minimal shell.
- * Mobile-first 430px portrait. Phase E polishes layout, canvas, chat overlay.
+/* 말랑프렌즈 슥슥 — Phase A styles.
+ * Mobile-first 430px portrait shell. Phase E polishes canvas + chat overlay + safe areas.
  */
 
 *, *::before, *::after { box-sizing: border-box; }
@@ -15,6 +15,14 @@ html, body {
   -webkit-tap-highlight-color: transparent;
 }
 
+button {
+  font-family: inherit;
+  cursor: pointer;
+  border: none;
+  background: none;
+  color: inherit;
+}
+
 .game-shell {
   width: 100%;
   max-width: 430px;
@@ -25,68 +33,82 @@ html, body {
   flex-direction: column;
 }
 
-.screen {
-  display: none;
-  flex: 1;
-  flex-direction: column;
-  padding: 16px;
-}
-
-.screen.is-active {
-  display: flex;
-}
+.screen { display: none; flex: 1; flex-direction: column; padding: 16px; gap: 12px; }
+.screen.is-active { display: flex; }
+.is-hidden { display: none !important; }
 
 .panel {
-  background: rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.9);
   border-radius: 20px;
-  padding: 20px;
+  padding: 18px;
   box-shadow: 0 4px 20px rgba(6, 78, 59, 0.08);
 }
 
-.eyebrow {
-  margin: 0;
-  font-size: 11px;
-  letter-spacing: 0.18em;
-  color: #047857;
-}
-
-h1 {
-  margin: 4px 0 8px;
-  font-size: 24px;
-  color: #064e3b;
-}
+.eyebrow { margin: 0; font-size: 11px; letter-spacing: 0.18em; color: #047857; }
+h1 { margin: 4px 0 8px; font-size: 24px; color: #064e3b; }
+h2 { margin: 4px 0 8px; font-size: 20px; color: #064e3b; }
 
 .setup-copy {
-  margin: 0 0 16px;
+  margin: 0 0 14px;
   color: #065f46;
   font-size: 14px;
 }
 
+/* ── Character grid ──────────────────────────────────── */
+.character-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin: 8px 0 14px;
+}
+
+.character-card {
+  background: #fff;
+  border: 2px solid #e5e7eb;
+  border-radius: 14px;
+  padding: 8px 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.15s;
+}
+
+.character-card.is-selected {
+  border-color: #10b981;
+  background: #ecfdf5;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25);
+}
+
+.character-card__img {
+  width: 56px;
+  height: 56px;
+  object-fit: contain;
+}
+
+.character-card strong {
+  font-size: 11px;
+  color: #064e3b;
+}
+
+/* ── Boot status / Waiting players ──────────────────── */
 .boot-status {
-  padding: 10px 14px;
+  padding: 8px 12px;
   border-radius: 12px;
   background: #ecfdf5;
   border: 1px dashed #6ee7b7;
-  font-size: 13px;
+  font-size: 12px;
   color: #047857;
-  margin-bottom: 12px;
 }
-
-.boot-status.is-connected {
-  background: #d1fae5;
-  border-style: solid;
-}
-
-.boot-status.is-error {
-  background: #fef2f2;
-  border-color: #fecaca;
-  color: #991b1b;
-}
+.boot-status.is-connected { background: #d1fae5; border-style: solid; }
+.boot-status.is-error { background: #fef2f2; border-color: #fecaca; color: #991b1b; }
 
 .waiting-players {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+  min-height: 28px;
 }
 
 .player-chip {
@@ -96,11 +118,166 @@ h1 {
   border: 1px solid #6ee7b7;
   font-size: 12px;
   color: #047857;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.player-chip.is-ready { background: #10b981; color: #fff; border-color: #047857; }
+.player-chip.is-me::after { content: '(나)'; font-weight: 700; color: #047857; }
+.player-chip.is-me.is-ready::after { color: #ecfdf5; }
+
+/* ── Primary buttons ────────────────────────────────── */
+.setup-actions { display: flex; justify-content: center; margin-top: 8px; }
+
+.primary-action {
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: #fff;
+  font-size: 17px;
+  font-weight: 700;
+  padding: 13px 28px;
+  border-radius: 999px;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.35);
+  transition: transform 0.1s;
+}
+.primary-action:active { transform: scale(0.96); }
+.primary-action.is-ready { background: linear-gradient(135deg, #f59e0b, #d97706); box-shadow: 0 4px 12px rgba(245, 158, 11, 0.35); }
+.primary-action[disabled] { opacity: 0.5; cursor: not-allowed; }
+
+.secondary-action {
+  background: #fff;
+  color: #047857;
+  border: 1.5px solid #6ee7b7;
+  padding: 11px 22px;
+  border-radius: 999px;
+  font-weight: 600;
 }
 
-.player-chip.is-me {
-  background: #10b981;
-  color: white;
-  border-color: #047857;
+/* ── Game header / timer / countdown ────────────────── */
+.game-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 8px;
+}
+.round-progress { font-size: 13px; color: #047857; font-weight: 600; }
+.timer-display { font-size: 20px; font-weight: 700; color: #064e3b; font-variant-numeric: tabular-nums; }
+.timer-display.is-bonus { color: #d97706; }
+
+.countdown-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(6, 78, 59, 0.65);
+  color: #fff;
+  z-index: 50;
+  backdrop-filter: blur(4px);
+}
+.countdown-number { font-size: 96px; font-weight: 900; line-height: 1; }
+.countdown-label { margin-top: 8px; font-size: 16px; }
+
+/* ── Volunteer panel ────────────────────────────────── */
+.volunteer-panel { text-align: center; }
+.volunteer-copy { color: #065f46; font-size: 13px; margin-bottom: 16px; }
+.volunteer-list {
+  display: flex; flex-wrap: wrap; gap: 6px; justify-content: center;
+  margin: 14px 0;
+  min-height: 28px;
+}
+.volunteer-list .player-chip { background: #fef3c7; border-color: #fbbf24; color: #92400e; }
+.volunteer-timer { font-size: 13px; color: #047857; font-variant-numeric: tabular-nums; }
+
+/* ── Lottery ────────────────────────────────────────── */
+.lottery-panel { text-align: center; padding: 24px; }
+.lottery-roulette {
+  font-size: 32px;
+  font-weight: 800;
+  margin-top: 14px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #047857;
+  animation: rouletteFlash 0.18s steps(1) infinite;
+}
+.lottery-roulette.is-stopped { animation: none; color: #10b981; transform: scale(1.15); transition: transform 0.3s ease-out; }
+@keyframes rouletteFlash { 0% { opacity: 0.4; } 50% { opacity: 1; } 100% { opacity: 0.4; } }
+
+/* ── Drawing panel ──────────────────────────────────── */
+.drawer-banner {
+  background: #ecfdf5;
+  border: 1px solid #6ee7b7;
+  color: #047857;
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 13px;
+  text-align: center;
+  margin-bottom: 10px;
+}
+.drawer-banner.is-me { background: #fef3c7; border-color: #fbbf24; color: #92400e; font-weight: 700; }
+.keyword-slot {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  margin-bottom: 12px;
+  font-size: 22px;
   font-weight: 700;
 }
+.keyword-slot__cell {
+  min-width: 28px;
+  height: 36px;
+  border-bottom: 3px solid #6ee7b7;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #064e3b;
+}
+.keyword-slot__cell.is-revealed { border-color: #10b981; }
+.canvas-placeholder {
+  background: #f0fdf4;
+  border: 2px dashed #6ee7b7;
+  border-radius: 16px;
+  aspect-ratio: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #047857;
+  text-align: center;
+  padding: 16px;
+}
+.canvas-placeholder p { margin: 4px 0; font-size: 14px; }
+.canvas-placeholder__small { font-size: 11px; color: #065f46; opacity: 0.8; }
+
+/* ── Round end ──────────────────────────────────────── */
+.round-end-panel { text-align: center; }
+.round-end-reason { color: #065f46; font-size: 12px; margin: 4px 0 12px; }
+.round-end-deltas { list-style: none; padding: 0; margin: 0; }
+.round-end-deltas li {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 10px;
+  border-bottom: 1px dashed #d1fae5;
+  font-size: 14px;
+}
+.round-end-deltas li:last-child { border-bottom: none; }
+.round-end-deltas .delta-gain { color: #047857; font-weight: 700; }
+
+/* ── Rankings ───────────────────────────────────────── */
+.rankings-list { list-style: none; padding: 0; margin: 12px 0; }
+.rankings-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  margin-bottom: 6px;
+  background: #ecfdf5;
+}
+.rankings-list li.is-me { background: #10b981; color: #fff; font-weight: 700; }
+.rankings-list .rank-num { font-weight: 800; min-width: 24px; }
+.rankings-list .rank-score { margin-left: auto; font-variant-numeric: tabular-nums; font-weight: 700; }
+
+.result-actions { display: flex; justify-content: center; margin-top: 12px; }

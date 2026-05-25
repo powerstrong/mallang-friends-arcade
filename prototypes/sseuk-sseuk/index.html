@@ -11,15 +11,102 @@
   <body>
     <main class="game-shell">
 
+      <!-- Setup: 캐릭터 선택 + Ready -->
       <section id="setupScreen" class="screen screen--setup is-active">
         <section class="panel setup-panel" aria-labelledby="setupTitle">
           <p class="eyebrow">MALLANG SSEUK-SSEUK</p>
           <h1 id="setupTitle">말랑프렌즈 슥슥</h1>
-          <p class="setup-copy">그려서 맞히는 캐주얼 그림 게임. (Phase 0 골격)</p>
+          <p class="setup-copy">캐릭터를 고르고 Ready를 누르면 시작해요. 한 명이 그리고 나머지가 맞혀요!</p>
+
+          <div class="character-grid" aria-label="캐릭터 선택">
+            <button class="character-card is-selected" type="button" data-character="mochi-rabbit">
+              <img src="/prototypes/jump-climber/assets/토끼 메인 이미지.png" alt="모찌 토끼" class="character-card__img" />
+              <strong>모찌 토끼</strong>
+            </button>
+            <button class="character-card" type="button" data-character="pudding-hamster">
+              <img src="/prototypes/jump-climber/assets/햄스터 메인 이미지.png" alt="푸딩 햄스터" class="character-card__img" />
+              <strong>푸딩 햄스터</strong>
+            </button>
+            <button class="character-card" type="button" data-character="peach-chick">
+              <img src="/prototypes/jump-climber/assets/병아리 메인 이미지.png" alt="피치 병아리" class="character-card__img" />
+              <strong>피치 병아리</strong>
+            </button>
+            <button class="character-card" type="button" data-character="latte-puppy">
+              <img src="/prototypes/jump-climber/assets/라떼 메인 이미지.png" alt="라떼 강아지" class="character-card__img" />
+              <strong>라떼 강아지</strong>
+            </button>
+            <button class="character-card" type="button" data-character="mint-kitten">
+              <img src="/prototypes/jump-climber/assets/고양이 메인이미지.png" alt="민트 고양이" class="character-card__img" />
+              <strong>민트 고양이</strong>
+            </button>
+          </div>
 
           <div id="bootStatus" class="boot-status" aria-live="polite">연결 대기 중…</div>
-
           <div id="waitingPlayers" class="waiting-players" aria-label="대기 중인 플레이어" aria-live="polite"></div>
+
+          <div class="setup-actions">
+            <button id="readyBtn" type="button" class="primary-action">Ready!</button>
+          </div>
+        </section>
+      </section>
+
+      <!-- Game: 라운드 / 출제자 모집 / 그리는 중 -->
+      <section id="gameScreen" class="screen screen--game">
+        <header class="game-header">
+          <span id="roundProgress" class="round-progress"></span>
+          <div id="timerDisplay" class="timer-display"></div>
+        </header>
+
+        <!-- Countdown overlay -->
+        <div id="countdownOverlay" class="countdown-overlay is-hidden" aria-live="assertive">
+          <div id="countdownNumber" class="countdown-number">3</div>
+          <p class="countdown-label">곧 시작!</p>
+        </div>
+
+        <!-- Volunteer phase -->
+        <section id="volunteerPanel" class="panel volunteer-panel is-hidden">
+          <p class="eyebrow">출제자 모집 중</p>
+          <h2>이번 라운드, 누가 그릴래요?</h2>
+          <p class="volunteer-copy">그리고 싶은 사람은 손 들어요!</p>
+          <button id="volunteerBtn" type="button" class="primary-action">✋ 그리고 싶어요!</button>
+          <div id="volunteerList" class="volunteer-list" aria-live="polite"></div>
+          <p id="volunteerTimer" class="volunteer-timer"></p>
+        </section>
+
+        <!-- Lottery -->
+        <section id="lotteryPanel" class="panel lottery-panel is-hidden" aria-live="polite">
+          <p class="eyebrow">추첨 중</p>
+          <div id="lotteryRoulette" class="lottery-roulette"></div>
+        </section>
+
+        <!-- Drawing phase -->
+        <section id="drawingPanel" class="panel drawing-panel is-hidden">
+          <div id="drawerBanner" class="drawer-banner"></div>
+          <div id="keywordSlot" class="keyword-slot" aria-live="polite"></div>
+          <div id="canvasPlaceholder" class="canvas-placeholder">
+            <p>🎨 캔버스는 Phase B에서 등장해요.</p>
+            <p class="canvas-placeholder__small">지금은 라운드 흐름만 검증 중.</p>
+          </div>
+        </section>
+
+        <!-- Round result -->
+        <section id="roundEndPanel" class="panel round-end-panel is-hidden" aria-live="polite">
+          <p class="eyebrow">라운드 종료</p>
+          <h2 id="roundEndKeyword"></h2>
+          <p id="roundEndReason" class="round-end-reason"></p>
+          <ol id="roundEndDeltas" class="round-end-deltas"></ol>
+        </section>
+      </section>
+
+      <!-- Result: 최종 순위 -->
+      <section id="resultScreen" class="screen screen--result">
+        <section class="panel rankings-panel" aria-labelledby="rankingsTitle">
+          <p class="eyebrow">최종 결과</p>
+          <h2 id="rankingsTitle">슥슥 한 판 끝!</h2>
+          <ol id="rankingsList" class="rankings-list"></ol>
+          <div class="result-actions">
+            <button id="exitBtn" type="button" class="secondary-action">방으로 돌아가기</button>
+          </div>
         </section>
       </section>
 

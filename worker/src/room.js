@@ -17,6 +17,18 @@ const GAME_PATHS = {
 const QUIZ_VALID_CHARS = ['mochi-rabbit', 'pudding-hamster', 'peach-chick', 'latte-puppy', 'mint-kitten'];
 const SS_VALID_CHARS = ['mochi-rabbit', 'pudding-hamster', 'peach-chick', 'latte-puppy', 'mint-kitten'];
 const SS_TOTAL_ROUNDS = 5;
+const SS_VOLUNTEER_TIMEOUT_MS = 8000;   // spec 8~10초 중 하한
+const SS_ROUND_DURATION_MS    = 75000;  // spec 60~90초 중앙
+const SS_BONUS_AFTER_FIRST_MS = 10000;
+const SS_HINT_LENGTH_AT_MS    = 20000;
+const SS_HINT_LETTER_AT_MS    = 40000;
+const SS_LOTTERY_ANIM_MS      = 2500;
+
+// Phase A 임시 키워드 풀 (Phase C에서 ./ss_keywords.js로 분리).
+const SS_KEYWORDS_PLACEHOLDER = [
+  '사과','바나나','피아노','자전거','우산','컴퓨터','병아리','강아지',
+  '아이스크림','학교','비행기','수박','책상','우주선','거북이','로봇',
+];
 const QUIZ_QUESTION_COUNT = 10;
 const QUIZ_TIME_LIMIT_MS = 10000;
 const QUIZ_REVEAL_MS = 3500;
@@ -1977,13 +1989,14 @@ export class GameRoom {
     await this.state.storage.put('phase', 'results');
   }
 
-  // ── 슥슥 (Phase 0 stubs — Phase A에서 라운드/추첨/캐릭터 선택 확장) ──
+  // ── 슥슥 (Phase A: 라운드 머신 + 토큰 가드 + 라이프사이클 정리) ──
+  // Phase B에서 캔버스/스트로크, Phase C에서 정식 키워드 풀/시간 힌트, Phase D에서 정답 판정/근접 힌트 추가.
 
   _initSseukGame(roster) {
     if (this.sseukGame) return;
     this.sseukGame = {
       phase: 'waiting',
-      currentRound: 0,
+      currentRoundIdx: 0,
       totalRounds: SS_TOTAL_ROUNDS,
       players: roster.map((p, i) => ({
         id: p.id,
@@ -1994,11 +2007,26 @@ export class GameRoom {
         ready: false,
         score: 0,
       })),
-      scores: {},
-      drawerHistory: [],
+      drawerHistory: [],          // 각 라운드별 drawerId. 가중치 산정에 사용.
       usedKeywords: [],
+      currentRound: null,         // { drawerId, keyword, syllableCount, startedAt, volunteers, firstCorrectAt, correctOrder, strokes }
       tokens: { volunteer: 0, round: 0, bonus: 0, hint: 0 },
+      timers: { volunteer: null, round: null, bonus: null, hint: [] },
     };
+  }
+
+  _clearSseukTimers() {
+    if (!this.sseukGame) return;
+    const t = this.sseukGame.timers;
+    if (t.volunteer) { clearTimeout(t.volunteer); t.volunteer = null; }
+    if (t.round)     { clearTimeout(t.round);     t.round = null; }
+    if (t.bonus)     { clearTimeout(t.bonus);     t.bonus = null; }
+    if (t.hint && t.hint.length) { for (const h of t.hint) clearTimeout(h); t.hint = []; }
+    // Invalidate all in-flight callbacks.
+    this.sseukGame.tokens.volunteer++;
+    this.sseukGame.tokens.round++;
+    this.sseukGame.tokens.bonus++;
+    this.sseukGame.tokens.hint++;
   }
 
   async _handleSseukJoinGame(ws, msg) {
@@ -2018,12 +2046,271 @@ export class GameRoom {
     }
 
     ws.serializeAttachment({ ...rosterPlayer, role: 'game', gameId: 'sseuk-sseuk', isSpectator: false });
-    ws.send(JSON.stringify({
+
+    // Build a phase-aware snapshot (mid-game rejoin support).
+    const snapshot = {
       type: 'SS_JOINED',
       players: this.sseukGame.players,
       phase: this.sseukGame.phase,
-    }));
+      currentRoundIdx: this.sseukGame.currentRoundIdx,
+      totalRounds: this.sseukGame.totalRounds,
+      me: msg.playerId,
+    };
+    if (this.sseukGame.currentRound && this.sseukGame.phase !== 'waiting') {
+      const r = this.sseukGame.currentRound;
+      snapshot.round = {
+        drawerId: r.drawerId,
+        syllableCount: r.syllableCount,
+        // Show keyword only to the drawer.
+        keyword: r.drawerId === msg.playerId ? r.keyword : null,
+        timeLeftMs: this._sseukTimeLeftMs(),
+        volunteersDeadlineAt: r.volunteersDeadlineAt || null,
+      };
+    }
+    ws.send(JSON.stringify(snapshot));
     this._broadcastGame({ type: 'SS_PLAYER_UPDATE', players: this.sseukGame.players }, 'sseuk-sseuk');
+  }
+
+  _sseukTimeLeftMs() {
+    const r = this.sseukGame?.currentRound;
+    if (!r || !r.startedAt) return 0;
+    if (this.sseukGame.phase === 'bonus' && r.firstCorrectAt) {
+      return Math.max(0, SS_BONUS_AFTER_FIRST_MS - (Date.now() - r.firstCorrectAt));
+    }
+    if (this.sseukGame.phase === 'drawing') {
+      return Math.max(0, SS_ROUND_DURATION_MS - (Date.now() - r.startedAt));
+    }
+    return 0;
+  }
+
+  async _handleSseukSelectCharacter(player, msg) {
+    if (!this.sseukGame) return;
+    if (this.sseukGame.phase !== 'waiting') return;
+    const characterId = SS_VALID_CHARS.includes(msg.characterId) ? msg.characterId : 'mochi-rabbit';
+    const p = this.sseukGame.players.find(x => x.id === player.id);
+    if (!p) return;
+    p.characterId = characterId;
+    this._broadcastGame({ type: 'SS_PLAYER_UPDATE', players: this.sseukGame.players }, 'sseuk-sseuk');
+  }
+
+  async _handleSseukReady(player, msg) {
+    if (!this.sseukGame || this.sseukGame.phase !== 'waiting') return;
+    const p = this.sseukGame.players.find(x => x.id === player.id);
+    if (!p) return;
+    p.ready = msg.ready !== false;
+    this._broadcastGame({ type: 'SS_PLAYER_UPDATE', players: this.sseukGame.players }, 'sseuk-sseuk');
+
+    const connected = this.sseukGame.players.filter(p => p.connected);
+    const allReady = connected.length >= 2 && connected.every(p => p.ready);
+    if (allReady) await this._startSseukCountdown();
+  }
+
+  async _startSseukCountdown() {
+    if (!this.sseukGame) return;
+    this.sseukGame.phase = 'countdown';
+    for (const seconds of [3, 2, 1]) {
+      if (!this.sseukGame) return;
+      this._broadcastGame({ type: 'SS_COUNTDOWN', seconds }, 'sseuk-sseuk');
+      await new Promise(r => setTimeout(r, 1000));
+    }
+    if (!this.sseukGame) return;
+    this._startSseukRound();
+  }
+
+  _startSseukRound() {
+    if (!this.sseukGame) return;
+    // Reset per-round mutable state.
+    this.sseukGame.phase = 'volunteering';
+    const deadlineAt = Date.now() + SS_VOLUNTEER_TIMEOUT_MS;
+    this.sseukGame.currentRound = {
+      drawerId: null,
+      keyword: null,
+      syllableCount: 0,
+      startedAt: null,
+      volunteers: [],
+      volunteersDeadlineAt: deadlineAt,
+      firstCorrectAt: null,
+      correctOrder: [],
+      strokes: [],
+    };
+    this._broadcastGame({
+      type: 'SS_VOLUNTEER_OPEN',
+      roundIdx: this.sseukGame.currentRoundIdx,
+      totalRounds: this.sseukGame.totalRounds,
+      deadlineAt,
+    }, 'sseuk-sseuk');
+
+    const token = ++this.sseukGame.tokens.volunteer;
+    this.sseukGame.timers.volunteer = setTimeout(() => {
+      if (!this.sseukGame || this.sseukGame.tokens.volunteer !== token) return;
+      this._resolveDrawer().catch(() => {});
+    }, SS_VOLUNTEER_TIMEOUT_MS);
+  }
+
+  async _handleSseukVolunteer(player, _msg) {
+    if (!this.sseukGame || this.sseukGame.phase !== 'volunteering') return;
+    const r = this.sseukGame.currentRound;
+    if (!r) return;
+    if (!r.volunteers.includes(player.id)) r.volunteers.push(player.id);
+    this._broadcastGame({
+      type: 'SS_VOLUNTEER_UPDATE',
+      volunteers: r.volunteers,
+    }, 'sseuk-sseuk');
+  }
+
+  async _resolveDrawer() {
+    if (!this.sseukGame) return;
+    if (this.sseukGame.timers.volunteer) { clearTimeout(this.sseukGame.timers.volunteer); this.sseukGame.timers.volunteer = null; }
+    const r = this.sseukGame.currentRound;
+    if (!r) return;
+
+    const connected = this.sseukGame.players.filter(p => p.connected);
+    if (connected.length < 2) {
+      // 보호망: 누군가 빠져 인원이 부족하면 라운드를 비우고 다음으로.
+      this._endSseukRound('insufficient-players');
+      return;
+    }
+
+    let drawerId = null;
+    const eligibleVolunteers = r.volunteers.filter(id => connected.some(p => p.id === id));
+    if (eligibleVolunteers.length === 1) {
+      drawerId = eligibleVolunteers[0];
+    } else if (eligibleVolunteers.length >= 2) {
+      drawerId = eligibleVolunteers[Math.floor(Math.random() * eligibleVolunteers.length)];
+    } else {
+      // 0명: drawerHistory 기반 "안 그린 사람 우선" 가중. 미경험자가 있으면 그 안에서 균등 랜덤.
+      const drawCounts = new Map(connected.map(p => [p.id, 0]));
+      for (const id of this.sseukGame.drawerHistory) {
+        if (drawCounts.has(id)) drawCounts.set(id, drawCounts.get(id) + 1);
+      }
+      const minCount = Math.min(...drawCounts.values());
+      const candidates = connected.filter(p => drawCounts.get(p.id) === minCount);
+      drawerId = candidates[Math.floor(Math.random() * candidates.length)].id;
+    }
+
+    const keyword = this._pickSseukKeyword();
+    r.drawerId = drawerId;
+    r.keyword = keyword;
+    r.syllableCount = [...keyword].length; // 음절 단위 (Hangul은 코드포인트 1=1음절)
+    this.sseukGame.drawerHistory.push(drawerId);
+
+    // 추첨 연출 + 출제자/일반에게 분리 송신.
+    const animPayload = {
+      type: 'SS_DRAWER_SELECTED',
+      drawerId,
+      syllableCount: r.syllableCount,
+      lotteryMs: SS_LOTTERY_ANIM_MS,
+      candidates: eligibleVolunteers.length >= 2 ? eligibleVolunteers : null,
+    };
+    for (const { ws, player } of this._getSessions()) {
+      if (player.gameId !== 'sseuk-sseuk') continue;
+      const payload = player.id === drawerId ? { ...animPayload, keyword } : animPayload;
+      try { ws.send(JSON.stringify(payload)); } catch {}
+    }
+
+    // 추첨 연출 후 그리기 단계로.
+    const token = ++this.sseukGame.tokens.round;
+    this.sseukGame.timers.round = setTimeout(() => {
+      if (!this.sseukGame || this.sseukGame.tokens.round !== token) return;
+      this._startSseukDrawing();
+    }, SS_LOTTERY_ANIM_MS);
+  }
+
+  _pickSseukKeyword() {
+    // Phase A: 임시 인라인 풀. Phase C에서 ss_keywords.js로 교체.
+    const used = new Set(this.sseukGame.usedKeywords || []);
+    const remaining = SS_KEYWORDS_PLACEHOLDER.filter(w => !used.has(w));
+    const pool = remaining.length > 0 ? remaining : SS_KEYWORDS_PLACEHOLDER;
+    const pick = pool[Math.floor(Math.random() * pool.length)];
+    this.sseukGame.usedKeywords.push(pick);
+    return pick;
+  }
+
+  _startSseukDrawing() {
+    if (!this.sseukGame || !this.sseukGame.currentRound) return;
+    this.sseukGame.phase = 'drawing';
+    const r = this.sseukGame.currentRound;
+    r.startedAt = Date.now();
+    this._broadcastGame({
+      type: 'SS_ROUND_START',
+      roundIdx: this.sseukGame.currentRoundIdx,
+      drawerId: r.drawerId,
+      syllableCount: r.syllableCount,
+      timeLeftMs: SS_ROUND_DURATION_MS,
+    }, 'sseuk-sseuk');
+
+    // Round-end fallback timer (정답 없이 시간 만료).
+    const token = ++this.sseukGame.tokens.round;
+    this.sseukGame.timers.round = setTimeout(() => {
+      if (!this.sseukGame || this.sseukGame.tokens.round !== token) return;
+      this._endSseukRound('timeout').catch(() => {});
+    }, SS_ROUND_DURATION_MS);
+
+    // 시간 힌트 — Phase C에서 본격 구현. Phase A는 스케줄만 잡아 두기 (token 가드 동작 검증).
+    // TODO(Phase C): SS_HINT_REVEAL { type:'length' | 'letter' } 송신.
+    // const hintToken = ++this.sseukGame.tokens.hint;  // 비활성: Phase C 활성화.
+  }
+
+  async _endSseukRound(reason) {
+    if (!this.sseukGame) return;
+    if (this.sseukGame.timers.round) { clearTimeout(this.sseukGame.timers.round); this.sseukGame.timers.round = null; }
+    if (this.sseukGame.timers.bonus) { clearTimeout(this.sseukGame.timers.bonus); this.sseukGame.timers.bonus = null; }
+    if (this.sseukGame.timers.hint?.length) { for (const h of this.sseukGame.timers.hint) clearTimeout(h); this.sseukGame.timers.hint = []; }
+
+    const r = this.sseukGame.currentRound;
+    const perPlayerDelta = {};
+    // Phase A는 정답 파이프라인 미구현 → correctOrder는 항상 []. Phase D에서 채워짐.
+    const rankPoints = [100, 70, 50, 30];
+    (r?.correctOrder || []).forEach((pid, i) => {
+      const gain = rankPoints[i] !== undefined ? rankPoints[i] : 30;
+      perPlayerDelta[pid] = gain;
+      const target = this.sseukGame.players.find(p => p.id === pid);
+      if (target) target.score += gain;
+    });
+    if (r?.drawerId && r.correctOrder?.length > 0) {
+      const drawerGain = r.correctOrder.length * 30;
+      perPlayerDelta[r.drawerId] = (perPlayerDelta[r.drawerId] || 0) + drawerGain;
+      const drawer = this.sseukGame.players.find(p => p.id === r.drawerId);
+      if (drawer) drawer.score += drawerGain;
+    }
+
+    this._broadcastGame({
+      type: 'SS_ROUND_END',
+      reason,
+      keyword: r?.keyword || null,
+      drawerId: r?.drawerId || null,
+      correctOrder: r?.correctOrder || [],
+      perPlayerDelta,
+      scores: Object.fromEntries(this.sseukGame.players.map(p => [p.id, p.score])),
+    }, 'sseuk-sseuk');
+
+    // 다음 라운드 또는 게임 종료.
+    this.sseukGame.currentRoundIdx += 1;
+    if (this.sseukGame.currentRoundIdx >= this.sseukGame.totalRounds) {
+      // 라운드 결과 화면 시간을 잠시 두고 종료.
+      await new Promise(rs => setTimeout(rs, 1500));
+      if (!this.sseukGame) return;
+      await this._finishSseukGame();
+      return;
+    }
+    // 다음 라운드 자동 진행 (1.5s 정도 여유).
+    await new Promise(rs => setTimeout(rs, 1500));
+    if (!this.sseukGame) return;
+    this._startSseukRound();
+  }
+
+  async _finishSseukGame() {
+    if (!this.sseukGame) return;
+    this.sseukGame.phase = 'finished';
+    const rankings = [...this.sseukGame.players]
+      .sort((a, b) => b.score - a.score)
+      .map((p, i) => ({ rank: i + 1, id: p.id, name: p.name, characterId: p.characterId, colorIndex: p.colorIndex, score: p.score }));
+    this._broadcastGame({ type: 'SS_GAME_END', rankings }, 'sseuk-sseuk');
+    this._submitScoresToLeaderboard('sseuk-sseuk', rankings.map(r => ({ id: r.id, name: r.name, score: r.score })));
+    const scores = {};
+    this.sseukGame.players.forEach(p => { scores[p.id] = { name: p.name, score: p.score, colorIndex: p.colorIndex }; });
+    await this.state.storage.put('scores', scores);
+    await this.state.storage.put('phase', 'results');
   }
 
   _handlePlayerInput(player, msg) {
@@ -2228,17 +2515,21 @@ export class GameRoom {
       case 'QUIZ_HINT':
         if (player?.gameId === 'mallang-quiz-battle') await this._handleQuizHint(ws, player, msg);
         break;
-      // ── 슥슥 (Phase 0: dispatch wiring only. 핸들러는 Phase A~D에서 채워짐) ──
-      case 'SS_READY':
+      // ── 슥슥 ──
       case 'SS_SELECT_CHARACTER':
+        if (player?.gameId === 'sseuk-sseuk') await this._handleSseukSelectCharacter(player, msg);
+        break;
+      case 'SS_READY':
+        if (player?.gameId === 'sseuk-sseuk') await this._handleSseukReady(player, msg);
+        break;
       case 'SS_VOLUNTEER':
+        if (player?.gameId === 'sseuk-sseuk') await this._handleSseukVolunteer(player, msg);
+        break;
       case 'SS_STROKE_ADD':
       case 'SS_CANVAS_CLEAR':
       case 'SS_STROKE_UNDO':
       case 'SS_GUESS':
-        if (player?.gameId === 'sseuk-sseuk') {
-          // TODO(Phase A~D): route to _handleSseuk* handlers.
-        }
+        // Phase B(스트로크)/Phase D(채팅·정답)에서 채워짐.
         break;
       case 'submit_result': if (player) await this._handleSubmitResult(player, msg);      break;
       case 'rematch':       if (player) await this._handleRematch();                       break;
@@ -2377,6 +2668,8 @@ export class GameRoom {
     this._stopTugWarLoop();
     if (this.quizGame?.timer) clearTimeout(this.quizGame.timer);
     this.quizGame = null;
+    this._clearSseukTimers();
+    this.sseukGame = null;
     await this.state.storage.put('phase', 'countdown');
     for (const seconds of [3, 2, 1]) {
       this._broadcastAll({ type: 'countdown', seconds });
@@ -2425,6 +2718,8 @@ export class GameRoom {
     this._stopTugWarLoop();
     if (this.quizGame?.timer) clearTimeout(this.quizGame.timer);
     this.quizGame = null;
+    this._clearSseukTimers();
+    this.sseukGame = null;
 
     if (typeof code === 'string' && code) {
       await this.state.storage.put('code', code);
@@ -2458,6 +2753,8 @@ export class GameRoom {
     this._stopTugWarLoop();
     if (this.quizGame?.timer) clearTimeout(this.quizGame.timer);
     this.quizGame = null;
+    this._clearSseukTimers();
+    this.sseukGame = null;
     // Reset player votes
     for (const { ws, player } of this._getLobbySessions()) {
       ws.serializeAttachment({ ...player, gameVote: null, startVote: false });
@@ -2494,6 +2791,29 @@ export class GameRoom {
         await this._finishJumpGame();
       } else {
         this._broadcastJumpPatch();
+      }
+      return;
+    }
+
+    if (player.role === 'game' && player.gameId === 'sseuk-sseuk' && this.sseukGame) {
+      const ssPlayer = this.sseukGame.players.find(p => p.id === player.id);
+      if (ssPlayer) {
+        ssPlayer.connected = false;
+        ssPlayer.ready = false;
+        this._broadcastGame({ type: 'SS_PLAYER_UPDATE', players: this.sseukGame.players }, 'sseuk-sseuk');
+
+        const anyConnected = this.sseukGame.players.some(p => p.connected);
+        if (!anyConnected) {
+          this._clearSseukTimers();
+          this.sseukGame = null;
+          return;
+        }
+        // 출제자 disconnect → 즉시 라운드 종료.
+        if (this.sseukGame.phase !== 'waiting' && this.sseukGame.currentRound?.drawerId === player.id) {
+          this._endSseukRound('drawer-disconnect').catch(() => {});
+          return;
+        }
+        // drawing 중 비-출제자 disconnect: 전원 정답 조건 재계산 (Phase D에서 정답 발생). Phase A는 추가 작업 없음.
       }
       return;
     }
