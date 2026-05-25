@@ -298,10 +298,13 @@ gameExitBtn?.addEventListener('click', () => {
 });
 
 /* ── Timer ─────────────────────────────────────────── */
-function startTimer(durationMs, mode = 'normal') {
+function startTimer(durationMs, totalMs = durationMs, mode = 'normal') {
+  // 시그니처 호환성 — 2번째 인자가 문자열(mode) 이면 옛 호출(durationMs, mode) 로 간주.
+  if (typeof totalMs === 'string') { mode = totalMs; totalMs = durationMs; }
   stopTimer();
   timerMode = mode;
-  timerTotalMs = Math.max(1, durationMs);
+  // 재접속 시 totalMs > durationMs 가 들어와도 진행바가 올바른 % 에서 시작.
+  timerTotalMs = Math.max(1, totalMs);
   timerDeadlineAt = Date.now() + Math.max(0, durationMs);
   timerDisplay.classList.toggle('is-bonus', mode === 'bonus');
   // 진행바 노출 + 모드별 색상 클래스 초기화.
@@ -1056,14 +1059,21 @@ function applyPhase() {
   if (phase === 'drawing' && currentRound) {
     renderDrawingPhase(currentRound);
     restoreSnapshotStrokes(currentRound);
-    if (currentRound.timeLeftMs) startTimer(currentRound.timeLeftMs, 'normal');
+    restoreSnapshotLeaderboard(currentRound);
+    restoreSnapshotRevealedLetter(currentRound);
+    if (currentRound.timeLeftMs) {
+      // totalMs 가 스냅샷에 있으면 진행바를 올바른 % 에서 시작; 없으면 폴백.
+      startTimer(currentRound.timeLeftMs, currentRound.totalMs || currentRound.timeLeftMs, 'normal');
+    }
   } else if (phase === 'volunteering' && currentRound?.volunteersDeadlineAt) {
     showSubPanel('volunteerPanel');
     startVolunteerCountdown(currentRound.volunteersDeadlineAt);
   } else if (phase === 'bonus' && currentRound) {
     renderDrawingPhase(currentRound);
     restoreSnapshotStrokes(currentRound);
-    startTimer(currentRound.timeLeftMs || 0, 'bonus');
+    restoreSnapshotLeaderboard(currentRound);
+    restoreSnapshotRevealedLetter(currentRound);
+    startTimer(currentRound.timeLeftMs || 0, currentRound.totalMs || 10000, 'bonus');
   }
 }
 
@@ -1073,6 +1083,25 @@ function restoreSnapshotStrokes(round) {
   if (!round || !Array.isArray(round.strokes) || round.strokes.length === 0) return;
   allStrokes = round.strokes.slice();
   redrawAll();
+}
+
+/* 재접속 시 이미 정답 맞힌 사람들의 미니 리더보드 칩 재구성. */
+function restoreSnapshotLeaderboard(round) {
+  resetMiniLeaderboard();
+  if (!round || !Array.isArray(round.correctOrder) || round.correctOrder.length === 0) return;
+  for (const entry of round.correctOrder) {
+    if (entry && entry.id) addToMiniLeaderboard(entry);
+  }
+}
+
+/* 재접속 시 이미 공개된 letter 힌트 (40s 이후 한 글자) 슬롯에 복원.
+ * 코덱스 MEDIUM 반영: snapshot 으로 revealedLetter 가 오는데 정작 슬롯에는
+ * 다시 적용 안 돼서 mid-round 복원이 반쪽이던 문제. */
+function restoreSnapshotRevealedLetter(round) {
+  if (!round || !round.revealedLetter) return;
+  const { position, value } = round.revealedLetter;
+  if (typeof position !== 'number' || !value) return;
+  revealLetterHint(position, value);
 }
 
 connect();

@@ -416,9 +416,18 @@ h2 { margin: 4px 0 8px; font-size: 20px; color: #064e3b; }
 }
 .spin-in-anim { animation: spin-in 0.9s cubic-bezier(.34, 1.56, .64, 1) both; }
 
-/* 모션 감소 사용자 설정 존중 — 애니메이션 비활성. */
+/* 모션 감소 사용자 설정 존중 — 모든 키프레임 비활성. 새로 추가된
+ * timer-num-pulse / timer-bar-pulse / bonus-pop / toast-pop / slotPulse 도
+ * 포함해 민감 사용자에게 깜빡임 발생하지 않도록 일괄 차단. */
 @media (prefers-reduced-motion: reduce) {
-  .float-anim, .pop-anim, .spin-in-anim { animation: none; }
+  .float-anim, .pop-anim, .spin-in-anim,
+  .timer-display.is-critical,
+  .timer-bar-track.is-critical .timer-bar-fill,
+  .bonus-banner.is-show,
+  .correct-toast.is-show,
+  .keyword-slot__cell.is-pulse {
+    animation: none !important;
+  }
 }
 
 .countdown-overlay {
@@ -550,6 +559,16 @@ h2 { margin: 4px 0 8px; font-size: 20px; color: #064e3b; }
   overflow: hidden;
   position: relative;
   touch-action: none;
+}
+/* 짧은 세로폰 (예: iPhone SE 568px) / 폴드 반쪽 — 헤더 + 타이머바 + 미니
+ * 리더보드 + 키워드슬롯 + 도구바 + 채팅 chrome 누적으로 60vh 캔버스가
+ * 입력바를 below-the-fold 로 밀어내던 문제 완화. 짧은 viewport 일수록
+ * 캔버스를 더 줄여 입력바·채팅이 같은 화면에 보이도록. */
+@media (max-height: 720px) {
+  .canvas-wrap { max-height: 52vh; }
+}
+@media (max-height: 600px) {
+  .canvas-wrap { max-height: 44vh; }
 }
 #drawCanvas {
   width: 100%;

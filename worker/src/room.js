@@ -2077,6 +2077,16 @@ export class GameRoom {
         keyword: isDrawer ? r.keyword : null,
         difficulty: r.difficulty || null,
         timeLeftMs: this._sseukTimeLeftMs(),
+        // 진행바 fill 비율 계산용 — 재접속 시 timeLeftMs/totalMs 로 시작
+        // 위치를 맞춘다. bonus phase 면 보너스 총 시간이 totalMs.
+        totalMs: this.sseukGame.phase === 'bonus'
+          ? SS_BONUS_AFTER_FIRST_MS
+          : (r.roundDurationMs || SS_ROUND_DURATION_DEFAULT_MS),
+        // 미니 리더보드 복원용 — 이미 정답 맞힌 사람 + 그 순위.
+        correctOrder: (r.correctOrder || []).map((pid, i) => {
+          const p = this.sseukGame.players.find(x => x.id === pid);
+          return { id: pid, name: p?.name || '?', rank: i + 1 };
+        }),
         volunteersDeadlineAt: r.volunteersDeadlineAt || null,
         // letter 힌트도 이미 공개됐으면 함께 복원.
         revealedLetter: (r.hintRevealed?.letterIdx != null && !isDrawer)
