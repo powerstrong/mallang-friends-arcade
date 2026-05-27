@@ -767,13 +767,37 @@ function renderRoundEnd(msg) {
     nm.textContent = (p.id === playerId ? `${p.name} (나)` : p.name);
     left.appendChild(nm);
     const right = document.createElement('span');
-    const delta = msg.perPlayerDelta[p.id] || 0;
-    const total = msg.scores[p.id] || 0;
-    right.innerHTML = `<span class="delta-gain">+${delta}</span> · ${total}`;
+    right.className = 'round-end-deltas__right';
+    const delta = msg.perPlayerDelta?.[p.id] || 0;
+    const total = msg.scores?.[p.id] || 0;
+    const breakdown = msg.perPlayerBreakdown?.[p.id];
+    const breakdownText = formatBreakdown(breakdown);
+    // 분해 표시: "+92 · 240"  아래 작게 "(기본 30 + 등수 40 + 속도 22)"
+    right.innerHTML = `<span class="delta-gain">+${delta}</span> · ${total}` +
+      (breakdownText ? `<span class="delta-breakdown">${breakdownText}</span>` : '');
     li.appendChild(left);
     li.appendChild(right);
     roundEndDeltas.appendChild(li);
   }
+}
+
+/* 점수 분해를 한 줄 카피로 변환. 정답자/출제자 역할에 따라 다름.
+ * 정답 0명이면 빈 문자열 → 호출부에서 숨김. */
+function formatBreakdown(b) {
+  if (!b) return '';
+  const m = (b.multiplier && b.multiplier !== 1.0) ? ` ×${b.multiplier}` : '';
+  if (b.role === 'guesser') {
+    const parts = [`기본 ${b.base}`];
+    if (b.rank > 0)  parts.push(`등수 ${b.rank}`);
+    if (b.speed > 0) parts.push(`속도 ${b.speed}`);
+    return `(${parts.join(' + ')}${m})`;
+  }
+  if (b.role === 'drawer') {
+    if (b.total === 0) return '(아무도 못 맞혔어요)';
+    // 평균 점수 기준을 함께 노출 — "왜 이 점수?" 의 단서 (Codex LOW).
+    return `(평균 ${b.avgGuesser}점 × 정답률 ${b.correctRate}% × 1등 속도 ${b.firstSpeed}%${m})`;
+  }
+  return '';
 }
 
 function renderGameEnd(rankings) {

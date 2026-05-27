@@ -735,6 +735,17 @@ h2 { margin: 4px 0 8px; font-size: 20px; color: #064e3b; }
   gap: 6px;
 }
 .round-end-deltas__avatar { border-color: rgba(6, 78, 59, 0.15); }
+.round-end-deltas__right {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+.round-end-deltas .delta-breakdown {
+  font-size: 11px;
+  color: #6b7280;
+  font-weight: 400;
+}
 
 /* ── Rankings ───────────────────────────────────────── */
 .rankings-list { list-style: none; padding: 0; margin: 12px 0; }

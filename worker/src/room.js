@@ -4,7 +4,8 @@ import {
   SS_KEYWORDS_BY_DIFFICULTY,
   SS_DIFFICULTY_BY_ROUND,
   SS_DURATION_BY_DIFFICULTY,
-  SS_SCORE_MULTIPLIER_BY_DIFFICULTY,
+  SS_GUESSER_MULTIPLIER_BY_DIFFICULTY,
+  SS_DRAWER_MULTIPLIER_BY_DIFFICULTY,
 } from './ss_keywords.js';
 import { submitScore } from './leaderboard.js';
 import { pickGameCharacter } from './characters.js';
@@ -2083,9 +2084,9 @@ export class GameRoom {
           ? SS_BONUS_AFTER_FIRST_MS
           : (r.roundDurationMs || SS_ROUND_DURATION_DEFAULT_MS),
         // 미니 리더보드 복원용 — 이미 정답 맞힌 사람 + 그 순위.
-        correctOrder: (r.correctOrder || []).map((pid, i) => {
-          const p = this.sseukGame.players.find(x => x.id === pid);
-          return { id: pid, name: p?.name || '?', rank: i + 1 };
+        correctOrder: (r.correctOrder || []).map((entry, i) => {
+          const p = this.sseukGame.players.find(x => x.id === entry.id);
+          return { id: entry.id, name: p?.name || '?', rank: i + 1 };
         }),
         volunteersDeadlineAt: r.volunteersDeadlineAt || null,
         // letter 힌트도 이미 공개됐으면 함께 복원.
@@ -2417,9 +2418,9 @@ export class GameRoom {
     }
 
     // 2) 이미 정답을 맞힌 사람: 정답자끼리만 보이는 사이드 채널.
-    const alreadyCorrect = r && Array.isArray(r.correctOrder) && r.correctOrder.includes(player.id);
+    const alreadyCorrect = r && Array.isArray(r.correctOrder) && r.correctOrder.some(e => e.id === player.id);
     if (alreadyCorrect) {
-      const visibleTo = new Set([r.drawerId, ...r.correctOrder]);
+      const visibleTo = new Set([r.drawerId, ...r.correctOrder.map(e => e.id)]);
       for (const { ws, player: p } of this._getSessions()) {
         if (p.gameId !== 'sseuk-sseuk') continue;
         if (!visibleTo.has(p.id)) continue;
@@ -2507,8 +2508,12 @@ export class GameRoom {
   _handleSseukCorrectGuess(player, originalText) {
     const r = this.sseukGame.currentRound;
     if (!r.correctOrder) r.correctOrder = [];
-    if (r.correctOrder.includes(player.id)) return; // 중복 방지.
-    r.correctOrder.push(player.id);
+    if (r.correctOrder.some(e => e.id === player.id)) return; // 중복 방지.
+    // 라운드 시작부터의 경과 ms 를 함께 저장 — 속도 보너스 / 출제자 tau_first 계산용.
+    // 보너스 phase 에서도 startedAt 기준 누적 t 를 쓴다 (Codex 권고:
+    // 보너스 10초가 추가 속도 잭팟이 되지 않도록 리셋 X).
+    const atMs = r.startedAt ? Math.max(0, Date.now() - r.startedAt) : 0;
+    r.correctOrder.push({ id: player.id, atMs });
     const rank = r.correctOrder.length;
 
     // 1) 본인에게는 원문 그대로.
@@ -2561,8 +2566,11 @@ export class GameRoom {
     }
 
     // 모든 비-출제자가 맞혔으면 즉시 종료.
+    // "현재 connected guessers 가 모두 correctOrder 안에 있으면" 기준으로 변경
+    // (Codex 리뷰 HIGH): 맞히고 나간 사람을 카운트로만 비교하면 정작 남은
+    // 사람이 못 맞혔는데도 조기 종료될 수 있었음.
     const guessers = this.sseukGame.players.filter(p => p.connected && p.id !== r.drawerId);
-    if (guessers.length > 0 && r.correctOrder.length >= guessers.length) {
+    if (guessers.length > 0 && guessers.every(g => r.correctOrder.some(e => e.id === g.id))) {
       this._endSseukRound('all-correct').catch(() => {});
     }
   }
@@ -2579,6 +2587,10 @@ export class GameRoom {
     this.sseukGame.phase = 'drawing';
     const r = this.sseukGame.currentRound;
     r.startedAt = Date.now();
+    // G(정답 가능 인원) 을 라운드 시작 시점에 고정 — 도중에 누가 나가서
+    // current connected < correctOrder 가 되면 q=k/G>1, rankPart 음수가 되는
+    // 버그를 차단 (Codex 리뷰 HIGH).
+    r.guesserBaseline = this.sseukGame.players.filter(p => p.connected && p.id !== r.drawerId).length;
     const roundDurationMs = r.roundDurationMs || SS_ROUND_DURATION_DEFAULT_MS;
     // syllableCount는 출제자에게만 — Codex MAJOR #4 (글자수 힌트 지연).
     const baseStart = {
@@ -2619,22 +2631,90 @@ export class GameRoom {
 
     const r = this.sseukGame.currentRound;
     const perPlayerDelta = {};
-    // Phase A는 정답 파이프라인 미구현 → correctOrder는 항상 []. Phase D에서 채워짐.
-    // Phase F: HARD 라운드는 정답자·출제자 점수 모두 1.5배 (역전 재미 강화).
-    const multiplier = SS_SCORE_MULTIPLIER_BY_DIFFICULTY[r?.difficulty] || 1.0;
-    const rankPoints = [100, 70, 50, 30];
-    (r?.correctOrder || []).forEach((pid, i) => {
-      const base = rankPoints[i] !== undefined ? rankPoints[i] : 30;
-      const gain = Math.round(base * multiplier);
-      perPlayerDelta[pid] = gain;
-      const target = this.sseukGame.players.find(p => p.id === pid);
-      if (target) target.score += gain;
+    const perPlayerBreakdown = {};   // { [pid]: { rank?, speed?, base?, qBonus?, total } }
+    // 옵션 B (Codex) 공식 — "잘 그린 판만, 빨리 맞힌 사람만" 보상.
+    //   G = 정답 가능 인원 (출제자 제외 connected). 출제자 단독 / 무인 시 0.
+    //   T = 라운드 총 시간 (난이도별). tau(t) = clamp(1 - t/T, 0, 1).
+    //   정답자 (rank r=0 부터, G>=2):
+    //     S_guess = Mg * (30(기본) + 40*(G-1-r)/(G-1) (등수) + 30*tau (속도))
+    //   G=1 폴백 (2인 게임 — 정답자 1명뿐이라 등수 무의미):
+    //     S_guess = Mg * (70 + 30*tau)
+    //   출제자:
+    //     S_draw = Md * avg(S_correct) * q^1.4 * (0.6 + 0.4*tau_first)
+    //     where q = correctCount / G (정답률), tau_first = 1등 정답자 tau.
+    //   HARD 분리: Mg=1.15, Md=1.0 (출제자는 이미 q·tau_first 로 평가받음).
+    //   보너스 phase 에서도 t 는 startedAt 기준 누적 — 보너스 10초가 추가 속도
+    //   잭팟이 되지 않도록 (Codex 권고).
+    const Mg = SS_GUESSER_MULTIPLIER_BY_DIFFICULTY[r?.difficulty] || 1.0;
+    const Md = SS_DRAWER_MULTIPLIER_BY_DIFFICULTY[r?.difficulty] || 1.0;
+    const T  = r?.roundDurationMs || SS_ROUND_DURATION_DEFAULT_MS;
+    const correctOrder = r?.correctOrder || [];
+    const k = correctOrder.length;
+    // G 는 라운드 시작 시점 baseline 우선 — 도중에 누가 나가도 q=k/G 가 1을
+    // 넘지 않게 하기 위해 (Codex 리뷰 HIGH). baseline 이 비어 있으면 (구버전
+    // 스냅샷 복원 등) k 또는 현재 connected 중 큰 값으로 안전 fallback.
+    const liveGuesserCount = this.sseukGame.players
+      .filter(p => p.connected && p.id !== r?.drawerId).length;
+    const G = Math.max(r?.guesserBaseline || 0, k, liveGuesserCount);
+
+    const guesserScoresRaw = [];   // float 유지 — 출제자 avg 계산 정확도 (MEDIUM).
+    correctOrder.forEach((entry, i) => {
+      const tau = Math.max(0, Math.min(1, 1 - (entry.atMs || 0) / T));
+      let rankPart = 0;
+      let base = 30;
+      if (G >= 2) {
+        rankPart = 40 * (G - 1 - i) / (G - 1);
+      } else {
+        // G=1 폴백 — 등수 분배가 무의미. 기본 70 + 속도 30.
+        base = 70;
+        rankPart = 0;
+      }
+      const speedPart = 30 * tau;
+      // 명세대로 Mg 는 합쳐진 raw 에 한 번만 곱한다 (중간 round 후 곱하면
+      // HARD 에서 1점 드리프트 — Codex MEDIUM).
+      const rawFloat = (base + rankPart + speedPart) * Mg;
+      const total = Math.round(rawFloat);
+      guesserScoresRaw.push(rawFloat);
+      perPlayerDelta[entry.id] = total;
+      perPlayerBreakdown[entry.id] = {
+        role: 'guesser',
+        base,
+        rank: Math.round(rankPart),
+        speed: Math.round(speedPart),
+        multiplier: Mg,
+        total,
+      };
+      const target = this.sseukGame.players.find(p => p.id === entry.id);
+      if (target) target.score += total;
     });
-    if (r?.drawerId && r.correctOrder?.length > 0) {
-      const drawerGain = Math.round(r.correctOrder.length * 30 * multiplier);
-      perPlayerDelta[r.drawerId] = (perPlayerDelta[r.drawerId] || 0) + drawerGain;
+
+    if (r?.drawerId && k > 0 && G > 0) {
+      const avg = guesserScoresRaw.reduce((a, b) => a + b, 0) / k;
+      const q = k / G;
+      const tauFirst = Math.max(0, Math.min(1, 1 - (correctOrder[0].atMs || 0) / T));
+      const drawerRaw = Md * avg * Math.pow(q, 1.4) * (0.6 + 0.4 * tauFirst);
+      const drawerTotal = Math.round(drawerRaw);
+      perPlayerDelta[r.drawerId] = (perPlayerDelta[r.drawerId] || 0) + drawerTotal;
+      perPlayerBreakdown[r.drawerId] = {
+        role: 'drawer',
+        avgGuesser: Math.round(avg),
+        correctRate: Math.round(q * 100),   // % 표시용
+        firstSpeed: Math.round(tauFirst * 100),
+        multiplier: Md,
+        total: drawerTotal,
+      };
       const drawer = this.sseukGame.players.find(p => p.id === r.drawerId);
-      if (drawer) drawer.score += drawerGain;
+      if (drawer) drawer.score += drawerTotal;
+    } else if (r?.drawerId) {
+      // 정답 0명 — 출제자 점수 0 (분해 정보는 보내서 UI 에 0 표기).
+      perPlayerBreakdown[r.drawerId] = {
+        role: 'drawer',
+        avgGuesser: 0,
+        correctRate: 0,
+        firstSpeed: 0,
+        multiplier: Md,
+        total: 0,
+      };
     }
 
     this._broadcastGame({
@@ -2643,9 +2723,13 @@ export class GameRoom {
       keyword: r?.keyword || null,
       drawerId: r?.drawerId || null,
       difficulty: r?.difficulty || null,
-      multiplier,
-      correctOrder: r?.correctOrder || [],
+      guesserMultiplier: Mg,
+      drawerMultiplier: Md,
+      // 하위호환: 옛 multiplier 키도 (정답자 기준값) 함께 송신.
+      multiplier: Mg,
+      correctOrder: correctOrder.map(e => e.id),
       perPlayerDelta,
+      perPlayerBreakdown,
       scores: Object.fromEntries(this.sseukGame.players.map(p => [p.id, p.score])),
     }, 'sseuk-sseuk');
 
@@ -3207,7 +3291,7 @@ export class GameRoom {
           if (r) {
             const remainingGuessers = this.sseukGame.players.filter(p => p.connected && p.id !== r.drawerId);
             const allCorrect = remainingGuessers.length > 0
-              && remainingGuessers.every(g => r.correctOrder?.includes(g.id));
+              && remainingGuessers.every(g => r.correctOrder?.some(e => e.id === g.id));
             if (allCorrect) {
               this._endSseukRound('all-correct').catch(() => {});
               return;

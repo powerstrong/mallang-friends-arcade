@@ -240,11 +240,19 @@ export const SS_DURATION_BY_DIFFICULTY = {
   hard:   80000,
 };
 
-/* 난이도별 점수 가중치. HARD는 정답자·출제자 모두 1.5배. */
-export const SS_SCORE_MULTIPLIER_BY_DIFFICULTY = {
+/* 난이도별 점수 가중치 — 정답자·출제자 분리.
+ * HARD 라운드는 정답자만 1.15배 (어려운 단어 맞히는 보람). 출제자는 이미
+ * 정답률 q^1.4 와 1등 정답 속도 tau_first 가 자연 평가하므로 1.0 고정.
+ * (구버전: 양쪽 1.5배 → 출제자가 어려운 단어 받으면 운으로 폭주하던 문제.) */
+export const SS_GUESSER_MULTIPLIER_BY_DIFFICULTY = {
   easy:   1.0,
   medium: 1.0,
-  hard:   1.5,
+  hard:   1.15,
+};
+export const SS_DRAWER_MULTIPLIER_BY_DIFFICULTY = {
+  easy:   1.0,
+  medium: 1.0,
+  hard:   1.0,
 };
 
 export const SS_KEYWORDS_BY_DIFFICULTY = {
