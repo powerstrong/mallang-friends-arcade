@@ -67,9 +67,28 @@ Pages 프리뷰만으로는 백엔드를 검증할 수 없습니다.
 
 **대안**:
 1. **로컬 dev 서버** (권장): `cd worker && npm run dev` 로 전체 스택을 로컬에서 실행
-2. **관리자 스테이징**: 관리자가 스테이징 환경에 배포 후 공유 URL로 검증
+2. **관리자 스테이징**: 별도 staging 워커를 배포해 프리뷰가 그쪽을 바라보게 한다.
 
-> 대부분의 캐주얼 게임은 클라이언트 전용으로 만들 수 있습니다.  
+### 스테이징 워커 활성화 (관리자)
+
+`worker/wrangler.toml` 에 `[env.staging]` 이 준비되어 있습니다. 한 번만 설정하면 됩니다.
+
+```bash
+cd worker
+npx wrangler deploy --env staging   # game-lobby-staging 워커 배포
+```
+
+그다음 `shared/config.js` 의 `STAGING_API` 에 배포된 URL 을 넣습니다.
+
+```js
+const STAGING_API = 'https://game-lobby-staging.powerstrong.workers.dev';
+```
+
+- 이렇게 하면 프로덕션 호스트(`PROD_HOSTS`)가 아닌 **Pages 프리뷰 배포의 클라이언트가 자동으로 staging API** 를 바라봅니다. 프리뷰 브랜치에 새 서버 코드를 함께 staging 에 배포해두면, 머지 전에 서버 권위형 게임도 프리뷰에서 검증할 수 있습니다.
+- `STAGING_API` 가 비어 있으면(기본값) 프리뷰도 prod API 를 사용하므로, 릴레이/클라이언트 게임 검증은 staging 없이도 그대로 동작합니다.
+- 참고: 위 설정은 staging 이 prod 와 같은 D1 DB(`web-game-lab-scores`)를 재사용합니다. 리더보드 오염이 걱정되면 staging 전용 D1 을 만들어 `[env.staging.d1_databases]` 의 `database_id` 를 교체하세요.
+
+> 대부분의 캐주얼 게임은 클라이언트 전용 또는 릴레이로 만들 수 있습니다.  
 > 서버 로직 추가가 필요하면 이슈에서 관리자와 먼저 상의하세요.
 
 ---

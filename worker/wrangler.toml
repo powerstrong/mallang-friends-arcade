@@ -28,3 +28,32 @@ new_sqlite_classes = ["GameRoom"]
 [[migrations]]
 tag = "v2"
 new_sqlite_classes = ["WorldChannel"]
+
+# ── staging 워커 (서버 권위형 신규 게임 프리뷰 검증용) ─────────────────────────────
+# `cd worker && npx wrangler deploy --env staging` 으로 배포 → game-lobby-staging 생성.
+# 배포 후 shared/config.js 의 STAGING_API 에 그 URL 을 넣으면 Pages 프리뷰가 자동 사용.
+# named env 는 바인딩/마이그레이션을 상속하지 않으므로 아래에 재선언한다.
+# (배포 전 D1 staging DB 를 별도로 둘지 여부는 docs/PREVIEW.md 참고 — 여기선 prod DB 재사용.)
+[env.staging]
+name = "game-lobby-staging"
+
+[[env.staging.durable_objects.bindings]]
+name = "GAME_ROOM"
+class_name = "GameRoom"
+
+[[env.staging.durable_objects.bindings]]
+name = "WORLD_CHANNEL"
+class_name = "WorldChannel"
+
+[[env.staging.d1_databases]]
+binding = "DB"
+database_name = "web-game-lab-scores"
+database_id = "50c32806-334a-49db-93c8-7c7cc123b40c"
+
+[[env.staging.migrations]]
+tag = "v1"
+new_sqlite_classes = ["GameRoom"]
+
+[[env.staging.migrations]]
+tag = "v2"
+new_sqlite_classes = ["WorldChannel"]
