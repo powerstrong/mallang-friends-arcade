@@ -2,8 +2,8 @@
 
 한 명이 그림을 그리면 나머지가 채팅으로 정답을 맞히는 온라인 실시간 그림 게임입니다.
 
-![말랑프렌즈 쓱쓱 스크린샷](../media/sseuk-sseuk.png)
-<!-- TODO: 스크린샷 추가 -->
+<!-- TODO: 스크린샷을 docs/media/sseuk-sseuk.png 로 추가한 뒤 아래 줄 주석을 해제하세요.
+![말랑프렌즈 쓱쓱 스크린샷](../media/sseuk-sseuk.png) -->
 
 ---
 

@@ -2,8 +2,8 @@
 
 초등 상식 퀴즈 10문제를 풀며 가장 많이 맞힌 친구가 우승하는 온라인 실시간 게임입니다.
 
-![말랑프렌즈 퀴즈배틀 스크린샷](../media/mallang-quiz-battle.png)
-<!-- TODO: 스크린샷 추가 -->
+<!-- TODO: 스크린샷을 docs/media/mallang-quiz-battle.png 로 추가한 뒤 아래 줄 주석을 해제하세요.
+![말랑프렌즈 퀴즈배틀 스크린샷](../media/mallang-quiz-battle.png) -->
 
 ---
 

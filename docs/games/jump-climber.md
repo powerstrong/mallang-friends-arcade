@@ -2,8 +2,8 @@
 
 점프하며 최대한 높이 올라가는 1~2인 로컬 플레이 게임입니다.
 
-![말랑프렌즈 점프 스크린샷](../media/jump-climber.png)
-<!-- TODO: 스크린샷 추가 -->
+<!-- TODO: 스크린샷을 docs/media/jump-climber.png 로 추가한 뒤 아래 줄 주석을 해제하세요.
+![말랑프렌즈 점프 스크린샷](../media/jump-climber.png) -->
 
 ---
 
