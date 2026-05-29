@@ -8,11 +8,11 @@
  */
 
 const CHAR_IMAGES = {
-  'mochi-rabbit':    '/prototypes/jump-climber/assets/토끼 메인 이미지.png',
-  'pudding-hamster': '/prototypes/jump-climber/assets/햄스터 메인 이미지.png',
-  'peach-chick':     '/prototypes/jump-climber/assets/병아리 메인 이미지.png',
-  'latte-puppy':     '/prototypes/jump-climber/assets/라떼 메인 이미지.png',
-  'mint-kitten':     '/prototypes/jump-climber/assets/고양이 메인이미지.png',
+  'mochi-rabbit':    '/games/jump-climber/assets/토끼 메인 이미지.png',
+  'pudding-hamster': '/games/jump-climber/assets/햄스터 메인 이미지.png',
+  'peach-chick':     '/games/jump-climber/assets/병아리 메인 이미지.png',
+  'latte-puppy':     '/games/jump-climber/assets/라떼 메인 이미지.png',
+  'mint-kitten':     '/games/jump-climber/assets/고양이 메인이미지.png',
 };
 const CHAR_LABELS = {
   'mochi-rabbit':    '모찌 토끼',

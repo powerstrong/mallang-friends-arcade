@@ -10,7 +10,7 @@
   "lang": "ko",
   "icons": [
     {
-      "src": "/prototypes/jump-climber/assets/icon.svg",
+      "src": "/games/jump-climber/assets/icon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any maskable"

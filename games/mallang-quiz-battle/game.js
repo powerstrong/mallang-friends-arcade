@@ -1,38 +1,38 @@
 /* ── 상수 ──────────────────────────────────────────── */
 const CHAR_IMAGES = {
-  'mochi-rabbit':    '/prototypes/jump-climber/assets/토끼 메인 이미지.png',
-  'pudding-hamster': '/prototypes/jump-climber/assets/햄스터 메인 이미지.png',
-  'peach-chick':     '/prototypes/jump-climber/assets/병아리 메인 이미지.png',
-  'latte-puppy':     '/prototypes/jump-climber/assets/라떼 메인 이미지.png',
-  'mint-kitten':     '/prototypes/jump-climber/assets/고양이 메인이미지.png',
+  'mochi-rabbit':    '/games/jump-climber/assets/토끼 메인 이미지.png',
+  'pudding-hamster': '/games/jump-climber/assets/햄스터 메인 이미지.png',
+  'peach-chick':     '/games/jump-climber/assets/병아리 메인 이미지.png',
+  'latte-puppy':     '/games/jump-climber/assets/라떼 메인 이미지.png',
+  'mint-kitten':     '/games/jump-climber/assets/고양이 메인이미지.png',
 };
 
 // 캐릭터 반응 포즈 (점프 클라이머 자산 재활용)
 const CHAR_POSES = {
   'mochi-rabbit': {
     idle: CHAR_IMAGES['mochi-rabbit'],
-    jump: '/prototypes/jump-climber/assets/토끼 점프 위로.png',
-    fall: '/prototypes/jump-climber/assets/토끼 추락.png',
+    jump: '/games/jump-climber/assets/토끼 점프 위로.png',
+    fall: '/games/jump-climber/assets/토끼 추락.png',
   },
   'pudding-hamster': {
     idle: CHAR_IMAGES['pudding-hamster'],
-    jump: '/prototypes/jump-climber/assets/햄스터 점프 위로.png',
-    fall: '/prototypes/jump-climber/assets/햄스터 추락.png',
+    jump: '/games/jump-climber/assets/햄스터 점프 위로.png',
+    fall: '/games/jump-climber/assets/햄스터 추락.png',
   },
   'peach-chick': {
     idle: CHAR_IMAGES['peach-chick'],
-    jump: '/prototypes/jump-climber/assets/병아리 점프.png',
-    fall: '/prototypes/jump-climber/assets/병아리 추락.png',
+    jump: '/games/jump-climber/assets/병아리 점프.png',
+    fall: '/games/jump-climber/assets/병아리 추락.png',
   },
   'latte-puppy': {
     idle: CHAR_IMAGES['latte-puppy'],
-    jump: '/prototypes/jump-climber/assets/라떼 점프 위로.png',
-    fall: '/prototypes/jump-climber/assets/라떼 추락.png',
+    jump: '/games/jump-climber/assets/라떼 점프 위로.png',
+    fall: '/games/jump-climber/assets/라떼 추락.png',
   },
   'mint-kitten': {
     idle: CHAR_IMAGES['mint-kitten'],
-    jump: '/prototypes/jump-climber/assets/고양이 점프 위로.png',
-    fall: '/prototypes/jump-climber/assets/고양이 추락.png',
+    jump: '/games/jump-climber/assets/고양이 점프 위로.png',
+    fall: '/games/jump-climber/assets/고양이 추락.png',
   },
 };
 

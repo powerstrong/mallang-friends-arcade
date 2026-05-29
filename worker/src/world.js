@@ -15,9 +15,9 @@ import { toGameCharacterId } from './characters.js';
 // Mirrors GAME_PATHS in worker/src/room.js — keep these aligned so a new
 // game added to the registry needs no world-side change unless we want a zone.
 const GAME_URLS = Object.freeze({
-  'jump-climber': '/prototypes/jump-climber/index.html',
-  'mallang-quiz-battle': '/prototypes/mallang-quiz-battle/index.html',
-  'sseuk-sseuk': '/prototypes/sseuk-sseuk/index.html',
+  'jump-climber': '/games/jump-climber/index.html',
+  'mallang-quiz-battle': '/games/mallang-quiz-battle/index.html',
+  'sseuk-sseuk': '/games/sseuk-sseuk/index.html',
 });
 
 const PROTOCOL_VERSION = 1;

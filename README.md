@@ -1,4 +1,4 @@
-![말랑프렌즈 아케이드 배너](./prototypes/jump-climber/assets/main%20banner.png)
+![말랑프렌즈 아케이드 배너](./games/jump-climber/assets/main%20banner.png)
 
 # 말랑프렌즈 아케이드
 

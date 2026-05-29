@@ -171,7 +171,7 @@
 
 ### Solo / Local Play
 
-- 브라우저에서 `prototypes/jump-climber/index.html` 직접 열면
+- 브라우저에서 `games/jump-climber/index.html` 직접 열면
   싱글 플레이 또는 로컬 2P 테스트 가능
 
 ### Room Play

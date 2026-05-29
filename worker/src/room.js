@@ -17,9 +17,9 @@ const COLORS = [
 
 // Keep in sync with /games/registry.js (browser can't import that file here)
 const GAME_PATHS = {
-  'jump-climber': '/prototypes/jump-climber/index.html',
-  'mallang-quiz-battle': '/prototypes/mallang-quiz-battle/index.html',
-  'sseuk-sseuk': '/prototypes/sseuk-sseuk/index.html',
+  'jump-climber': '/games/jump-climber/index.html',
+  'mallang-quiz-battle': '/games/mallang-quiz-battle/index.html',
+  'sseuk-sseuk': '/games/sseuk-sseuk/index.html',
 };
 
 const QUIZ_VALID_CHARS = ['mochi-rabbit', 'pudding-hamster', 'peach-chick', 'latte-puppy', 'mint-kitten'];

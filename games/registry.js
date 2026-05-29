@@ -19,7 +19,7 @@ window.GAME_REGISTRY = [
     resultUnit: 'm',
     resultScale: 1,
     resultDecimals: 0,
-    path: '/prototypes/jump-climber/index.html',
+    path: '/games/jump-climber/index.html',
   },
   {
     id: 'mallang-quiz-battle',
@@ -37,7 +37,7 @@ window.GAME_REGISTRY = [
     resultUnit: '점',
     resultScale: 1,
     resultDecimals: 0,
-    path: '/prototypes/mallang-quiz-battle/index.html',
+    path: '/games/mallang-quiz-battle/index.html',
   },
   {
     id: 'sseuk-sseuk',
@@ -55,6 +55,6 @@ window.GAME_REGISTRY = [
     resultUnit: '점',
     resultScale: 1,
     resultDecimals: 0,
-    path: '/prototypes/sseuk-sseuk/index.html',
+    path: '/games/sseuk-sseuk/index.html',
   },
 ];

@@ -939,7 +939,7 @@
     let target;
     try { target = new URL(d.url, window.location.origin); } catch { return; }
     if (target.origin !== window.location.origin) return;
-    if (!target.pathname.startsWith('/prototypes/')) return;
+    if (!target.pathname.startsWith('/games/')) return;
 
     const navigate = () => {
       stopHeartbeat();
