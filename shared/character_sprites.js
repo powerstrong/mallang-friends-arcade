@@ -1,13 +1,11 @@
 /* CHARACTERS — single source of truth for the world channel.
  *
  * worldId is what the world channel uses internally and over the wire.
- * gameIds maps to whatever id each prototype expects, so every game keeps its
- * existing identifiers (jump-climber/quiz/tug already use kebab-case).
+ * gameIds maps to whatever id each game expects, so every game keeps its
+ * existing identifiers (jump-climber/quiz already use kebab-case).
  */
 
-/* gameIds[gameId] is null when that game does not support this avatar.
- * Tug-war only supports 3 of the 5 — see worker/src/room.js TUG_CHARACTERS.
- */
+/* gameIds[gameId] is null when that game does not support this avatar. */
 window.CHARACTERS = [
   {
     worldId: 'latte_puppy',
