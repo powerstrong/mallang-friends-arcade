@@ -2,8 +2,7 @@
 
 한 명이 그림을 그리면 나머지가 채팅으로 정답을 맞히는 온라인 실시간 그림 게임입니다.
 
-<!-- TODO: 스크린샷을 docs/media/sseuk-sseuk.png 로 추가한 뒤 아래 줄 주석을 해제하세요.
-![말랑프렌즈 쓱쓱 스크린샷](../media/sseuk-sseuk.png) -->
+![말랑프렌즈 쓱쓱 플레이 — 라운드 종료 & 정답 그림 다시보기](../media/sseuk-sseuk.gif)
 
 ---
 
@@ -38,6 +37,4 @@
 
 ---
 
-## 플레이하기
-
-[https://web-game-lab.powerstrong.workers.dev/games/sseuk-sseuk/index.html](https://web-game-lab.powerstrong.workers.dev/games/sseuk-sseuk/index.html)
+> 플레이는 [말랑프렌즈 아케이드](../../README.md) 광장에서 부스로 입장해 주세요. (2명 이상 모이면 시작)

@@ -35,6 +35,4 @@
 
 ---
 
-## 플레이하기
-
-[https://web-game-lab.powerstrong.workers.dev/games/jump-climber/index.html](https://web-game-lab.powerstrong.workers.dev/games/jump-climber/index.html)
+> 플레이는 [말랑프렌즈 아케이드](../../README.md) 광장에서 부스로 입장해 주세요.
