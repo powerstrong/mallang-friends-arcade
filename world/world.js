@@ -1121,9 +1121,10 @@
   // 부스 프리뷰 표시/숨김. 렌더 루프에서 매 프레임 호출(변경 없으면 빠르게 반환).
   // 게임 칸에 들어서면 해당 게임 GIF 를 띄우고, 나가거나 매칭 모달이 열리면 숨긴다.
   function updateBoothPreview(zoneId) {
+    // 부스에 머무는 동안은 프리뷰를 계속 띄운다(준비/매칭 모달이 떠도 숨기지 않음 —
+    // 모달은 하단 시트, 프리뷰는 상단이라 겹치지 않는다). 칸을 벗어나면 숨김.
     const gifUrl = zoneId ? BOOTH_PREVIEWS[zoneId] : null;
-    const modalOpen = activeProposal && !matchModal.classList.contains('hidden');
-    if (!gifUrl || modalOpen) {
+    if (!gifUrl) {
       if (boothPreviewZone !== null) {
         boothPreview.classList.add('hidden');
         boothPreviewImg.removeAttribute('src');

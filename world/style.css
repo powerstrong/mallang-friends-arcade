@@ -578,7 +578,6 @@ h1 {
 .booth-preview.hidden { display: none; }
 .booth-preview__title { font-weight: 700; font-size: 0.95rem; margin-bottom: 6px; color: #222; }
 .booth-preview__img { width: 100%; border-radius: 10px; display: block; }
-.booth-preview__hint { margin-top: 6px; font-size: 0.72rem; color: #666; }
 @keyframes booth-preview-in {
   from { opacity: 0; transform: translate(-50%, -6px); }
   to   { opacity: 1; transform: translate(-50%, 0); }
