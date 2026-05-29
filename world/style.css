@@ -558,6 +558,32 @@ h1 {
 }
 .modal.hidden { display: none; }
 
+/* 부스 프리뷰 — 광장에서 게임 칸에 들어서면 캔버스 위에 게임 GIF 를 띄운다.
+   pointer-events:none 이라 이동 입력을 막지 않는다. */
+.booth-preview {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(62%, 230px);
+  background: rgba(255, 255, 255, 0.92);
+  border-radius: 14px;
+  padding: 8px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
+  pointer-events: none;
+  z-index: 20;
+  text-align: center;
+  animation: booth-preview-in 160ms ease-out;
+}
+.booth-preview.hidden { display: none; }
+.booth-preview__title { font-weight: 700; font-size: 0.95rem; margin-bottom: 6px; color: #222; }
+.booth-preview__img { width: 100%; border-radius: 10px; display: block; }
+.booth-preview__hint { margin-top: 6px; font-size: 0.72rem; color: #666; }
+@keyframes booth-preview-in {
+  from { opacity: 0; transform: translate(-50%, -6px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}
+
 .modal-card {
   pointer-events: auto;
   background: var(--panel);

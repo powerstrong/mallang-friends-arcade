@@ -164,6 +164,18 @@
   const matchAcceptBtn = document.getElementById('match-accept');
   const matchDeclineBtn = document.getElementById('match-decline');
   const matchModalCard = document.getElementById('match-modal-card');
+
+  // 부스 프리뷰 — gameId(=zoneId) → 게임 GIF. 준비된 게임만 등록(없으면 프리뷰 생략).
+  // 다른 GIF 로 바꾸려면 경로만 교체하면 된다.
+  const boothPreview = document.getElementById('booth-preview');
+  const boothPreviewImg = document.getElementById('booth-preview-img');
+  const boothPreviewTitle = document.getElementById('booth-preview-title');
+  const BOOTH_PREVIEWS = {
+    'jump-climber': '/docs/media/demo.gif',
+    'sseuk-sseuk': '/docs/media/sseuk-sseuk.gif',
+    // 'mallang-quiz-battle': 프리뷰 GIF 준비되면 추가
+  };
+  let boothPreviewZone = null;
   const matchStartingView = document.getElementById('match-starting-view');
   const starterPortrait = document.getElementById('starter-portrait');
   const starterText = document.getElementById('starter-text');
@@ -1105,6 +1117,27 @@
     };
   }
 
+  // 부스 프리뷰 표시/숨김. 렌더 루프에서 매 프레임 호출(변경 없으면 빠르게 반환).
+  // 게임 칸에 들어서면 해당 게임 GIF 를 띄우고, 나가거나 매칭 모달이 열리면 숨긴다.
+  function updateBoothPreview(zoneId) {
+    const gifUrl = zoneId ? BOOTH_PREVIEWS[zoneId] : null;
+    const modalOpen = activeProposal && !matchModal.classList.contains('hidden');
+    if (!gifUrl || modalOpen) {
+      if (boothPreviewZone !== null) {
+        boothPreview.classList.add('hidden');
+        boothPreviewImg.removeAttribute('src');
+        boothPreviewZone = null;
+      }
+      return;
+    }
+    if (boothPreviewZone === zoneId) return;  // 이미 같은 프리뷰 표시 중
+    boothPreviewZone = zoneId;
+    const zone = zonesCatalog.find((z) => z.id === zoneId);
+    boothPreviewTitle.textContent = zone ? zone.title : '';
+    boothPreviewImg.src = gifUrl;
+    boothPreview.classList.remove('hidden');
+  }
+
   function handleServerError(d) {
     const msg = d?.message || '서버 오류';
     const code = d?.code || '';
@@ -1185,6 +1218,7 @@
       lastFrameAt = now;
       step(dt);
       draw();
+      updateBoothPreview(myZoneProgress ? myZoneProgress.zoneId : null);
       rafHandle = requestAnimationFrame(loop);
     };
     rafHandle = requestAnimationFrame(loop);

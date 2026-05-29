@@ -64,6 +64,13 @@
       </header>
       <div class="canvas-wrap">
         <canvas id="world-canvas" width="540" height="960"></canvas>
+        <!-- 부스 프리뷰 — 게임 칸(zone)에 들어서면 게임 GIF 를 캔버스 위에 잠깐 띄운다.
+             canvas 는 GIF 애니메이션을 못 돌리므로 HTML <img> 오버레이로 표시. -->
+        <div id="booth-preview" class="booth-preview hidden" aria-hidden="true">
+          <div class="booth-preview__title" id="booth-preview-title"></div>
+          <img id="booth-preview-img" class="booth-preview__img" alt="" />
+          <div class="booth-preview__hint">잠깐 머무르면 매칭이 시작돼요</div>
+        </div>
       </div>
 
       <div id="chat-log" class="chat-log">
