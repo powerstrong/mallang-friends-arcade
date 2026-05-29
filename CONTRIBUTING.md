@@ -3,6 +3,8 @@
 말랑프렌즈 아케이드에 새 게임을 추가하거나 버그를 고치고 싶은 분을 환영합니다.  
 초보·취미 개발자나 Claude Code·Codex·Cursor 같은 AI 툴을 쓰는 분도 쉽게 따라올 수 있게 작성했습니다.
 
+> 처음이신가요? **[참여 문의 / 자기소개 이슈](https://github.com/powerstrong/mallang-friends-arcade/issues/new?template=join.yml)** 로 가볍게 인사부터 남겨 주세요. 관리자가 확인하고 안내해 드립니다.
+
 ---
 
 ## 기여 흐름

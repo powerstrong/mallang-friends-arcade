@@ -28,6 +28,13 @@
 
 `games/_template/` 복사 → 개발 → registry에 DRAFT 등록 → PR 흐름입니다.
 
+## 참여 & 연락
+
+같이 만들어보고 싶으신가요? 아래로 가볍게 인사만 남겨 주세요. 관리자가 확인하고 답을 드립니다.
+
+- 🙋 **[참여 문의 / 자기소개](https://github.com/powerstrong/mallang-friends-arcade/issues/new?template=join.yml)** — 어떤 걸 해보고 싶은지, 개발 경험, 쓰는 AI 툴 정도만 적어주시면 됩니다 (초보·취미 환영).
+- 🐛 버그 신고 · 💡 게임 제안도 [이슈](https://github.com/powerstrong/mallang-friends-arcade/issues/new/choose)에서 받습니다.
+
 ## 기술 스택
 
 순수 HTML/CSS/JavaScript (빌드 도구 없음) · Cloudflare Workers + Durable Objects · Cloudflare Pages 자동 배포

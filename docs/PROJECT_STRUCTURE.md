@@ -7,7 +7,7 @@
 ## 전체 구조
 
 ```
-web-game-lab/
+mallang-friends-arcade/
 ├── games/                    ← 게임 모음 (기여자 작업 영역)
 │   ├── registry.js           ← 게임 등록 파일 (항목 추가만 허용)
 │   ├── _template/            ← 새 게임 시작 템플릿 (복사해서 사용)
