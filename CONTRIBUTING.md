@@ -62,6 +62,8 @@ PLAYABLE 승격 + main 머지
 | `games/_template/` | 공용 템플릿 — 복사해서 사용, 원본 수정 금지 |
 | 다른 게임의 `games/<other-id>/` | 해당 게임 기여자 영역 |
 
+> **예외 — 서버 권위형 게임**: 이때만 `worker/src/games/<id>.js`(신규 모듈) 추가 + `worker/src/gameModules.js` 등록이 허용됩니다(코어의 기존 파일 `room.js`·`index.js` 등은 그대로). 반드시 이슈에서 관리자와 먼저 상의하고 PR 리뷰를 받으세요 — [docs/SERVER_GAMES.md](./docs/SERVER_GAMES.md).
+
 > 코어 파일이 왜 분리되어 있는지는 [docs/PROJECT_STRUCTURE.md](./docs/PROJECT_STRUCTURE.md) 를 참고하세요.
 
 ---
@@ -105,6 +107,12 @@ Claude Code·Codex·Cursor 등으로 게임을 만드는 분을 위한 프롬프
 PR이 열리면 GitHub Actions 가 `scripts/validate-games.js` 를 실행해  
 `games/registry.js` 항목의 필수 필드·형식·id 중복 여부를 자동으로 검사합니다.  
 빨간 체크가 뜨면 에러 메시지를 읽고 registry 항목을 수정하세요.
+
+PR 전에 로컬에서 미리 확인하려면(의존성 없이 Node 만 있으면 됩니다):
+
+```bash
+node scripts/validate-games.js
+```
 
 ---
 

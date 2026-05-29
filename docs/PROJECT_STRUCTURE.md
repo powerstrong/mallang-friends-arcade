@@ -26,16 +26,16 @@ mallang-friends-arcade/
 │   └── package.json
 │
 ├── world/                    ← 광장 클라이언트 코어 [수정 금지]
-│   ├── world.html            ← 광장 진입점
+│   ├── index.html            ← 광장 진입점
 │   ├── world.js              ← 광장 메인 로직
-│   └── ...
+│   ├── style.css
+│   └── assets/               ← 부스·캐릭터 이미지
 │
 ├── shared/                   ← 공통 라이브러리 [수정 금지]
 │   ├── bootstrap.js          ← GameBoot API (게임→광장 인터페이스)
 │   └── config.js             ← 서버 URL 등 환경 설정
 │
 ├── sw.js                     ← 서비스 워커 [수정 금지]
-├── games/registry.js         ← 게임 등록 파일 (항목 추가만)
 ├── scripts/
 │   └── validate-games.js     ← PR 자동 검증 스크립트
 ├── docs/                     ← 문서 모음

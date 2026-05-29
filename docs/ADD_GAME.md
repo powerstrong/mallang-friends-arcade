@@ -109,7 +109,7 @@ games/color-run/
 
 **반드시 지킬 것**
 
-- `worker/`, `world/`, `shared/`, 다른 게임 폴더 수정 금지
+- `worker/`, `world/`, `shared/`, 다른 게임 폴더 수정 금지 (서버 권위형 게임의 `worker/src/games/` 모듈 추가만 예외 — 위 3단계 (c) 참고, 관리자 리뷰 필수)
 - 빌드 도구·`npm install` 금지. 순수 HTML/CSS/JS 만 사용
 - 외부 CDN 패키지 사용 전 관리자와 먼저 상의
 - `shared/bootstrap.js` 와 `games/registry.js` 는 `<script src>` 로 불러와 사용 (수정 금지)
@@ -168,6 +168,7 @@ DRAFT 게임은 광장에 노출되지 않습니다. 직접 URL로 접근하세�
 **로컬 dev 서버** (풀스택, 서버 API 포함):
 ```bash
 cd worker
+npm install   # 최초 1회 (wrangler 설치)
 npm run dev
 # → http://localhost:8787/games/color-run/index.html
 ```
