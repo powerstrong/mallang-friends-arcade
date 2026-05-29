@@ -10,39 +10,45 @@
  * holdMs is the dwell time before a candidate becomes intent_ready.
  */
 
-export const GAME_ZONES = [
-  // Portrait (540x960) layout: 세 부스를 모두 상단에 가로로 배치해 스폰
-  // 지점(SPAWN_POINT y=520)에서 충분히 떨어뜨린다. 부스 폭을 165 로 줄여
-  // 540 안에 3 열로 들어가도록 한 결과 — 일러스트가 약간 작아지지만
-  // 스폰 직후 쓱쓱 부스에 강제로 끌려들어가는 문제가 사라진다.
-  {
-    id: 'jump-climber',
-    gameId: 'jump-climber',
-    title: '말랑프렌즈 점프',
-    rect: { x: 15, y: 80, w: 165, h: 200 },
-    minPlayers: 1,
-    maxPlayers: 2,
-    holdMs: 3000,
-  },
-  {
-    id: 'mallang-quiz-battle',
-    gameId: 'mallang-quiz-battle',
-    title: '말랑프렌즈 퀴즈배틀',
-    rect: { x: 188, y: 80, w: 165, h: 200 },
-    minPlayers: 2,
-    maxPlayers: 6,
-    holdMs: 3000,
-  },
-  {
-    id: 'sseuk-sseuk',
-    gameId: 'sseuk-sseuk',
-    title: '말랑프렌즈 쓱쓱',
-    rect: { x: 361, y: 80, w: 165, h: 200 },
-    minPlayers: 2,
-    maxPlayers: 6,
-    holdMs: 3000,
-  },
+// 부스 카탈로그 — 게임을 광장에 노출하려면 여기 한 줄만 추가하면 된다.
+// rect(픽셀 위치)는 BOOTH_LAYOUT 으로 인덱스 순서대로 자동 배치된다(직접 좌표 지정 불필요).
+// holdMs 기본 3000ms. 클라이언트(world/world.js)는 서버가 보내는 이 zone 목록을 그대로
+// 렌더하므로, 부스 추가 시 클라 좌표를 따로 맞출 필요가 없다.
+// (단, 전용 부스 일러스트가 필요하면 world/assets/booth_<id>.png 추가 + world.js 매핑 보강.)
+const BOOTH_CATALOG = [
+  { gameId: 'jump-climber',        title: '말랑프렌즈 점프',     minPlayers: 1, maxPlayers: 2 },
+  { gameId: 'mallang-quiz-battle', title: '말랑프렌즈 퀴즈배틀', minPlayers: 2, maxPlayers: 6 },
+  { gameId: 'sseuk-sseuk',         title: '말랑프렌즈 쓱쓱',     minPlayers: 2, maxPlayers: 6 },
 ];
+
+// Portrait(540x960) 광장 자동 레이아웃. 상단에 3열 그리드로 배치해 스폰 지점
+// (SPAWN_POINT y=520)에서 충분히 떨어뜨린다. 부스가 3개를 넘으면 다음 행으로 내려간다.
+// cols=3, w=165, gapX=8, marginTop=80 → 기존 3부스 좌표(x:15/188/361, y:80)와 정확히 동일.
+const BOOTH_LAYOUT = { plazaWidth: 540, cols: 3, w: 165, h: 200, gapX: 8, gapY: 24, marginTop: 80 };
+
+function boothRect(index) {
+  const L = BOOTH_LAYOUT;
+  const col = index % L.cols;
+  const row = Math.floor(index / L.cols);
+  const rowWidth = L.cols * L.w + (L.cols - 1) * L.gapX;
+  const leftMargin = Math.round((L.plazaWidth - rowWidth) / 2);
+  return {
+    x: leftMargin + col * (L.w + L.gapX),
+    y: L.marginTop + row * (L.h + L.gapY),
+    w: L.w,
+    h: L.h,
+  };
+}
+
+export const GAME_ZONES = BOOTH_CATALOG.map((b, i) => ({
+  id: b.gameId,
+  gameId: b.gameId,
+  title: b.title,
+  rect: boothRect(i),
+  minPlayers: b.minPlayers,
+  maxPlayers: b.maxPlayers,
+  holdMs: b.holdMs ?? 3000,
+}));
 
 const ZONES_BY_ID = new Map(GAME_ZONES.map((z) => [z.id, z]));
 
