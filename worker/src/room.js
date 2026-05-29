@@ -9,6 +9,7 @@ import {
 } from './ss_keywords.js';
 import { submitScore } from './leaderboard.js';
 import { pickGameCharacter } from './characters.js';
+import { SERVER_GAME_MODULES } from './gameModules.js';
 
 const COLORS = [
   '#ef4444', '#3b82f6', '#22c55e', '#f59e0b',
@@ -220,7 +221,8 @@ export class GameRoom {
     this.jumpLoop = null;
     this.quizGame = null;
     this.sseukGame = null;
-    this.relayRates = new Map();  // 릴레이: playerId -> { windowStart, count } (in-memory rate limit)
+    this.relayRates = new Map();   // 릴레이/모듈 inbound rate limit: ws -> { windowStart, count }
+    this.moduleGames = new Map();  // 서버 권위형 모듈 게임 상태: gameId -> state object
   }
 
   // Returns [{ws, player}] for all connected, registered players
@@ -280,7 +282,11 @@ export class GameRoom {
   }
 
   _broadcastRelayPresence(gameId) {
-    this._broadcastGame({ type: 'relay_presence', players: this._relayRoster(gameId) }, gameId);
+    const text = JSON.stringify({ type: 'relay_presence', players: this._relayRoster(gameId) });
+    for (const { ws, player } of this._getGameSessions(gameId)) {
+      if (player.mode !== 'relay') continue;  // relay presence 는 relay 세션에만
+      try { ws.send(text); } catch { /* ignore closed */ }
+    }
   }
 
   async _handleRelayJoinGame(ws, msg) {
@@ -292,6 +298,11 @@ export class GameRoom {
     // 내장 권위형 게임은 릴레이로 합류할 수 없다 (jump/quiz/sseuk 전용 로직 보호).
     if (RESERVED_GAME_IDS.has(gameId)) {
       ws.send(JSON.stringify({ type: 'error', message: '릴레이: 예약된 게임 id 라 사용할 수 없습니다.' }));
+      return;
+    }
+    // 서버 권위형 모듈 게임 id 도 릴레이로 쓸 수 없다 (격리). 보통 위 라우팅에서 걸러지지만 방어.
+    if (SERVER_GAME_MODULES.has(gameId)) {
+      ws.send(JSON.stringify({ type: 'error', message: '릴레이: 서버 모듈 게임 id 는 릴레이로 사용할 수 없습니다.' }));
       return;
     }
     const prev = ws.deserializeAttachment() || {};
@@ -327,6 +338,73 @@ export class GameRoom {
       if (otherWs === ws && !msg.echo) continue;      // 기본은 송신자 제외 (echo:true 면 포함)
       try { otherWs.send(out); } catch { /* ignore closed */ }
     }
+  }
+
+  // ── 서버 권위형 게임 모듈 (gameModules.js 에 등록된 신규 게임 라우팅) ──────────────
+  _moduleCtx(gameId) {
+    if (!this.moduleGames.has(gameId)) this.moduleGames.set(gameId, {});
+    return {
+      gameId,
+      state: this.moduleGames.get(gameId),
+      storage: this.state.storage,
+      sessions: () => this._getGameSessions(gameId).filter(({ player }) => player.mode === 'module'),
+      roster: () => this._getGameSessions(gameId)
+        .filter(({ player }) => player.mode === 'module')
+        .map(({ player }) => ({ id: player.id, name: player.name })),
+      broadcast: (m) => {
+        const text = JSON.stringify(m);
+        for (const { ws, player } of this._getGameSessions(gameId)) {
+          if (player.mode !== 'module') continue;
+          try { ws.send(text); } catch { /* ignore closed */ }
+        }
+      },
+      sendTo: (target, m) => {
+        // 같은 게임의 module 세션에만 전송 (ctx API 계약 안전성).
+        const p = target.deserializeAttachment();
+        if (!p || p.gameId !== gameId || p.mode !== 'module') return;
+        try { target.send(JSON.stringify(m)); } catch { /* ignore closed */ }
+      },
+    };
+  }
+
+  async _handleModuleJoinGame(ws, msg) {
+    const gameId = msg.gameId;
+    const mod = SERVER_GAME_MODULES.get(gameId);
+    if (!mod) {
+      ws.send(JSON.stringify({ type: 'error', message: '알 수 없는 서버 게임 모듈입니다.' }));
+      return;
+    }
+    const prev = ws.deserializeAttachment() || {};
+    const id = prev.id || randomHex(6);  // 서버가 'join' 에서 부여한 id 만 신뢰 (사칭 방지)
+    const name = String(msg.name || prev.name || '플레이어').slice(0, 32);
+    const already = prev.role === 'game' && prev.mode === 'module' && prev.gameId === gameId;
+    ws.serializeAttachment({ id, name, role: 'game', gameId, mode: 'module' });
+    if (already) {
+      // 재합류 스팸 방지 — onJoin 재호출/브로드캐스트 없이 가벼운 ack 만.
+      ws.send(JSON.stringify({ type: 'mod', event: 're-joined', you: id }));
+      return;
+    }
+    const ctx = this._moduleCtx(gameId);
+    try { await mod.onJoin?.(ctx, ws, msg); } catch { /* 모듈 오류 격리 — 코어에 전파 금지 */ }
+  }
+
+  async _handleModuleMessage(ws, player, msg) {
+    const mod = SERVER_GAME_MODULES.get(player.gameId);
+    if (!mod) return;
+    // inbound 캡 — 릴레이와 동일(연결 단위 rate limit + payload UTF-8 바이트 상한).
+    const now = Date.now();
+    let rec = this.relayRates.get(ws);
+    if (!rec || now - rec.windowStart >= RELAY_RATE_WINDOW_MS) {
+      rec = { windowStart: now, count: 0 };
+      this.relayRates.set(ws, rec);
+    }
+    rec.count += 1;
+    if (rec.count > RELAY_RATE_LIMIT) return;
+    let payloadText;
+    try { payloadText = JSON.stringify(msg.payload ?? null); } catch { return; }
+    if (new TextEncoder().encode(payloadText).length > RELAY_MAX_PAYLOAD_BYTES) return;
+    const ctx = this._moduleCtx(player.gameId);
+    try { await mod.onMessage?.(ctx, ws, msg.payload ?? null); } catch { /* 모듈 오류 격리 */ }
   }
 
   async _submitScoresToLeaderboard(gameId, players) {
@@ -992,6 +1070,12 @@ export class GameRoom {
 
     if (msg.gameId === 'sseuk-sseuk') {
       return await this._handleSseukJoinGame(ws, msg);
+    }
+
+    // 서버 권위형 모듈 게임 — 등록된 gameId 면 (클라가 claim 한 mode 와 무관하게) 모듈로
+    // 라우팅. relay 검사보다 먼저 둬서 모듈 id 를 relay 로 가로채는 것을 차단한다.
+    if (SERVER_GAME_MODULES.has(msg.gameId)) {
+      return await this._handleModuleJoinGame(ws, msg);
     }
 
     // 릴레이 게임 — 서버 권위 없이 같은 방·게임 세션끼리 메시지 중계만. 기여자 게임은
@@ -2304,7 +2388,10 @@ export class GameRoom {
         if (player?.gameId === 'sseuk-sseuk') this._handleSseukGuess(player, msg);
         break;
       case 'relay':         if (player) this._handleRelayMessage(ws, player, msg);         break;
-      case 'submit_result': if (player) await this._handleSubmitResult(player, msg);      break;
+      case 'mod':           if (player?.mode === 'module') await this._handleModuleMessage(ws, player, msg); break;
+      // submit_result 는 로비/내장 게임 세션만 허용. relay/module 세션(mode 보유)은
+      // 자체 결과 경로를 쓰므로 차단 — 점수/결과 위조 방지.
+      case 'submit_result': if (player && !player.mode) await this._handleSubmitResult(player, msg); break;
       case 'rematch':       if (player) await this._handleRematch();                       break;
       case 'ping':
         ws.send(JSON.stringify({
@@ -2550,6 +2637,19 @@ export class GameRoom {
     if (player.role === 'game' && player.mode === 'relay') {
       this.relayRates.delete(ws);
       this._broadcastRelayPresence(player.gameId);
+      return;
+    }
+
+    if (player.role === 'game' && player.mode === 'module') {
+      this.relayRates.delete(ws);
+      const mod = SERVER_GAME_MODULES.get(player.gameId);
+      if (mod) {
+        const ctx = this._moduleCtx(player.gameId);
+        try { await mod.onLeave?.(ctx, player); } catch { /* 모듈 오류 격리 */ }
+      }
+      // 모듈 세션이 모두 떠나면 in-memory 상태 정리 (mode==='module' 세션만 계산).
+      const remaining = this._getGameSessions(player.gameId).filter(({ player: p }) => p.mode === 'module').length;
+      if (remaining === 0) this.moduleGames.delete(player.gameId);
       return;
     }
 

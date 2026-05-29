@@ -55,15 +55,43 @@ cp -r games/_template-realtime games/tap-sync
 Windows라면 탐색기에서 `games/_template-realtime` 폴더를 통째로 복사해서  
 `games/tap-sync` 로 이름을 바꾸면 됩니다.
 
+릴레이 방식의 상세 동작·API·제약은 **[docs/RELAY.md](./RELAY.md)** 를 참고하세요.
+
+---
+
+### (c) 서버 권위형 게임 (server-authoritative)
+
+> **worker/ 코드 변경이 포함됩니다. 관리자 리뷰가 필수입니다.**  
+> 시작 전에 GitHub 이슈에서 관리자와 먼저 상의하세요.
+
+점수 조작·결과 위조를 방지해야 하는 게임에 사용합니다.  
+게임 로직이 서버 모듈에 있어 클라이언트는 결과를 위조할 수 없습니다.
+
+```bash
+# 예시: game-id = speed-tap
+cp -r games/_template-server games/speed-tap
+```
+
+Windows라면 탐색기에서 `games/_template-server` 폴더를 통째로 복사해서  
+`games/speed-tap` 으로 이름을 바꾸면 됩니다.
+
+추가로 **서버 모듈**도 작성해야 합니다:
+
+1. `worker/src/games/<id>.js` — 서버 게임 모듈 작성
+2. `worker/src/gameModules.js` — 모듈 등록
+
+서버 권위형 모듈 인터페이스·ctx API·mod 프로토콜 상세 →  
+**[docs/SERVER_GAMES.md](./SERVER_GAMES.md)**
+
+---
+
 **어떤 걸 고를까?**
 
 | 상황 | 선택 |
 |------|------|
 | 혼자 하거나 같은 화면에서 플레이 | (a) `_template` |
 | 방 코드로 온라인 친구와 실시간 플레이 | (b) `_template-realtime` |
-| 점수 조작 방지·서버 검증이 필수 | 관리자와 이슈에서 상의 |
-
-릴레이 방식의 상세 동작·API·제약은 **[docs/RELAY.md](./RELAY.md)** 를 참고하세요.
+| 점수 조작 방지·서버 검증이 필수 | (c) `_template-server` (관리자 리뷰 필수) |
 
 ---
 

@@ -74,6 +74,51 @@ game-id: [예: tap-sync]
 
 ---
 
+## 프롬프트 3 — 서버 권위형 게임 만들기
+
+```
+저장소 루트: [저장소 경로]
+game-id: [예: speed-tap]
+
+말랑프렌즈 아케이드에 서버 권위형(server-authoritative) 게임을 추가해 줘.
+이 방식은 게임 로직이 서버에 있어 클라이언트가 결과를 위조할 수 없어.
+worker/ 변경이 포함되므로 PR 후 관리자 리뷰가 반드시 필요해.
+
+[제약 — 절대 어기지 마]
+- 서버 모듈 작성 범위: worker/src/games/<id>.js 신규 파일 하나만.
+- gameModules.js 등록: worker/src/gameModules.js 에 import + MODULES 배열 추가만.
+- 코어 변경 금지: worker/src/index.js, worker/src/gameRoom.js 등 기존 핵심 파일 수정 금지.
+- 클라이언트 작업 범위: games/<id>/ 폴더 안에서만. shared/, world/ 수정 금지.
+- 게임 id 중복 금지: jump-climber / mallang-quiz-battle / sseuk-sseuk 는 예약 id — 절대 사용 금지.
+- 빌드 도구 금지: npm install, package.json, 번들러, 트랜스파일러 전부 금지.
+- 외부 패키지 금지: CDN 스크립트 포함 금지. 순수 HTML/CSS/JavaScript 만 사용.
+- 모바일 동작 필수: 세로 화면(portrait)에서 UI가 잘림 없이 표시되고, 터치 조작이 작동해야 함.
+- 디버그 코드 금지: console.log, debugger, TODO, HACK 주석은 최종 코드에 남기지 마.
+
+[mod 프로토콜 규칙]
+- 클라 → 서버: { type: 'mod', payload: { action: '...', ...params } }
+- 서버 → 클라: ctx.broadcast / ctx.sendTo 로 { type: 'mod', event: '...', ...fields }
+- payload 는 직렬화 시 8,192 바이트 이하.
+- 초당 40 메시지 이하로 전송.
+- 클라이언트가 직접 승자·점수를 결정하지 말 것 — 반드시 서버 이벤트를 기다릴 것.
+
+[시작점]
+1. worker/src/games/example_server_game.js 를 읽어서 모듈 인터페이스와 ctx API 를 파악해.
+2. worker/src/gameModules.js 를 읽어서 등록 방법을 파악해.
+3. docs/SERVER_GAMES.md 를 읽어서 ctx API·제약 전체를 파악해.
+4. games/_template-server/ 폴더 내용을 읽어서 클라이언트 구조를 파악해.
+5. worker/src/games/<id>.js 서버 모듈을 작성해.
+6. worker/src/gameModules.js 에 import 와 배열 추가를 해.
+7. games/<id>/ 폴더를 생성하고 index.html, game.js, style.css 를 작성해.
+   game.js 의 GAME_ID 를 새 id 로 바꾸고, handleModEvent() 에서 새 이벤트를 처리해.
+8. games/registry.js 맨 끝에 DRAFT 항목을 추가해.
+
+[게임 설명]
+[여기에 만들고 싶은 게임 설명을 적어줘. 서버가 판정해야 하는 규칙을 명확히 설명해줘]
+```
+
+---
+
 ## 프롬프트 4 — 기존 게임 버그 수정
 
 ```

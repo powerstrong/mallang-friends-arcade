@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- ✏️ AI 수정 포인트: 게임 이름을 여기서 바꾸세요 -->
+    <title>선착순 버튼 — 서버 권위형</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <main class="game-shell">
+
+      <!-- ══════════════════════════════════════
+           대기 화면 — 방 코드 공유 & 참가자 목록
+           서버 권위형: 서버가 승자를 결정하므로
+           클라이언트는 UI 요청만 보냅니다.
+           ══════════════════════════════════════ -->
+      <section id="lobbyScreen" class="screen is-active">
+        <!-- ✏️ AI 수정 포인트: 게임 제목·설명을 바꾸세요 -->
+        <h1 class="game-title">⚡ 선착순 버튼</h1>
+        <p class="game-desc">
+          라운드 시작 후 가장 먼저 탭하는 사람이 이깁니다.<br>
+          <strong class="server-badge">서버 판정</strong> — 서버가 도착 순서를 결정합니다.
+        </p>
+
+        <!-- 방 코드 표시 영역 -->
+        <div class="room-code-box">
+          <p class="room-code-label">친구에게 이 코드를 공유하세요</p>
+          <!-- game.js 가 WS 연결 후 방 코드를 여기에 채웁니다 -->
+          <div id="roomCode" class="room-code">⏳ 연결 중...</div>
+          <p class="room-code-hint">같은 코드로 접속하면 같은 방에 합류됩니다</p>
+        </div>
+
+        <!-- 참가자 목록 — 서버가 roster 이벤트로 실시간 갱신 -->
+        <div class="players-box">
+          <p class="players-label">참가자</p>
+          <ul id="playerList" class="player-list"></ul>
+        </div>
+
+        <!-- 연결 상태 표시 -->
+        <p id="statusMsg" class="status-msg">연결 중...</p>
+
+        <div class="btn-group">
+          <!-- 라운드 무장: 누구나 누를 수 있음(데모 단순화). 서버가 armed 상태를 관리 -->
+          <button id="btnArm" class="btn btn--primary" disabled>라운드 시작 (Arm)</button>
+          <button id="btnExit" class="btn btn--secondary">광장으로</button>
+        </div>
+      </section>
+
+      <!-- ══════════════════════════════════════
+           플레이 화면 — armed 상태에서 표시
+           ══════════════════════════════════════ -->
+      <section id="playScreen" class="screen">
+        <p class="play-hint">서버가 라운드를 시작했습니다. 지금 탭하세요!</p>
+
+        <!-- ✏️ AI 수정 포인트: 메인 탭 버튼 — 크기·색상은 style.css의 .claim-btn을 바꾸세요 -->
+        <button id="claimBtn" class="claim-btn" aria-label="선착순 탭 버튼">
+          탭!<br><span class="claim-btn__sub">CLAIM</span>
+        </button>
+
+        <!-- 승자는 서버가 결정 — 클라이언트에서 임의로 바꿀 수 없음 -->
+        <p class="server-note">승자는 서버가 결정합니다 — 클라이언트 조작 불가</p>
+      </section>
+
+      <!-- ══════════════════════════════════════
+           결과 화면 — 승자 발표
+           ══════════════════════════════════════ -->
+      <section id="resultScreen" class="screen">
+        <div class="result-card">
+          <!-- ✏️ AI 수정 포인트: 결과 화면 제목·내용을 바꾸세요 -->
+          <h2 class="result-title">결과 발표!</h2>
+          <div id="winnerDisplay" class="winner-display"></div>
+
+          <div class="btn-group">
+            <!-- 다음 라운드 시작 (arm) 버튼으로 돌아감 -->
+            <button id="btnNextRound" class="btn btn--primary">다음 라운드</button>
+            <button id="btnExitResult" class="btn btn--secondary">광장으로</button>
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+    <!--
+      서버 권위형 게임 로드 순서:
+        registry → config → bootstrap → game
+      릴레이(relay.js)는 사용하지 않습니다.
+      WS를 직접 열고 mod 프로토콜로 통신합니다.
+    -->
+    <script src="/games/registry.js"></script>
+    <script src="/shared/config.js"></script>
+    <script src="/shared/bootstrap.js"></script>
+    <script src="./game.js"></script>
+  </body>
+</html>

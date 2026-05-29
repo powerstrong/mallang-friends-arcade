@@ -1,0 +1,306 @@
+/* ══════════════════════════════════════════════════
+   서버 권위형 게임 템플릿 — 스타일
+   ✏️ AI 수정 포인트: 색상 테마를 바꾸려면 :root 변수를 수정하세요.
+   ══════════════════════════════════════════════════ */
+
+/* ── 변수 ─────────────────────────────────────────── */
+:root {
+  /* ✏️ AI 수정 포인트: 게임 테마 색상 */
+  --color-primary:   #7c3aed;   /* 메인 강조색 */
+  --color-primary-h: #6d28d9;   /* hover 색 */
+  --color-secondary: #e5e7eb;   /* 보조 버튼 배경 */
+  --color-bg:        #1e1b4b;   /* 화면 배경 */
+  --color-surface:   #312e81;   /* 카드/패널 배경 */
+  --color-text:      #f5f3ff;   /* 기본 텍스트 */
+  --color-muted:     #a5b4fc;   /* 흐린 텍스트 */
+  --color-winner:    #fbbf24;   /* 승자 강조색 */
+  --color-server:    #34d399;   /* 서버 판정 뱃지 색 */
+
+  --radius-card:  16px;
+  --radius-btn:   12px;
+  --radius-code:  10px;
+}
+
+/* ── 리셋 & 기본 ──────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  font-family: 'Noto Sans KR', 'Apple SD Gothic Neo', sans-serif;
+  background: var(--color-bg);
+  color: var(--color-text);
+  /* 모바일 세로 우선: 스크롤 허용 */
+  overflow-x: hidden;
+}
+
+/* ── 게임 셸 (모바일 세로 중심) ──────────────────── */
+.game-shell {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16px;
+}
+
+/* ── 화면 전환 ──────────────────────────────────────
+   .screen 은 기본 숨김. .is-active 가 붙으면 표시.
+   ─────────────────────────────────────────────────── */
+.screen {
+  display: none;
+  width: 100%;
+  max-width: 480px;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  padding: 24px 0 40px;
+  animation: fadeIn 0.25s ease;
+}
+.screen.is-active { display: flex; }
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── 제목 ─────────────────────────────────────────── */
+/* ✏️ AI 수정 포인트: 게임 제목 폰트 크기·색상 */
+.game-title {
+  font-size: clamp(1.6rem, 6vw, 2.2rem);
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  text-align: center;
+}
+
+.game-desc {
+  font-size: 0.95rem;
+  color: var(--color-muted);
+  text-align: center;
+  line-height: 1.6;
+}
+
+/* 서버 권위 뱃지 — 서버가 판정한다는 점을 명시적으로 표시 */
+.server-badge {
+  display: inline-block;
+  background: var(--color-server);
+  color: #065f46;
+  font-size: 0.78rem;
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: 999px;
+  letter-spacing: 0.04em;
+}
+
+/* ── 방 코드 박스 ─────────────────────────────────── */
+.room-code-box {
+  width: 100%;
+  background: var(--color-surface);
+  border-radius: var(--radius-card);
+  padding: 16px 20px;
+  text-align: center;
+  border: 1px solid rgba(165, 180, 252, 0.2);
+}
+
+.room-code-label {
+  font-size: 0.8rem;
+  color: var(--color-muted);
+  margin-bottom: 8px;
+}
+
+/* ✏️ AI 수정 포인트: 방 코드 폰트 크기 */
+.room-code {
+  font-size: clamp(2rem, 10vw, 3rem);
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  color: var(--color-winner);
+}
+
+.room-code-hint {
+  font-size: 0.75rem;
+  color: var(--color-muted);
+  margin-top: 6px;
+}
+
+/* ── 참가자 목록 ──────────────────────────────────── */
+.players-box {
+  width: 100%;
+  background: var(--color-surface);
+  border-radius: var(--radius-card);
+  padding: 14px 16px;
+  border: 1px solid rgba(165, 180, 252, 0.2);
+}
+
+.players-label {
+  font-size: 0.78rem;
+  color: var(--color-muted);
+  margin-bottom: 8px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.player-list {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.player-list li {
+  background: rgba(124, 58, 237, 0.25);
+  border: 1px solid rgba(124, 58, 237, 0.5);
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
+/* 나 자신 표시 */
+.player-list li.is-me {
+  background: rgba(124, 58, 237, 0.55);
+  border-color: var(--color-primary);
+}
+
+/* ── 상태 메시지 ──────────────────────────────────── */
+.status-msg {
+  font-size: 0.85rem;
+  color: var(--color-muted);
+  text-align: center;
+  min-height: 1.2em;
+}
+
+/* ── 버튼 그룹 ────────────────────────────────────── */
+.btn-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+
+.btn {
+  width: 100%;
+  padding: 14px 20px;
+  border: none;
+  border-radius: var(--radius-btn);
+  font-size: 1rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s, opacity 0.15s;
+  letter-spacing: 0.02em;
+  /* 터치 피드백 */
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+.btn:active { transform: scale(0.97); }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ✏️ AI 수정 포인트: 주 버튼 색상 */
+.btn--primary {
+  background: var(--color-primary);
+  color: #fff;
+}
+.btn--primary:hover:not(:disabled) { background: var(--color-primary-h); }
+
+.btn--secondary {
+  background: rgba(255,255,255,0.1);
+  color: var(--color-text);
+  border: 1px solid rgba(255,255,255,0.15);
+}
+.btn--secondary:hover:not(:disabled) { background: rgba(255,255,255,0.18); }
+
+/* ── 플레이 화면 ──────────────────────────────────── */
+.play-hint {
+  font-size: 1rem;
+  color: var(--color-muted);
+  text-align: center;
+  line-height: 1.5;
+}
+
+/* ✏️ AI 수정 포인트: 메인 탭 버튼 — 크기·색·그라디언트를 바꾸세요 */
+.claim-btn {
+  width: min(260px, 70vw);
+  height: min(260px, 70vw);
+  border-radius: 50%;
+  border: none;
+  background: radial-gradient(circle at 35% 35%, #f59e0b, #ef4444);
+  color: #fff;
+  font-size: clamp(2rem, 8vw, 3rem);
+  font-weight: 900;
+  line-height: 1.2;
+  cursor: pointer;
+  box-shadow: 0 8px 32px rgba(239, 68, 68, 0.5), 0 0 0 6px rgba(239,68,68,0.15);
+  transition: transform 0.1s, box-shadow 0.15s;
+  /* 터치 피드백 */
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+.claim-btn:active { transform: scale(0.93); box-shadow: 0 2px 10px rgba(239,68,68,0.4); }
+.claim-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.claim-btn__sub {
+  display: block;
+  font-size: 0.6em;
+  letter-spacing: 0.15em;
+  opacity: 0.85;
+}
+
+/* 서버 판정 안내문 — 클라이언트 조작 불가임을 명시 */
+.server-note {
+  font-size: 0.78rem;
+  color: var(--color-server);
+  text-align: center;
+  opacity: 0.8;
+  border: 1px solid rgba(52, 211, 153, 0.3);
+  border-radius: 8px;
+  padding: 6px 14px;
+}
+
+/* ── 결과 화면 ────────────────────────────────────── */
+.result-card {
+  width: 100%;
+  background: var(--color-surface);
+  border-radius: var(--radius-card);
+  padding: 28px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  border: 1px solid rgba(165, 180, 252, 0.2);
+}
+
+.result-title {
+  font-size: 1.6rem;
+  font-weight: 900;
+  text-align: center;
+}
+
+/* ✏️ AI 수정 포인트: 승자 표시 스타일 */
+.winner-display {
+  font-size: clamp(1.4rem, 6vw, 2rem);
+  font-weight: 800;
+  text-align: center;
+  color: var(--color-winner);
+  min-height: 2em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 내가 이겼을 때 */
+.winner-display.is-winner {
+  animation: pulseWin 0.6s ease infinite alternate;
+}
+@keyframes pulseWin {
+  from { transform: scale(1); }
+  to   { transform: scale(1.06); }
+}
+
+/* ── 반응형: 태블릿/데스크톱 ─────────────────────── */
+@media (min-width: 600px) {
+  .game-shell { padding: 32px 16px; }
+  .btn-group  { flex-direction: row; }
+  .btn        { flex: 1; }
+}
