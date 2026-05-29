@@ -124,9 +124,10 @@ for (const game of registry) {
   }
 }
 
-// 검사 10: '_template' 은 registry에 등록 금지
-if (registry.some(g => g.id === '_template')) {
-  fail('게임 id "_template" 은 registry에 등록할 수 없습니다. (템플릿 전용 폴더)');
+// 검사 10: '_' 로 시작하는 id 등록 금지 (_template, _template-realtime 등 템플릿 전용 폴더)
+const tmpl = registry.find(g => typeof g.id === 'string' && g.id.startsWith('_'));
+if (tmpl) {
+  fail(`게임 id "${tmpl.id}" 은 registry에 등록할 수 없습니다. ('_' 로 시작하는 폴더는 템플릿 전용입니다.)`);
 }
 
 // ── 결과 출력 ─────────────────────────────────────────────────────────────────

@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- ✏️ 게임 이름을 여기서 바꾸세요 -->
+    <title>실시간 탭 대결</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <main class="game-shell">
+
+      <!-- ══════════════════════════════════════
+           대기 화면 — 방 코드 공유 & 참가자 목록
+           ══════════════════════════════════════ -->
+      <section id="lobbyScreen" class="screen is-active">
+        <!-- ✏️ 게임 제목·설명을 여기서 바꾸세요 -->
+        <h1 class="game-title">👆 탭 대결</h1>
+        <p class="game-desc">15초 동안 버튼을 최대한 많이 탭하세요!<br>실시간으로 모든 참가자의 점수를 볼 수 있어요.</p>
+
+        <!-- 방 코드 표시 영역 -->
+        <div class="room-code-box">
+          <p class="room-code-label">친구에게 이 코드를 공유하세요</p>
+          <!-- relay.js가 초기화된 후 game.js가 방 코드를 여기에 채웁니다 -->
+          <div id="roomCode" class="room-code">⏳ 연결 중...</div>
+          <p class="room-code-hint">같은 코드로 접속하면 같은 방에 합류됩니다</p>
+        </div>
+
+        <!-- 참가자 목록 (presence) -->
+        <div class="players-box">
+          <p class="players-label">참가자</p>
+          <!-- game.js가 relay의 'players' 이벤트로 실시간 갱신합니다 -->
+          <ul id="playerList" class="player-list"></ul>
+        </div>
+
+        <div class="btn-group">
+          <!-- ✏️ 시작 버튼 레이블을 바꾸세요 -->
+          <button id="btnStart" class="btn btn--primary" disabled>시작!</button>
+          <button id="btnExit" class="btn btn--secondary">광장으로</button>
+        </div>
+      </section>
+
+      <!-- ══════════════════════════════════════
+           플레이 화면
+           ══════════════════════════════════════ -->
+      <section id="playScreen" class="screen">
+        <header class="hud">
+          <div class="hud__item">
+            <span class="hud__label">내 탭</span>
+            <span id="myTapDisplay" class="hud__value">0</span>
+          </div>
+          <div class="hud__item">
+            <span class="hud__label">남은 시간</span>
+            <!-- ✏️ 라운드 시간(초)은 game.js의 ROUND_SECONDS 상수를 바꾸세요 -->
+            <span id="timerDisplay" class="hud__value">15</span>
+          </div>
+        </header>
+
+        <!-- 실시간 참가자 점수판 -->
+        <div class="scoreboard-box">
+          <p class="scoreboard-label">실시간 점수판</p>
+          <ul id="scoreboard" class="scoreboard-list"></ul>
+        </div>
+
+        <!-- ✏️ 메인 탭 버튼 — 크기·색상은 style.css의 .tap-btn을 바꾸세요 -->
+        <button id="tapBtn" class="tap-btn" aria-label="탭 버튼">
+          👆<br><span class="tap-btn__sub">TAP!</span>
+        </button>
+      </section>
+
+      <!-- ══════════════════════════════════════
+           게임 오버 화면
+           ══════════════════════════════════════ -->
+      <section id="overScreen" class="screen">
+        <div class="result-card">
+          <!-- ✏️ 결과 화면 제목·내용을 바꾸세요 -->
+          <h2 class="result-title" id="resultTitle">결과 발표!</h2>
+          <p class="result-score-label">내 탭 수</p>
+          <p id="finalScore" class="result-score">0</p>
+          <!-- 최종 순위표 -->
+          <ul id="finalRanking" class="final-ranking"></ul>
+
+          <div class="btn-group">
+            <button id="btnRestart" class="btn btn--primary">다시 하기</button>
+            <button id="btnExitOver" class="btn btn--secondary">광장으로</button>
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- 반드시 이 순서를 지키세요: registry → config → bootstrap → relay → game -->
+    <script src="/games/registry.js"></script>
+    <script src="/shared/config.js"></script>
+    <script src="/shared/bootstrap.js"></script>
+    <script src="/shared/relay.js"></script>
+    <script src="./game.js"></script>
+  </body>
+</html>

@@ -1,4 +1,4 @@
-const CACHE = 'tenten-v28';
+const CACHE = 'tenten-v29';
 
 const PRECACHE = [
   '/',
@@ -10,6 +10,7 @@ const PRECACHE = [
   '/styles/lab.css',
   '/games/registry.js',
   '/shared/bootstrap.js',
+  '/shared/relay.js',
   '/shared/input.js',
   '/shared/config.js',
   '/shared/character_sprites.js',

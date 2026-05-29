@@ -24,7 +24,13 @@ game-id는 폴더명이자 registry 키입니다.
 
 ---
 
-## 3단계 — 템플릿 복사
+## 3단계 — 게임 종류 선택 & 템플릿 복사
+
+만들려는 게임의 종류에 따라 시작 템플릿이 다릅니다.
+
+### (a) 클라이언트 전용 게임
+
+서버 없이 혼자 또는 같은 화면에서 즐기는 게임(싱글·로컬 동시 플레이).
 
 ```bash
 # 예시: game-id = color-run
@@ -33,6 +39,31 @@ cp -r games/_template games/color-run
 
 Windows라면 탐색기에서 `games/_template` 폴더를 통째로 복사해서  
 `games/color-run` 으로 이름을 바꾸면 됩니다.
+
+---
+
+### (b) 실시간 멀티플레이 게임 (릴레이)
+
+온라인으로 여러 명이 실시간으로 함께 즐기는 게임.  
+서버 코드는 작성하지 않고, `shared/relay.js` 의 `MallangRelay` SDK만 사용합니다.
+
+```bash
+# 예시: game-id = tap-sync
+cp -r games/_template-realtime games/tap-sync
+```
+
+Windows라면 탐색기에서 `games/_template-realtime` 폴더를 통째로 복사해서  
+`games/tap-sync` 로 이름을 바꾸면 됩니다.
+
+**어떤 걸 고를까?**
+
+| 상황 | 선택 |
+|------|------|
+| 혼자 하거나 같은 화면에서 플레이 | (a) `_template` |
+| 방 코드로 온라인 친구와 실시간 플레이 | (b) `_template-realtime` |
+| 점수 조작 방지·서버 검증이 필수 | 관리자와 이슈에서 상의 |
+
+릴레이 방식의 상세 동작·API·제약은 **[docs/RELAY.md](./RELAY.md)** 를 참고하세요.
 
 ---
 

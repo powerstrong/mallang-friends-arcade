@@ -1,0 +1,434 @@
+/* ════════════════════════════════════════════════════════
+   실시간 탭 대결 — 스타일
+   ✏️ 색상·폰트·레이아웃을 자유롭게 바꾸세요.
+   외부 폰트·CDN 없이 순수 CSS로 작성되어 있습니다.
+   ════════════════════════════════════════════════════════ */
+
+/* ── 전역 리셋 & 기본값 ── */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  height: 100%;
+  /* ✏️ 배경색을 바꾸세요 */
+  background: #0f0e17;
+  color: #fffffe;
+  -webkit-text-size-adjust: 100%;
+  font-family: 'Segoe UI', 'Apple SD Gothic Neo', sans-serif;
+}
+
+/* ── 화면 전환 ── */
+.game-shell {
+  width: 100%;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.screen {
+  display: none;
+  width: 100%;
+  max-width: 480px;
+  min-height: 100vh;
+  padding: 24px 16px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+}
+
+.screen.is-active {
+  display: flex;
+}
+
+/* ── 게임 제목 ── */
+/* ✏️ 제목 크기·색상을 바꾸세요 */
+.game-title {
+  font-size: 2.4rem;
+  font-weight: 800;
+  text-align: center;
+  line-height: 1.2;
+  color: #ff8906;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+
+.game-desc {
+  font-size: 1rem;
+  text-align: center;
+  line-height: 1.6;
+  opacity: 0.8;
+}
+
+/* ── 방 코드 박스 ── */
+/* ✏️ 방 코드 표시 스타일을 바꾸세요 */
+.room-code-box {
+  width: 100%;
+  max-width: 320px;
+  background: rgba(255, 137, 6, 0.12);
+  border: 2px solid rgba(255, 137, 6, 0.4);
+  border-radius: 20px;
+  padding: 20px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.room-code-label {
+  font-size: 0.8rem;
+  opacity: 0.7;
+  letter-spacing: 0.05em;
+}
+
+/* 방 코드 숫자 — 크고 굵게 표시해 친구에게 공유하기 쉽도록 */
+.room-code {
+  font-size: 2.8rem;
+  font-weight: 900;
+  /* ✏️ 방 코드 색상을 바꾸세요 */
+  color: #ff8906;
+  letter-spacing: 0.2em;
+  text-shadow: 0 0 20px rgba(255, 137, 6, 0.5);
+  word-break: break-all;
+}
+
+.room-code-hint {
+  font-size: 0.75rem;
+  opacity: 0.55;
+  line-height: 1.4;
+}
+
+/* ── 참가자 목록 (로비) ── */
+.players-box {
+  width: 100%;
+  max-width: 320px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 16px;
+  padding: 16px;
+}
+
+.players-label {
+  font-size: 0.8rem;
+  opacity: 0.6;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 10px;
+}
+
+.player-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 40px;
+}
+
+.player-list__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 1rem;
+  font-weight: 600;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.07);
+  border-radius: 10px;
+}
+
+/* 내 자신임을 표시 */
+.player-list__item.is-me {
+  background: rgba(255, 137, 6, 0.2);
+  border: 1px solid rgba(255, 137, 6, 0.4);
+}
+
+.player-list__avatar {
+  font-size: 1.3rem;
+}
+
+/* ── 버튼 그룹 ── */
+.btn-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  max-width: 280px;
+}
+
+.btn {
+  width: 100%;
+  padding: 16px 24px;
+  border: none;
+  border-radius: 16px;
+  font-size: 1.1rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.1s, opacity 0.1s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.btn:active {
+  transform: scale(0.96);
+  opacity: 0.85;
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ✏️ 주 버튼 색상을 바꾸세요 */
+.btn--primary {
+  background: #ff8906;
+  color: #0f0e17;
+  box-shadow: 0 4px 16px rgba(255, 137, 6, 0.4);
+}
+
+/* ✏️ 보조 버튼 색상을 바꾸세요 */
+.btn--secondary {
+  background: rgba(255, 255, 255, 0.1);
+  color: #ccc;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+/* ── HUD (점수·타이머) ── */
+.hud {
+  width: 100%;
+  display: flex;
+  justify-content: space-around;
+  padding: 12px 8px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 16px;
+  margin-bottom: 4px;
+}
+
+.hud__item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.hud__label {
+  font-size: 0.75rem;
+  opacity: 0.6;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.hud__value {
+  font-size: 1.8rem;
+  font-weight: 800;
+  /* ✏️ HUD 숫자 색상 */
+  color: #ff8906;
+}
+
+/* 타이머가 5초 이하일 때 강조 */
+.hud__value.is-urgent {
+  color: #e53170;
+  animation: blink 0.5s step-end infinite;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
+}
+
+/* ── 실시간 점수판 (플레이 화면) ── */
+.scoreboard-box {
+  width: 100%;
+  max-width: 400px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 16px;
+  padding: 14px 16px;
+}
+
+.scoreboard-label {
+  font-size: 0.78rem;
+  opacity: 0.55;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 10px;
+}
+
+.scoreboard-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.scoreboard-list__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  font-size: 0.95rem;
+}
+
+.scoreboard-list__item.is-me {
+  background: rgba(255, 137, 6, 0.18);
+  font-weight: 700;
+}
+
+.scoreboard-list__rank {
+  width: 24px;
+  font-size: 0.85rem;
+  opacity: 0.6;
+  flex-shrink: 0;
+}
+
+.scoreboard-list__name {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.scoreboard-list__score {
+  font-weight: 800;
+  /* ✏️ 점수 색상 */
+  color: #ff8906;
+  min-width: 36px;
+  text-align: right;
+}
+
+/* ── 탭 버튼 (핵심 인터랙션) ── */
+/* ✏️ 탭 버튼 크기·색상·모양을 마음껏 바꾸세요 */
+.tap-btn {
+  width: 180px;
+  height: 180px;
+  border-radius: 50%;
+  border: none;
+  background: #e53170;
+  color: #fff;
+  font-size: 3rem;
+  font-weight: 900;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  line-height: 1.1;
+  box-shadow: 0 8px 32px rgba(229, 49, 112, 0.5), 0 0 0 8px rgba(229, 49, 112, 0.15);
+  transition: transform 0.08s, box-shadow 0.08s;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  touch-action: manipulation; /* 더블탭 줌 방지 */
+  margin: 8px 0;
+}
+
+.tap-btn:active {
+  transform: scale(0.9);
+  box-shadow: 0 4px 16px rgba(229, 49, 112, 0.4), 0 0 0 4px rgba(229, 49, 112, 0.1);
+}
+
+.tap-btn:disabled {
+  background: #555;
+  box-shadow: none;
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.tap-btn__sub {
+  font-size: 1rem;
+  letter-spacing: 0.15em;
+  opacity: 0.85;
+}
+
+/* ── 탭 피드백 애니메이션 ── */
+@keyframes tap-pop {
+  0%   { transform: scale(0.9); }
+  50%  { transform: scale(1.05); }
+  100% { transform: scale(1); }
+}
+
+.tap-btn.tapped {
+  animation: tap-pop 0.12s ease-out;
+}
+
+/* ── 결과 화면 ── */
+.result-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 32px 24px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  width: 100%;
+  max-width: 340px;
+}
+
+/* ✏️ 결과 제목 스타일 */
+.result-title {
+  font-size: 1.8rem;
+  font-weight: 800;
+  color: #ff8906;
+  text-align: center;
+}
+
+.result-score-label {
+  font-size: 0.9rem;
+  opacity: 0.6;
+}
+
+/* ✏️ 최종 점수 크기·색상 */
+.result-score {
+  font-size: 4rem;
+  font-weight: 900;
+  color: #e53170;
+  line-height: 1;
+}
+
+/* ── 최종 순위표 ── */
+.final-ranking {
+  list-style: none;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.final-ranking__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  font-size: 0.95rem;
+}
+
+.final-ranking__item:first-child {
+  /* 1위 강조 */
+  background: rgba(255, 137, 6, 0.2);
+  border: 1px solid rgba(255, 137, 6, 0.4);
+  font-weight: 700;
+}
+
+.final-ranking__medal {
+  width: 26px;
+  text-align: center;
+  font-size: 1.1rem;
+}
+
+.final-ranking__name {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.final-ranking__score {
+  font-weight: 800;
+  color: #ff8906;
+}

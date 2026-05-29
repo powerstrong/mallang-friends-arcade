@@ -34,7 +34,47 @@ game-id: [예: color-run]
 
 ---
 
-## 프롬프트 2 — 기존 게임 버그 수정
+## 프롬프트 2 — 실시간 멀티플레이(릴레이) 게임 만들기
+
+```
+저장소 루트: [저장소 경로]
+game-id: [예: tap-sync]
+
+말랑프렌즈 아케이드에 실시간 멀티플레이 게임을 추가해 줘.
+아래 제약을 반드시 지켜야 해.
+
+[제약 — 절대 어기지 마]
+- 작업 범위: games/<id>/ 폴더 안에서만. 다른 폴더는 읽기만 허용.
+- 절대 수정 금지: worker/, world/, shared/, sw.js, 다른 게임 폴더(games/<other-id>/)
+- games/registry.js 는 내 항목 1개만 추가. status:'DRAFT', visibility:'DIRECT_ONLY', reviewState:'NOT_SUBMITTED' 값 그대로 유지.
+- 빌드 도구 금지: npm install, package.json, 번들러, 트랜스파일러 전부 금지.
+- 외부 패키지 금지: CDN 스크립트 포함 금지. 순수 HTML/CSS/JavaScript 만 사용.
+- 모바일 동작 필수: 세로 화면(portrait)에서 UI가 잘림 없이 표시되고, 터치 조작이 작동해야 함.
+- 디버그 코드 금지: console.log, debugger, TODO, HACK 주석은 최종 코드에 남기지 마.
+- 서버 권위 없음: 승패·점수 판정을 서버에 맡기지 마. 클라이언트(방장)가 처리해야 함.
+
+[릴레이 SDK 사용 규칙]
+- shared/relay.js 의 window.MallangRelay 를 반드시 사용해.
+- index.html 에서 로드 순서: /shared/config.js → /shared/bootstrap.js → /shared/relay.js
+- relay.send(payload) 의 payload 는 직렬화 시 8,192 바이트 이하.
+- 고빈도 전송(위치 동기화 등)은 throttle 을 적용해 초당 40 메시지 이하로 유지해.
+- relay.ready Promise 를 await 한 뒤에 relay.code, relay.playerId 를 사용해.
+- 방 코드 공유: relay.code 를 ?code=XXXX URL 형태로 UI에 표시해.
+
+[시작점]
+1. games/_template-realtime/ 폴더 내용을 읽어서 구조를 파악해.
+2. shared/relay.js 를 읽어서 MallangRelay API 를 확인해.
+3. docs/RELAY.md 를 읽어서 프로토콜·제약을 확인해.
+4. games/<id>/ 폴더를 생성하고 index.html, game.js, style.css 를 작성해.
+5. games/registry.js 맨 끝에 DRAFT 항목을 추가해.
+
+[게임 설명]
+[여기에 만들고 싶은 게임 설명을 적어줘]
+```
+
+---
+
+## 프롬프트 4 — 기존 게임 버그 수정
 
 ```
 저장소 루트: [저장소 경로]
@@ -60,7 +100,7 @@ game-id: [예: color-run]
 
 ---
 
-## 프롬프트 3 — PR 전 자체 점검
+## 프롬프트 5 — PR 전 자체 점검
 
 ```
 저장소 루트: [저장소 경로]

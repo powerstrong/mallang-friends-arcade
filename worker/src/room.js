@@ -201,6 +201,17 @@ function getPlatformProfile(y) {
   };
 }
 
+// ── 릴레이 룸 ────────────────────────────────────────────────────────────────
+// 서버 권위 없음. 같은 방(roomCode) + 같은 gameId 의 relay 세션끼리 메시지를 그대로
+// 중계만 한다. 게임 로직은 전적으로 클라이언트에 있다. 기여자는 서버 코드를 작성하지
+// 않고 shared/relay.js + 이 중계 경로만으로 실시간 멀티 게임을 만들 수 있다.
+const RELAY_MAX_PAYLOAD_BYTES = 8192;  // 단일 relay payload 직렬화 길이 상한 (UTF-8 바이트)
+const RELAY_RATE_LIMIT = 40;           // 연결당 초당 메시지 상한
+const RELAY_RATE_WINDOW_MS = 1000;
+const RELAY_MAX_FRAME_CHARS = 65536;   // parse 전 raw 프레임 길이 상한 (DO isolate 보호)
+// 내장 권위형 게임 id — 릴레이로 합류 불가 (전용 서버 로직 보호).
+const RESERVED_GAME_IDS = new Set(['jump-climber', 'mallang-quiz-battle', 'sseuk-sseuk']);
+
 export class GameRoom {
   constructor(state, env) {
     this.state = state;
@@ -209,6 +220,7 @@ export class GameRoom {
     this.jumpLoop = null;
     this.quizGame = null;
     this.sseukGame = null;
+    this.relayRates = new Map();  // 릴레이: playerId -> { windowStart, count } (in-memory rate limit)
   }
 
   // Returns [{ws, player}] for all connected, registered players
@@ -253,6 +265,67 @@ export class GameRoom {
     for (const { ws, player } of this._getGameSessions(gameId)) {
       if (spectators != null && Boolean(player.isSpectator) !== spectators) continue;
       try { ws.send(text); } catch { /* ignore closed */ }
+    }
+  }
+
+  // ── 릴레이 룸 (서버 권위 없음 — 같은 방·게임 세션끼리 메시지 중계만) ──────────────
+  _relayRoster(gameId) {
+    return this._getGameSessions(gameId)
+      .filter(({ player }) => player.mode === 'relay')
+      .map(({ player }) => ({
+        id: player.id,
+        name: player.name,
+        characterId: player.characterId || null,
+      }));
+  }
+
+  _broadcastRelayPresence(gameId) {
+    this._broadcastGame({ type: 'relay_presence', players: this._relayRoster(gameId) }, gameId);
+  }
+
+  async _handleRelayJoinGame(ws, msg) {
+    const gameId = typeof msg.gameId === 'string' ? msg.gameId : '';
+    if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(gameId)) {
+      ws.send(JSON.stringify({ type: 'error', message: '릴레이: 잘못된 gameId 입니다.' }));
+      return;
+    }
+    // 내장 권위형 게임은 릴레이로 합류할 수 없다 (jump/quiz/sseuk 전용 로직 보호).
+    if (RESERVED_GAME_IDS.has(gameId)) {
+      ws.send(JSON.stringify({ type: 'error', message: '릴레이: 예약된 게임 id 라 사용할 수 없습니다.' }));
+      return;
+    }
+    const prev = ws.deserializeAttachment() || {};
+    // playerId 는 서버가 'join' 단계에서 부여한 prev.id 만 신뢰 (클라 사칭/rate-limit 우회 방지).
+    const id = prev.id || randomHex(6);
+    const name = String(msg.name || prev.name || '플레이어').slice(0, 32);
+    const characterId = typeof msg.characterId === 'string' ? msg.characterId.slice(0, 40) : null;
+    // 같은 게임에 이미 relay 로 합류한 연결이면 presence 재브로드캐스트 생략 (스팸 방지).
+    const already = prev.role === 'game' && prev.mode === 'relay' && prev.gameId === gameId;
+    ws.serializeAttachment({ id, name, role: 'game', gameId, mode: 'relay', characterId });
+    ws.send(JSON.stringify({ type: 'relay_joined', playerId: id, players: this._relayRoster(gameId) }));
+    if (!already) this._broadcastRelayPresence(gameId);
+  }
+
+  _handleRelayMessage(ws, player, msg) {
+    if (!player || player.mode !== 'relay') return;
+    // rate limit 은 연결(ws) 단위 — 클라가 id 를 바꿔 우회 못 함. in-memory(hibernation 시 리셋).
+    const now = Date.now();
+    let rec = this.relayRates.get(ws);
+    if (!rec || now - rec.windowStart >= RELAY_RATE_WINDOW_MS) {
+      rec = { windowStart: now, count: 0 };
+      this.relayRates.set(ws, rec);
+    }
+    rec.count += 1;
+    if (rec.count > RELAY_RATE_LIMIT) return;  // 초과분은 조용히 드롭
+    // payload 크기 상한 — UTF-8 바이트 기준.
+    let payloadText;
+    try { payloadText = JSON.stringify(msg.payload ?? null); } catch { return; }
+    if (new TextEncoder().encode(payloadText).length > RELAY_MAX_PAYLOAD_BYTES) return;
+    const out = JSON.stringify({ type: 'relay', from: player.id, payload: msg.payload ?? null, ts: now });
+    for (const { ws: otherWs, player: other } of this._getGameSessions(player.gameId)) {
+      if (other.mode !== 'relay') continue;          // 권위형 세션에는 절대 중계하지 않음
+      if (otherWs === ws && !msg.echo) continue;      // 기본은 송신자 제외 (echo:true 면 포함)
+      try { otherWs.send(out); } catch { /* ignore closed */ }
     }
   }
 
@@ -919,6 +992,12 @@ export class GameRoom {
 
     if (msg.gameId === 'sseuk-sseuk') {
       return await this._handleSseukJoinGame(ws, msg);
+    }
+
+    // 릴레이 게임 — 서버 권위 없이 같은 방·게임 세션끼리 메시지 중계만. 기여자 게임은
+    // 클라이언트가 mode:'relay' 로 합류한다 (내장 게임 id 는 위에서 이미 처리됨).
+    if (msg.mode === 'relay') {
+      return await this._handleRelayJoinGame(ws, msg);
     }
 
     const currentGame = (await this.state.storage.get('currentGame')) || null;
@@ -2175,6 +2254,8 @@ export class GameRoom {
   // ── WebSocket event handlers ────────────────────────────────────────────────
 
   async webSocketMessage(ws, rawMsg) {
+    // 과도하게 큰 프레임은 parse 전에 차단 (DO isolate 보호 — 내장 게임 메시지는 충분히 작음).
+    if (typeof rawMsg === 'string' && rawMsg.length > RELAY_MAX_FRAME_CHARS) return;
     let msg;
     try { msg = JSON.parse(rawMsg); } catch { return; }
 
@@ -2222,6 +2303,7 @@ export class GameRoom {
       case 'SS_GUESS':
         if (player?.gameId === 'sseuk-sseuk') this._handleSseukGuess(player, msg);
         break;
+      case 'relay':         if (player) this._handleRelayMessage(ws, player, msg);         break;
       case 'submit_result': if (player) await this._handleSubmitResult(player, msg);      break;
       case 'rematch':       if (player) await this._handleRematch();                       break;
       case 'ping':
@@ -2463,6 +2545,13 @@ export class GameRoom {
     const player = ws.deserializeAttachment();
     ws.serializeAttachment(null);
     if (!player) return;
+
+    // 릴레이 세션 종료 — 남은 같은 게임 세션들에 presence 갱신만 알린다.
+    if (player.role === 'game' && player.mode === 'relay') {
+      this.relayRates.delete(ws);
+      this._broadcastRelayPresence(player.gameId);
+      return;
+    }
 
     if (player.role === 'game' && player.gameId === 'jump-climber' && this.jumpGame?.players[player.id]) {
       const target = this.jumpGame.players[player.id];
