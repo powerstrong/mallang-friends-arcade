@@ -194,6 +194,9 @@ export class WorldChannel {
   // ── WebSocket Hibernation API handlers ──────────────────────────────────────
 
   async webSocketMessage(ws, raw) {
+    // 과도하게 큰 프레임은 parse 전에 차단 (DO isolate 보호 — GameRoom 과 동일 정책).
+    const rawLen = typeof raw === 'string' ? raw.length : (raw && raw.byteLength) || 0;
+    if (rawLen > 65536) return this._sendError(ws, 'TOO_LARGE', 'message too large');
     let envelope;
     try {
       envelope = JSON.parse(typeof raw === 'string' ? raw : new TextDecoder().decode(raw));

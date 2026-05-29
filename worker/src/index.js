@@ -40,21 +40,26 @@ export default {
       return corsResponse(JSON.stringify({ game, week: getWeekKey(), entries }));
     }
 
-    // POST /api/rooms - create a new room
+    // POST /api/rooms - create a new room.
+    // 4자리 코드는 공유가 쉬운 대신 충돌 가능성이 있으므로, 비어 있는(활성 연결 없는)
+    // 방을 확보할 때까지 최대 N회 재시도한다. (/init 가 활성 방이면 409 반환)
     if (method === 'POST' && url.pathname === '/api/rooms') {
-      const code = String(Math.floor(Math.random() * 9000) + 1000);
-
-      // Instantiate the Durable Object for this room
-      const id = env.GAME_ROOM.idFromName(code);
-      const stub = env.GAME_ROOM.get(id);
-
-      // Prime the room with its code
-      await stub.fetch(new Request(`${url.origin}/init`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code }),
-      }));
-
+      let code = null;
+      let secured = false;
+      for (let attempt = 0; attempt < 6; attempt++) {
+        const candidate = String(Math.floor(Math.random() * 9000) + 1000);
+        const id = env.GAME_ROOM.idFromName(candidate);
+        const stub = env.GAME_ROOM.get(id);
+        const initRes = await stub.fetch(new Request(`${url.origin}/init`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code: candidate }),
+        }));
+        if (initRes.status !== 409) { code = candidate; secured = true; break; }
+      }
+      if (!secured) {
+        return corsResponse(JSON.stringify({ error: '방 생성이 혼잡합니다. 잠시 후 다시 시도해 주세요.' }), { status: 503 });
+      }
       return corsResponse(JSON.stringify({ code }));
     }
 

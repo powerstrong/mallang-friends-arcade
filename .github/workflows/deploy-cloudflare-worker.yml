@@ -24,7 +24,10 @@ jobs:
           node-version: 22
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
+
+      - name: Run worker tests
+        run: npm test
 
       - name: Run D1 migrations
         env:

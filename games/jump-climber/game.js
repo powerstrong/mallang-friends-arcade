@@ -493,8 +493,8 @@ function addChatMessage(entry) {
   const el = document.createElement("div");
   el.className = "chat-message";
   el.innerHTML = `
-    <span class="chat-message__name" style="color:${color}">${entry.name}</span>
-    <span class="chat-message__text">${entry.text}</span>
+    <span class="chat-message__name" style="color:${color}">${escapeHtml(entry.name)}</span>
+    <span class="chat-message__text">${escapeHtml(entry.text)}</span>
     <span class="chat-message__time">${timeStr}</span>
   `;
   chatMessagesEl.appendChild(el);

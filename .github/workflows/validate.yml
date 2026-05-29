@@ -21,3 +21,24 @@ jobs:
 
       - name: 게임 레지스트리 검증 (오류 시 기여 방법 안내 확인)
         run: node scripts/validate-games.js
+
+  worker-test:
+    name: worker 단위 테스트
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: worker
+    steps:
+      - name: 저장소 코드 가져오기
+        uses: actions/checkout@v4
+
+      - name: Node.js 20 설정
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 의존성 설치
+        run: npm ci
+
+      - name: worker 테스트 실행
+        run: npm test

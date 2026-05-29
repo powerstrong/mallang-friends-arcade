@@ -2301,6 +2301,14 @@ export class GameRoom {
 
     if (request.method === 'POST' && url.pathname === '/init') {
       const { code } = await request.json();
+      // 충돌 검사: 이 코드의 DO 가 이미 라이브 연결을 가진 활성 방이면 409 로 신호 →
+      // worker 가 다른 코드로 재시도한다. 빈(종료된) 방은 재사용 가능.
+      if (this.state.getWebSockets().length > 0) {
+        return new Response(JSON.stringify({ occupied: true }), {
+          status: 409,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
       await this.state.storage.put('code', code);
       return new Response('OK');
     }
