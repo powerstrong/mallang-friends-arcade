@@ -171,9 +171,10 @@
   const boothPreviewImg = document.getElementById('booth-preview-img');
   const boothPreviewTitle = document.getElementById('booth-preview-title');
   const BOOTH_PREVIEWS = {
-    'jump-climber': '/docs/media/demo.gif',
-    'sseuk-sseuk': '/docs/media/sseuk-sseuk.gif',
-    // 'mallang-quiz-battle': 프리뷰 GIF 준비되면 추가
+    // 주의: Cloudflare Pages 가 docs/ 는 서빙하지 않으므로 서빙되는 world/assets/ 에 둔다.
+    'jump-climber': '/world/assets/preview_jump.gif',
+    'sseuk-sseuk': '/world/assets/preview_sseuk.gif',
+    // 'mallang-quiz-battle': 프리뷰 GIF 준비되면 world/assets/preview_quiz.gif 추가
   };
   let boothPreviewZone = null;
   const matchStartingView = document.getElementById('match-starting-view');
