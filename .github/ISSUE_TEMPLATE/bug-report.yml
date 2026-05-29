@@ -1,0 +1,83 @@
+name: 버그 신고
+description: 게임이나 로비에서 발생한 버그를 신고합니다
+title: "[버그] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        버그를 발견하셨나요? 아래 내용을 최대한 자세히 작성해 주시면 빠른 수정에 큰 도움이 됩니다.
+
+  - type: dropdown
+    id: game
+    attributes:
+      label: 어떤 게임(또는 화면)에서 발생했나요?
+      description: 버그가 발생한 게임을 선택해 주세요
+      options:
+        - 로비 (메인 화면)
+        - jump-climber (말랑프렌즈 점프)
+        - mallang-quiz-battle (말랑프렌즈 퀴즈배틀)
+        - sseuk-sseuk (말랑프렌즈 쓱쓱)
+        - 기타 (아래 기타 의견란에 적어 주세요)
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 재현 절차
+      description: 버그를 다시 발생시키려면 어떻게 하면 되나요?
+      placeholder: |
+        1. '게임 시작' 버튼을 클릭합니다
+        2. 캐릭터를 오른쪽으로 이동합니다
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 기대했던 동작
+      description: 원래 어떻게 동작해야 하나요?
+      placeholder: 예) 캐릭터가 벽에 부딪히면 멈춰야 합니다
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: 실제 동작
+      description: 실제로는 어떻게 동작했나요?
+      placeholder: 예) 캐릭터가 벽을 통과해서 화면 밖으로 사라졌습니다
+    validations:
+      required: true
+
+  - type: input
+    id: device
+    attributes:
+      label: 기기
+      description: 어떤 기기를 사용 중이었나요?
+      placeholder: 예) iPhone 15, Galaxy S24, Windows 11 노트북
+    validations:
+      required: true
+
+  - type: input
+    id: browser
+    attributes:
+      label: 브라우저 및 버전
+      description: 어떤 브라우저를 사용 중이었나요?
+      placeholder: 예) Chrome 124, Safari 17, Firefox 125
+    validations:
+      required: true
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: 스크린샷 또는 영상
+      description: 버그 화면을 캡처해서 첨부해 주시면 더욱 도움이 됩니다 (선택)
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: 기타 의견
+      description: 추가로 전달하고 싶은 내용이 있으면 적어 주세요 (선택)

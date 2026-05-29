@@ -5,6 +5,16 @@
 node_modules/
 **/node_modules/
 
+# 스크래치 / 로그 (공개 전 커밋 방지)
+scripts/codex_*
+scripts/_*
+scripts/*.png
+scripts/cleanup_diff.txt
+*.log
+PLAN_*.md
+tmp/
+worker/dist/
+
 # wrangler files
 .wrangler
 .dev.vars*

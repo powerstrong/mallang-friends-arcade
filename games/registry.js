@@ -1,6 +1,16 @@
 /* Canonical game registry: single source of truth for browser-facing metadata.
  * Loaded as a plain script tag; sets window.GAME_REGISTRY.
- * worker/src/room.js mirrors the playable paths, so keep them in sync. */
+ * worker/src/room.js mirrors the playable paths, so keep them in sync.
+ *
+ * 거버넌스 필드 (기여 게임 노출 제어):
+ *   status:      PLAYABLE | DRAFT | REVIEW | HIDDEN | ARCHIVED
+ *   visibility:  PUBLIC | DIRECT_ONLY | HIDDEN
+ *   reviewState: NOT_SUBMITTED | IN_REVIEW | CHANGES_REQUESTED | APPROVED
+ *
+ * 광장/메인 노출 조건: status==='PLAYABLE' && visibility==='PUBLIC' && reviewState==='APPROVED'
+ * 신규 기여 게임 기본값: status:'DRAFT', visibility:'DIRECT_ONLY', reviewState:'NOT_SUBMITTED'
+ *   → DRAFT 게임은 광장에 부스(worldZones)를 만들지 않으므로 자동으로 숨겨지고,
+ *     직접 URL(/games/<id>/index.html)로만 접근된다. 관리자가 검토 후 승격한다. */
 
 window.GAME_REGISTRY = [
   {
@@ -13,6 +23,9 @@ window.GAME_REGISTRY = [
     playMode: '로컬 동시 플레이',
     durationSeconds: 0,
     status: 'PLAYABLE',
+    visibility: 'PUBLIC',
+    reviewState: 'APPROVED',
+    author: 'powerstrong',
     icon: 'MJ',
     accentColor: '#ff7ea8',
     resultLabel: '최고 높이',
@@ -31,6 +44,9 @@ window.GAME_REGISTRY = [
     playMode: '온라인 실시간',
     durationSeconds: 130,
     status: 'PLAYABLE',
+    visibility: 'PUBLIC',
+    reviewState: 'APPROVED',
+    author: 'powerstrong',
     icon: '🧠',
     accentColor: '#7c3aed',
     resultLabel: '점수',
@@ -49,6 +65,9 @@ window.GAME_REGISTRY = [
     playMode: '온라인 실시간',
     durationSeconds: 0,
     status: 'PLAYABLE',
+    visibility: 'PUBLIC',
+    reviewState: 'APPROVED',
+    author: 'powerstrong',
     icon: '✏️',
     accentColor: '#10b981',
     resultLabel: '점수',

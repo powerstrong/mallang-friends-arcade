@@ -1,0 +1,238 @@
+/* ════════════════════════════════════════════════════════
+   말랑프렌즈 아케이드 — 게임 템플릿 스타일
+   ✏️ 색상·폰트·레이아웃을 자유롭게 바꾸세요.
+   외부 폰트·CDN 없이 순수 CSS로 작성되어 있습니다.
+   ════════════════════════════════════════════════════════ */
+
+/* ── 전역 리셋 & 기본값 ── */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  height: 100%;
+  /* ✏️ 배경색을 바꾸세요 */
+  background: #1a1a2e;
+  color: #f0f0f0;
+  /* 모바일에서 글자 크기 자동 조정 방지 */
+  -webkit-text-size-adjust: 100%;
+  font-family: 'Segoe UI', 'Apple SD Gothic Neo', sans-serif;
+}
+
+/* ── 화면 전환 ── */
+.game-shell {
+  width: 100%;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.screen {
+  display: none;
+  width: 100%;
+  max-width: 480px;         /* 모바일 세로 기준 최대 너비 */
+  min-height: 100vh;
+  padding: 24px 16px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+}
+
+/* is-active 클래스가 붙은 화면만 보임 */
+.screen.is-active {
+  display: flex;
+}
+
+/* ── 시작 화면 ── */
+/* ✏️ 게임 제목 스타일을 바꾸세요 */
+.game-title {
+  font-size: 2.4rem;
+  font-weight: 800;
+  text-align: center;
+  line-height: 1.2;
+  /* ✏️ 강조 색상을 바꾸세요 */
+  color: #ffd700;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+.game-desc {
+  font-size: 1rem;
+  text-align: center;
+  line-height: 1.6;
+  opacity: 0.85;
+}
+
+/* ── 버튼 그룹 ── */
+.btn-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  max-width: 280px;
+}
+
+.btn {
+  width: 100%;
+  padding: 16px 24px;
+  border: none;
+  border-radius: 16px;
+  font-size: 1.1rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.1s, opacity 0.1s;
+  /* 터치 피드백 */
+  -webkit-tap-highlight-color: transparent;
+}
+
+.btn:active {
+  transform: scale(0.96);
+  opacity: 0.85;
+}
+
+/* ✏️ 주 버튼 색상을 바꾸세요 */
+.btn--primary {
+  background: #ff6b6b;
+  color: #fff;
+  box-shadow: 0 4px 16px rgba(255, 107, 107, 0.4);
+}
+
+/* ✏️ 보조 버튼 색상을 바꾸세요 */
+.btn--secondary {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ccc;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+/* ── HUD (점수·타이머) ── */
+.hud {
+  width: 100%;
+  display: flex;
+  justify-content: space-around;
+  padding: 12px 8px;
+  /* ✏️ HUD 배경색을 바꾸세요 */
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  margin-bottom: 8px;
+}
+
+.hud__item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.hud__label {
+  font-size: 0.75rem;
+  opacity: 0.65;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.hud__value {
+  font-size: 1.8rem;
+  font-weight: 800;
+  /* ✏️ HUD 숫자 색상을 바꾸세요 */
+  color: #ffd700;
+}
+
+/* ── 게임 아레나 ── */
+.arena {
+  width: 100%;
+  /* ✏️ 아레나 높이는 게임 레이아웃에 맞게 조정하세요 */
+  aspect-ratio: 3 / 4;
+  position: relative;
+  /* ✏️ 배경색·테두리를 바꾸세요 */
+  background: #16213e;
+  border-radius: 20px;
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+
+/* ── 두더지 구멍 ── */
+/* ✏️ 두더지 모양·크기·색상을 바꾸세요 */
+.hole {
+  position: absolute;
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: #0f3460;
+  border: 3px solid #1a5276;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2rem;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.08s;
+}
+
+/* 두더지가 올라온 상태 */
+.hole.is-up {
+  /* ✏️ 올라온 두더지 강조 스타일 */
+  background: #e74c3c;
+  border-color: #ff6b6b;
+  box-shadow: 0 0 16px rgba(231, 76, 60, 0.6);
+  animation: pop-up 0.12s ease-out;
+}
+
+.hole.is-up:active {
+  transform: scale(0.88);
+}
+
+@keyframes pop-up {
+  from { transform: scale(0.5); opacity: 0.4; }
+  to   { transform: scale(1);   opacity: 1; }
+}
+
+/* 두더지를 잡았을 때 피드백 */
+.hole.is-hit {
+  background: #27ae60;
+  border-color: #2ecc71;
+  pointer-events: none;
+  animation: hit-flash 0.2s ease-out forwards;
+}
+
+@keyframes hit-flash {
+  0%   { transform: scale(1.25); }
+  100% { transform: scale(1);    opacity: 0; }
+}
+
+/* ── 결과 화면 ── */
+.result-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 32px 24px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  width: 100%;
+  max-width: 320px;
+}
+
+/* ✏️ 결과 화면 제목 스타일 */
+.result-title {
+  font-size: 2rem;
+  font-weight: 800;
+  color: #ffd700;
+}
+
+.result-score-label {
+  font-size: 0.9rem;
+  opacity: 0.6;
+}
+
+/* ✏️ 최종 점수 숫자 크기·색상을 바꾸세요 */
+.result-score {
+  font-size: 4rem;
+  font-weight: 900;
+  color: #ff6b6b;
+  line-height: 1;
+}

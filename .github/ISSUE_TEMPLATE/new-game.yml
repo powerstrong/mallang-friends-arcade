@@ -1,0 +1,80 @@
+name: 새 게임 제안
+description: 말랑프렌즈 아케이드에 새 게임 아이디어를 제안합니다
+title: "[게임 제안] "
+labels: ["new-game"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        새 게임 아이디어를 제안해 주세요! 제안이 채택되면 직접 개발하거나 다른 기여자가 구현할 수 있습니다.
+
+  - type: input
+    id: game-title
+    attributes:
+      label: 게임 이름
+      description: 제안하는 게임의 이름을 적어 주세요
+      placeholder: 예) 두더지 잡기, 단어 맞추기
+    validations:
+      required: true
+
+  - type: textarea
+    id: game-description
+    attributes:
+      label: 게임 설명
+      description: 어떤 게임인지 간단히 설명해 주세요 (규칙, 목표, 특징 등)
+      placeholder: 예) 랜덤하게 올라오는 두더지를 제한 시간 안에 최대한 많이 잡는 게임입니다.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: player-count
+    attributes:
+      label: 예상 플레이 인원
+      description: 몇 명이 함께 플레이하는 게임인가요?
+      options:
+        - 1인 (싱글플레이)
+        - 2인
+        - 2~4인
+        - 4인 이상
+        - 인원 제한 없음
+    validations:
+      required: true
+
+  - type: dropdown
+    id: multiplayer-type
+    attributes:
+      label: 네트워크 방식
+      description: 실시간 멀티플레이가 필요한가요?
+      options:
+        - 클라이언트 전용 (서버 불필요)
+        - 실시간 멀티플레이 (WebSocket 필요)
+        - 비실시간 멀티플레이 (점수 공유 등)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: controls
+    attributes:
+      label: 조작 방식
+      description: 어떤 방식으로 조작하나요? (복수 선택 불가, 주 조작 방식 선택)
+      options:
+        - 키보드
+        - 마우스/터치 탭
+        - 마우스/터치 드래그
+        - 기기 기울기(자이로스코프)
+        - 기타
+    validations:
+      required: true
+
+  - type: textarea
+    id: reference
+    attributes:
+      label: 참고 게임 또는 링크
+      description: 비슷한 기존 게임이나 참고할 링크가 있으면 공유해 주세요 (선택)
+      placeholder: 예) https://example.com/similar-game
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: 기타 의견
+      description: 추가로 전달하고 싶은 내용이 있으면 적어 주세요 (선택)

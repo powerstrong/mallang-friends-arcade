@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 💬 아이디어 토론 (Discussions)
+    url: https://github.com/powerstrong/web-game-lab/discussions
+    about: 버그나 게임 제안이 아닌 자유로운 이야기는 Discussions를 이용해 주세요.

@@ -2,42 +2,38 @@
 
 # 말랑프렌즈 아케이드
 
-로그인 없이 방 코드로 바로 모여서 즐길 수 있는 웹 미니게임 실험실입니다.  
-가볍게 접속해서 친구들과 같이 플레이할 수 있는 형태를 목표로 만들고 있습니다.
+로그인 없이 방 코드나 광장에서 바로 모여 즐기는 웹 미니게임 아케이드.  
+주말에 AI 툴로 같이 미니게임 만들어볼 분 환영합니다.
 
-## 바로 플레이하기
+![말랑프렌즈 광장](./docs/media/plaza.png)
+<!-- TODO: 스크린샷 추가 -->
 
-- 게임 접속 링크: [https://web-game-lab.powerstrong.workers.dev/](https://web-game-lab.powerstrong.workers.dev/)
+## 바로 플레이
 
-## 어떤 프로젝트인가요?
+[https://web-game-lab.powerstrong.workers.dev/](https://web-game-lab.powerstrong.workers.dev/)
 
-- 친구들과 바로 접속해서 같이 놀 수 있는 웹 플랫폼을 먼저 만들고 있습니다.
-- 이 플랫폼 위에 캐주얼한 웹게임을 하나씩 계속 추가해 나갈 예정입니다.
-- 로비에서 방을 만들고 같은 코드를 공유하면 다른 사람이 바로 들어올 수 있습니다.
-- 게임을 기다리는 대기실과 실제 게임 안에서 채팅도 지원합니다.
+## 게임 목록
 
-## 사용한 기술
+| 게임 | 인원 | 방식 |
+|------|------|------|
+| [말랑프렌즈 점프](./docs/games/jump-climber.md) | 1~2명 | 로컬 동시 플레이 |
+| [말랑프렌즈 퀴즈배틀](./docs/games/mallang-quiz-battle.md) | 2~6명 | 온라인 실시간 |
+| [말랑프렌즈 쓱쓱](./docs/games/sseuk-sseuk.md) | 2~6명 | 온라인 실시간 |
 
-- 프론트엔드: HTML, CSS, JavaScript
-- 서버/서빙: Cloudflare Workers
-- 실시간 통신: Cloudflare Durable Objects
+## 기여하기
 
-## 현재 들어있는 구성
+새 게임을 만들거나 버그를 고치고 싶다면:
 
-- 메인 허브: 게임 목록과 진입 화면
-- 로비: 닉네임 입력, 방 생성, 방 코드 입장
-- 방 화면: 플레이어 목록, 게임 선택, 채팅, 시작 준비
-- 프로토타입 게임들: 실험용 미니게임 모음
+- **[CONTRIBUTING.md](./CONTRIBUTING.md)** — 기여 흐름 한눈에 보기
+- **[docs/ADD_GAME.md](./docs/ADD_GAME.md)** — 게임 추가 단계별 매뉴얼 (사람·AI 도구 모두 그대로 활용 가능)
 
-## 대표 게임
+`games/_template/` 복사 → 개발 → registry에 DRAFT 등록 → PR 흐름입니다.
 
-### 말랑프렌즈 점프
+## 기술 스택
 
-- 실시간으로 같이 들어가서 플레이하는 점프 게임입니다.
-- 모바일 화면 기준으로 조작할 수 있게 구성되어 있습니다.
-- 플레이어끼리 같은 방에서 결과를 비교할 수 있습니다.
+순수 HTML/CSS/JavaScript (빌드 도구 없음) · Cloudflare Workers + Durable Objects · Cloudflare Pages 자동 배포
 
-## 앞으로
+## 라이선스
 
-- 친구들과 가볍게 즐길 수 있는 웹게임을 계속 추가할 예정입니다.
-- 게임 종류가 늘어나도 같은 로비와 방 시스템 안에서 바로 이어서 플레이할 수 있게 만드는 것이 목표입니다.
+코드: [MIT License](./LICENSE)  
+말랑프렌즈 캐릭터·브랜드 에셋: [ASSET_POLICY.md](./ASSET_POLICY.md)

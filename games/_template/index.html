@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- ✏️ 게임 이름을 여기서 바꾸세요 -->
+    <title>말랑 두더지 잡기</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <main class="game-shell">
+
+      <!-- ══════════════════════════════════════
+           시작 화면
+           ══════════════════════════════════════ -->
+      <section id="startScreen" class="screen is-active">
+        <!-- ✏️ 게임 제목·설명을 여기서 바꾸세요 -->
+        <h1 class="game-title">🐹 말랑 두더지 잡기</h1>
+        <p class="game-desc">나타나는 두더지를 빠르게 탭하세요!<br>30초 안에 최대한 많이 잡아보세요.</p>
+
+        <div class="btn-group">
+          <button id="btnStart" class="btn btn--primary">시작!</button>
+          <!-- 아케이드 광장으로 돌아가기 (bootstrap.js 가 처리) -->
+          <button id="btnExit" class="btn btn--secondary">광장으로</button>
+        </div>
+      </section>
+
+      <!-- ══════════════════════════════════════
+           플레이 화면
+           ══════════════════════════════════════ -->
+      <section id="playScreen" class="screen">
+        <header class="hud">
+          <!-- ✏️ 점수·시간 표시 레이블을 원하는 대로 바꾸세요 -->
+          <div class="hud__item">
+            <span class="hud__label">점수</span>
+            <span id="scoreDisplay" class="hud__value">0</span>
+          </div>
+          <div class="hud__item">
+            <span class="hud__label">남은 시간</span>
+            <span id="timerDisplay" class="hud__value">30</span>
+          </div>
+        </header>
+
+        <!-- ✏️ 게임이 벌어지는 무대(아레나). 두더지 구멍들이 여기에 배치됩니다 -->
+        <div id="arena" class="arena" aria-label="두더지 잡기 게임판">
+          <!-- game.js 가 동적으로 두더지 구멍(.hole)을 생성합니다 -->
+        </div>
+      </section>
+
+      <!-- ══════════════════════════════════════
+           게임 오버 화면
+           ══════════════════════════════════════ -->
+      <section id="overScreen" class="screen">
+        <div class="result-card">
+          <!-- ✏️ 결과 화면 제목을 바꿔도 됩니다 -->
+          <h2 class="result-title">게임 오버!</h2>
+          <p class="result-score-label">최종 점수</p>
+          <p id="finalScore" class="result-score">0</p>
+
+          <div class="btn-group">
+            <button id="btnRestart" class="btn btn--primary">다시 하기</button>
+            <button id="btnExitOver" class="btn btn--secondary">광장으로</button>
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- 반드시 이 순서를 지키세요: registry → bootstrap → game -->
+    <script src="/games/registry.js"></script>
+    <script src="/shared/bootstrap.js"></script>
+    <script src="./game.js"></script>
+  </body>
+</html>
