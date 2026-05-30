@@ -66,6 +66,35 @@ body {
 
 .panel.hidden { display: none; }
 
+/* 캐릭터 선택(입장 전) 화면 — 전체 화면을 쓰되 카드 전체가 스크롤되지 않게:
+   제목·닉네임은 위 고정, 캐릭터 그리드만 내부 스크롤, 입장 버튼은 아래 고정. */
+#join-panel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;  /* .panel 의 overflow-y:auto 를 덮음 — 페이지/카드 스크롤 제거 */
+}
+#join-panel > h1,
+#join-panel > .subtitle,
+#join-panel > .online-count,
+#join-panel > label.field,
+#join-panel > #join-btn,
+#join-panel > .status,
+#join-panel > .extra-links { flex-shrink: 0; }
+#join-panel > fieldset.field {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  margin: 12px 0 8px;
+}
+#join-panel #character-picker {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  align-content: start;
+}
+
 /* #world-panel: flex 열 레이아웃으로 한 화면에 고정
  * 헤더(고정) + canvas-wrap(가변) + 채팅/리액션/입력(고정) */
 #world-panel {
@@ -638,6 +667,21 @@ h1 {
 }
 
 .modal-card h2 { margin: 0 0 4px; font-size: 1.3rem; }
+
+/* 모달이 너무 길어지면 화면을 덜 먹도록 내부 스크롤(하단 시트). */
+.modal-card { max-height: 82dvh; overflow-y: auto; overscroll-behavior: contain; }
+
+/* 부스 입장 시 게임 프리뷰 썸네일 — 상단 플로팅 프리뷰 대신 모달 안에서 작게 보여줌. */
+.match-preview {
+  display: block;
+  width: 100%;
+  max-height: 132px;
+  object-fit: cover;
+  border-radius: 12px;
+  margin-bottom: 12px;
+  background: var(--panel-2);
+}
+.match-preview.hidden { display: none; }
 .modal-sub { margin: 0 0 16px; color: var(--text-dim); font-size: 0.9rem; }
 
 .match-members {

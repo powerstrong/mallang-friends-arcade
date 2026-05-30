@@ -164,6 +164,7 @@
   const matchAcceptBtn = document.getElementById('match-accept');
   const matchDeclineBtn = document.getElementById('match-decline');
   const matchModalCard = document.getElementById('match-modal-card');
+  const matchPreview = document.getElementById('match-preview');
 
   // 부스 프리뷰 — gameId(=zoneId) → 게임 GIF. 준비된 게임만 등록(없으면 프리뷰 생략).
   // 다른 GIF 로 바꾸려면 경로만 교체하면 된다.
@@ -996,6 +997,10 @@
     matchModalCard.classList.remove('is-starting');
     matchStartingView.setAttribute('aria-hidden', 'true');
     matchStartingAt = 0;
+    // 게임 프리뷰 썸네일 — 상단 플로팅 프리뷰 대신 모달 안에서 작게 보여준다.
+    const previewGif = activeProposal.gameId && BOOTH_PREVIEWS[activeProposal.gameId];
+    if (previewGif) { matchPreview.src = previewGif; matchPreview.classList.remove('hidden'); }
+    else { matchPreview.removeAttribute('src'); matchPreview.classList.add('hidden'); }
     matchModal.classList.remove('hidden');
     matchModal.setAttribute('aria-hidden', 'false');
   }
@@ -1008,6 +1013,8 @@
     matchModalCard.classList.remove('is-starting');
     matchStartingView.setAttribute('aria-hidden', 'true');
     matchStartingAt = 0;
+    matchPreview.removeAttribute('src');
+    matchPreview.classList.add('hidden');
     activeProposal = null;
   }
 
@@ -1121,10 +1128,11 @@
   // 부스 프리뷰 표시/숨김. 렌더 루프에서 매 프레임 호출(변경 없으면 빠르게 반환).
   // 게임 칸에 들어서면 해당 게임 GIF 를 띄우고, 나가거나 매칭 모달이 열리면 숨긴다.
   function updateBoothPreview(zoneId) {
-    // 부스에 머무는 동안은 프리뷰를 계속 띄운다(준비/매칭 모달이 떠도 숨기지 않음 —
-    // 모달은 하단 시트, 프리뷰는 상단이라 겹치지 않는다). 칸을 벗어나면 숨김.
+    // 부스에 머무는 동안 상단에 게임 GIF 를 띄운다. 단 매칭/시작 모달이 열리면 상단
+    // 플로팅 프리뷰는 숨긴다(모달 안 썸네일이 대신 보여줌) — 둘이 화면을 다 덮지 않도록.
     const gifUrl = zoneId ? BOOTH_PREVIEWS[zoneId] : null;
-    if (!gifUrl) {
+    const modalOpen = activeProposal && !matchModal.classList.contains('hidden');
+    if (!gifUrl || modalOpen) {
       if (boothPreviewZone !== null) {
         boothPreview.classList.add('hidden');
         boothPreviewImg.removeAttribute('src');
