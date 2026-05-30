@@ -68,7 +68,7 @@ body {
 
 /* 캐릭터 선택(입장 전) 화면 — 전체 화면을 쓰되 카드 전체가 스크롤되지 않게:
    제목·닉네임은 위 고정, 캐릭터 그리드만 내부 스크롤, 입장 버튼은 아래 고정. */
-#join-panel {
+#join-panel:not(.hidden) {
   display: flex;
   flex-direction: column;
   overflow: hidden;  /* .panel 의 overflow-y:auto 를 덮음 — 페이지/카드 스크롤 제거 */
@@ -97,7 +97,9 @@ body {
 
 /* #world-panel: flex 열 레이아웃으로 한 화면에 고정
  * 헤더(고정) + canvas-wrap(가변) + 채팅/리액션/입력(고정) */
-#world-panel {
+/* :not(.hidden) — ID 선택자 display:flex 가 .panel.hidden{display:none} 을 우선순위로
+   이겨서 숨겨지지 않던 버그 수정. hidden 일 땐 이 규칙이 적용되지 않아 정상 숨김. */
+#world-panel:not(.hidden) {
   display: flex;
   flex-direction: column;
   overflow: hidden; /* 내부 넘침 차단 — 스크롤은 각 자식이 담당 */
