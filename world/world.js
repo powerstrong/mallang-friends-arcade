@@ -1134,8 +1134,7 @@
     const modalOpen = activeProposal && !matchModal.classList.contains('hidden');
     if (!gifUrl || modalOpen) {
       if (boothPreviewZone !== null) {
-        boothPreview.classList.add('hidden');
-        boothPreviewImg.removeAttribute('src');
+        boothPreview.classList.add('hidden');  // opacity 페이드아웃 — src 유지해 이미지가 같이 페이드
         boothPreviewZone = null;
       }
       return;

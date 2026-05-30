@@ -642,8 +642,10 @@ h1 {
   z-index: 20;
   text-align: center;
   animation: booth-preview-in 160ms ease-out;
+  transition: opacity 0.28s ease;  /* 뚝 꺼지지 않고 부드럽게 사라지도록 */
 }
-.booth-preview.hidden { display: none; }
+/* display:none 대신 opacity 페이드 — position:absolute 라 레이아웃 영향 없음 */
+.booth-preview.hidden { opacity: 0; pointer-events: none; }
 .booth-preview__title { font-weight: 700; font-size: 0.95rem; margin-bottom: 6px; color: #222; }
 .booth-preview__img { width: 100%; border-radius: 10px; display: block; }
 @keyframes booth-preview-in {
@@ -675,12 +677,15 @@ h1 {
 
 /* 부스 입장 시 게임 프리뷰 썸네일 — 상단 플로팅 프리뷰 대신 모달 안에서 작게 보여줌. */
 .match-preview {
+  /* 세로 영상도 잘리지 않게 통째로 표시(contain). 폭/높이 auto + max 로 비율 보존. */
   display: block;
-  width: 100%;
-  max-height: 132px;
-  object-fit: cover;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: clamp(150px, 26vh, 210px);
+  object-fit: contain;
   border-radius: 12px;
-  margin-bottom: 12px;
+  margin: 0 auto 12px;
   background: var(--panel-2);
 }
 .match-preview.hidden { display: none; }
