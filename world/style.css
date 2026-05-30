@@ -18,7 +18,8 @@ html, body {
   background: var(--bg);
   color: var(--text);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Pretendard', system-ui, sans-serif;
-  min-height: 100vh;
+  height: 100%;
+  overflow: hidden;
   overscroll-behavior: none;
 }
 
@@ -34,9 +35,21 @@ body {
 }
 
 #app {
-  max-width: 1200px;
+  /* 모바일 한 화면 고정: 뷰포트 전체를 점유하고 내부 스크롤 차단 */
+  height: 100dvh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  /* 넓은 화면(태블릿·데스크톱)에서는 폰 폭으로 가운데 정렬 */
+  max-width: 480px;
   margin: 0 auto;
-  padding: 16px 12px 60px;
+  width: 100%;
+  /* safe-area: 노치·홈바 영역 피함 */
+  padding:
+    env(safe-area-inset-top, 0px)
+    env(safe-area-inset-right, 0px)
+    env(safe-area-inset-bottom, 0px)
+    env(safe-area-inset-left, 0px);
 }
 
 .panel {
@@ -44,9 +57,23 @@ body {
   border-radius: 16px;
   padding: 24px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+  /* #app flex 자식: 전체 높이를 채우되 넘치면 내부에서만 스크롤 */
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .panel.hidden { display: none; }
+
+/* #world-panel: flex 열 레이아웃으로 한 화면에 고정
+ * 헤더(고정) + canvas-wrap(가변) + 채팅/리액션/입력(고정) */
+#world-panel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden; /* 내부 넘침 차단 — 스크롤은 각 자식이 담당 */
+  padding: 8px;
+}
 
 h1 {
   margin: 0 0 4px;
@@ -178,12 +205,13 @@ h1 {
   justify-content: space-between;
   align-items: center;
   gap: 10px;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
   padding: 8px 12px;
   border-radius: 12px;
   background: linear-gradient(180deg, #2b3c63, #233152);
   font-size: 0.85rem;
   color: var(--text-dim);
+  flex-shrink: 0; /* 고정 헤더 — 세로 압박에도 줄어들지 않음 */
 }
 
 .brand {
@@ -229,7 +257,9 @@ h1 {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 60vh;
+  /* #app flex 자식: min-height:60vh 대신 flex:1 로 남은 공간 채움 */
+  flex: 1 1 0;
+  min-height: 0;
   padding: 24px;
 }
 .auto-enter-splash.hidden { display: none; }
@@ -301,18 +331,15 @@ h1 {
 
 .canvas-wrap {
   position: relative;
-  width: 100%;
-  /* 사용자 요구: "위아래로 스크롤할 때 너비가 바뀌지 않게, 항상 전체 너비".
-   * 기존엔 max-width 가 100dvh 에 묶여 있어 모바일 chrome show/hide 로 dvh
-   * 가 변할 때마다 캔버스 width 가 출렁였다. height-coupled clamp 를 제거하고
-   * aspect-ratio 로 높이 결정. 데스크톱에서는 native 540px 캡 — 그 이상으로
-   * 키우면 캔버스 높이가 viewport 두 배가 되어 UI 가 화면 밖으로 밀린다. */
-  max-width: 540px;
-  margin: 0 auto;
-  background: #1f2c47;
-  border-radius: 12px;
+  /* flex:1 — 헤더·채팅·리액션·입력폼이 차지하고 남은 세로 공간을 전부 가져감.
+   * 비율 보존은 wrap 이 아니라 #world-canvas 의 contain-fit 으로 한다(아래).
+   * wrap 은 남은 공간을 채우고 캔버스를 가운데 정렬만 — 레터박스 영역엔 광장 배경이 비친다. */
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   overflow: hidden;
-  aspect-ratio: 540 / 960;
 }
 
 /* Hide the global "터치↔키보드" toggle injected by shared/input.js — the
@@ -354,8 +381,15 @@ h1 {
 
 #world-canvas {
   display: block;
-  width: 100%;
-  height: 100%;
+  /* 내부 해상도 540x960 의 비율을 유지한 채 남은 공간에 contain-fit.
+   * width/height:auto + max-width/max-height:100% = 비율 유지하며 축소(레터박스). */
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
+  aspect-ratio: 540 / 960;
+  background: #1f2c47;
+  border-radius: 12px;
   image-rendering: pixelated;
   touch-action: none;
 }
@@ -363,10 +397,13 @@ h1 {
 /* Persistent chat history — placed below the canvas as its own panel so it
    never overlaps booth artwork. */
 .chat-log {
-  margin: 10px 0 0;
+  margin: 6px 0 0;
   display: flex;
   flex-direction: column;
-  max-height: 150px;
+  /* 고정 영역: min/max-height로 채팅 로그 박스 크기 고정.
+   * 내부 body 에서만 overflow-y:auto 로 스크롤. */
+  height: clamp(80px, 18vh, 130px);
+  flex-shrink: 0;
   background: rgba(16, 22, 38, 0.78);
   border-radius: 10px;
   font-size: 0.82rem;
@@ -421,15 +458,12 @@ h1 {
 .chat-line.me b { color: #ffb96b; }
 
 @media (max-width: 640px) {
-  /* Squeeze outer chrome so the world canvas actually fills the phone width. */
-  #app { padding: 6px 4px 56px; }
+  /* 모바일: #app 은 100dvh flex 컨테이너 — 패딩은 safe-area 만 (base에서 처리).
+   * .panel 은 flex:1 자식으로 높이 채움. 추가 패딩 축소만 적용. */
   .panel { padding: 8px; border-radius: 12px; }
-  /* 모바일에서도 canvas-wrap 은 base 규칙(width:100% + aspect-ratio)만으로
-   * 전체 너비를 유지한다 — dvh 기반 height cap 은 스크롤 중 너비 출렁임의
-   * 원인이라 제거. UI 가 viewport 보다 길어지면 페이지 스크롤로 받음. */
 
   /* Brand text + meta need to share a narrow header. */
-  .world-header { font-size: 0.72rem; padding: 6px 10px; }
+  .world-header { font-size: 0.72rem; padding: 6px 8px; margin-bottom: 6px; }
   .brand { gap: 7px; min-width: 0; flex: 1 1 auto; }
   .brand-logo { width: 28px; height: 28px; }
   .brand-title {
@@ -442,7 +476,7 @@ h1 {
   .leave-btn { padding: 3px 8px; font-size: 0.7rem; }
 
   .chat-log {
-    max-height: 110px;
+    height: clamp(70px, 15vh, 110px);
     font-size: 0.76rem;
   }
 }
@@ -487,7 +521,8 @@ h1 {
   flex-wrap: nowrap;
   gap: 6px;
   justify-content: center;
-  margin-top: 12px;
+  margin-top: 6px;
+  flex-shrink: 0; /* 고정 영역 — 세로 압박에도 줄어들지 않음 */
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
@@ -518,11 +553,13 @@ h1 {
 .chat-form {
   display: flex;
   gap: 8px;
-  margin-top: 12px;
+  margin-top: 6px;
+  flex-shrink: 0; /* 고정 영역 */
 }
 
 .chat-form input {
   flex: 1;
+  min-width: 0;  /* 좁은 폭에서 전송 버튼이 밀려나지 않게 */
   padding: 10px 12px;
   border-radius: 10px;
   border: 1px solid var(--panel-2);

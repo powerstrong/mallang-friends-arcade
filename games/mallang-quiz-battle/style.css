@@ -19,10 +19,9 @@
 
 * { box-sizing: border-box; }
 
-html, body { min-height: 100%; }
+html, body { margin: 0; height: 100%; overflow: hidden; }
 
 body {
-  margin: 0;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.35), rgba(255, 255, 255, 0.65) 60%, rgba(255, 255, 255, 0.85)),
     url('./assets/quiz_bg.png') center top / cover no-repeat,
@@ -35,16 +34,22 @@ button { font: inherit; cursor: pointer; }
 /* ── Shell ─────────────────────────────────────────── */
 .game-shell {
   width: min(100%, var(--phone-shell));
-  min-height: 100svh;
+  max-width: 480px;
+  height: 100dvh;
+  overflow: hidden;
   margin: 0 auto;
-  display: grid;
+  display: flex;
+  flex-direction: column;
 }
 
 .screen { display: none; }
 
 .screen.is-active {
-  display: grid;
-  align-content: start;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 
 /* ── Panel ─────────────────────────────────────────── */
@@ -74,7 +79,9 @@ h1, h2 { margin-top: 0; }
 .screen--setup {
   padding: max(20px, env(safe-area-inset-top)) var(--shell-padding) max(24px, env(safe-area-inset-bottom));
   gap: 14px;
-  align-content: center;
+  overflow-y: auto;
+  /* allow content to center when short, scroll when tall (fold cover) */
+  justify-content: safe center;  /* safe: 넘치면 flex-start 로 폴백 — 위쪽 잘림 방지 */
 }
 
 .setup-panel { padding: 22px; }
@@ -195,7 +202,6 @@ h1, h2 { margin-top: 0; }
 .screen--game {
   display: none;
   flex-direction: column;
-  min-height: 100svh;
 }
 
 .screen--game.is-active { display: flex; }
@@ -351,13 +357,14 @@ h1, h2 { margin-top: 0; }
 /* Quiz panel */
 .quiz-panel {
   flex: 1;
-  margin: 12px var(--shell-padding) 80px;
+  min-height: 0;
+  margin: 12px var(--shell-padding) max(80px, env(safe-area-inset-bottom));
   padding: 18px;
   display: flex;
   flex-direction: column;
   gap: 14px;
   position: relative;
-  overflow: hidden;
+  overflow: hidden auto;  /* 긴 문제/보기는 패널 안에서만 세로 스크롤 — 페이지는 고정 */
 }
 
 .quiz-header {
@@ -697,7 +704,7 @@ h1, h2 { margin-top: 0; }
 .screen--result {
   padding: max(20px, env(safe-area-inset-top)) var(--shell-padding) max(24px, env(safe-area-inset-bottom));
   gap: 16px;
-  align-content: start;
+  overflow: hidden;
 }
 
 .result-winner {
@@ -710,8 +717,8 @@ h1, h2 { margin-top: 0; }
 }
 
 .winner-trophy {
-  width: 110px;
-  height: 110px;
+  width: clamp(72px, 20vw, 110px);
+  height: clamp(72px, 20vw, 110px);
   object-fit: contain;
   filter: drop-shadow(0 8px 18px rgba(217, 119, 6, 0.35));
   animation: trophy-bob 2.4s ease-in-out infinite;
@@ -724,8 +731,8 @@ h1, h2 { margin-top: 0; }
 }
 
 .winner-char {
-  width: 130px;
-  height: 130px;
+  width: clamp(88px, 24vw, 130px);
+  height: clamp(88px, 24vw, 130px);
   object-fit: contain;
   filter: drop-shadow(0 8px 24px rgba(124, 58, 237, 0.35));
   animation: float 2.5s ease-in-out infinite;
@@ -760,7 +767,13 @@ h1, h2 { margin-top: 0; }
   font-weight: 700;
 }
 
-.rankings-panel { padding: 22px; }
+.rankings-panel {
+  padding: 22px;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
 
 .rankings-list {
   list-style: none;
@@ -769,6 +782,8 @@ h1, h2 { margin-top: 0; }
   display: flex;
   flex-direction: column;
   gap: 8px;
+  overflow-y: auto;
+  min-height: 0;
 }
 
 .ranking-item {

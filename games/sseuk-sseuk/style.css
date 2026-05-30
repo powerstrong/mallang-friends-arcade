@@ -11,7 +11,8 @@
 html, body {
   margin: 0;
   padding: 0;
-  min-height: 100dvh;
+  height: 100%;
+  overflow: hidden;
   background: linear-gradient(180deg, #ecfdf5 0%, #d1fae5 100%);
   color: #064e3b;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
@@ -33,17 +34,18 @@ button {
 .game-shell {
   width: 100%;
   /* 일반 폰(<=430px)에선 width:100%가 먼저 잡혀 영향 없음.
-   * 폴더블 펼침(~725px CSS px)에선 600px까지 확장.
-   * 태블릿/데스크탑은 600px에서 멈춰 비례 깨짐 방지. */
-  max-width: 600px;
-  min-height: 100dvh;
+   * 폴더블 펼침(~725px CSS px)에선 480px까지 확장.
+   * 태블릿/데스크탑은 480px에서 멈춰 비례 깨짐 방지. */
+  max-width: 480px;
+  height: 100dvh;
+  overflow: hidden;
   margin: 0 auto;
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
   display: flex;
   flex-direction: column;
 }
 
-.screen { display: none; flex: 1; flex-direction: column; padding: 16px; gap: 12px; }
+.screen { display: none; flex: 1; min-height: 0; flex-direction: column; padding: 16px; gap: 12px; overflow: hidden; }
 .screen.is-active { display: flex; }
 .is-hidden { display: none !important; }
 
@@ -52,6 +54,11 @@ button {
   border-radius: 20px;
   padding: 18px;
   box-shadow: 0 4px 20px rgba(6, 78, 59, 0.08);
+  /* 각 패널이 screen flex 열에서 남는 공간을 채우고 넘치면 내부 스크롤.
+   * drawing-panel 은 아래서 별도로 재정의. */
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .eyebrow { margin: 0; font-size: 11px; letter-spacing: 0.18em; color: #047857; }
@@ -473,6 +480,16 @@ h2 { margin: 4px 0 8px; font-size: 20px; color: #064e3b; }
 @keyframes rouletteFlash { 0% { opacity: 0.4; } 50% { opacity: 1; } 100% { opacity: 0.4; } }
 
 /* ── Drawing panel ──────────────────────────────────── */
+/* drawing-panel 은 game-screen 의 남은 세로 공간을 모두 차지하는 flex 열.
+ * 캔버스가 비율 유지하며 shrink, 채팅이 나머지를 flex:1 로 채움.
+ * .panel 의 overflow-y:auto 를 hidden 으로 덮어 내부 flex 가 정확히 작동하도록. */
+.drawing-panel {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
 .drawer-banner {
   background: #ecfdf5;
   border: 1px solid #6ee7b7;
@@ -550,25 +567,18 @@ h2 { margin: 4px 0 8px; font-size: 20px; color: #064e3b; }
   background: #ffffff;
   border: 2px solid #6ee7b7;
   border-radius: 16px;
-  aspect-ratio: 1;
-  /* 폴드 가로/태블릿 등 세로 공간이 짧을 때 캔버스가 화면을 뚫고 나가지 않도록.
-   * 일반 세로폰에선 width 기반 aspect-ratio가 먼저 작아져 영향 없음. */
-  max-height: 60vh;
-  width: 100%;
+  /* 정사각 비율 유지 — 너비를 min(컨테이너 100%, dvh의 45%) 로 제한.
+   * aspect-ratio:1/1 이 높이도 같은 값으로 맞춤.
+   * flex:0 0 auto 로 shrink/grow 없이 자기 사이즈만 차지.
+   * 채팅 영역(flex:1)이 나머지 공간을 가져감. */
+  aspect-ratio: 1 / 1;
+  width: min(100%, 45dvh);
+  flex: 0 0 auto;
+  align-self: center;
   margin: 0 auto;
   overflow: hidden;
   position: relative;
   touch-action: none;
-}
-/* 짧은 세로폰 (예: iPhone SE 568px) / 폴드 반쪽 — 헤더 + 타이머바 + 미니
- * 리더보드 + 키워드슬롯 + 도구바 + 채팅 chrome 누적으로 60vh 캔버스가
- * 입력바를 below-the-fold 로 밀어내던 문제 완화. 짧은 viewport 일수록
- * 캔버스를 더 줄여 입력바·채팅이 같은 화면에 보이도록. */
-@media (max-height: 720px) {
-  .canvas-wrap { max-height: 52vh; }
-}
-@media (max-height: 600px) {
-  .canvas-wrap { max-height: 44vh; }
 }
 #drawCanvas {
   width: 100%;
@@ -616,6 +626,9 @@ h2 { margin: 4px 0 8px; font-size: 20px; color: #064e3b; }
 /* ── Chat (Phase D minimal — Phase E에서 월드 오버레이 스타일로 폴리시) ─ */
 .chat-box {
   margin-top: 10px;
+  /* drawing-panel flex 열에서 캔버스 아래 남은 공간을 모두 차지. */
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -624,7 +637,10 @@ h2 { margin: 4px 0 8px; font-size: 20px; color: #064e3b; }
   background: rgba(236, 253, 245, 0.6);
   border-radius: 10px;
   padding: 8px 10px;
-  max-height: 120px;
+  /* flex:1 + min-height:0 으로 채팅 영역이 남은 공간을 채우고
+   * 메시지가 많아지면 내부 스크롤. max-height 고정 제거. */
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   font-size: 13px;
   display: flex;
