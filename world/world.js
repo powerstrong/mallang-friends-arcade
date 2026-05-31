@@ -165,6 +165,13 @@
   const matchDeclineBtn = document.getElementById('match-decline');
   const matchModalCard = document.getElementById('match-modal-card');
   const matchPreview = document.getElementById('match-preview');
+  const matchPreviewToggle = document.getElementById('match-preview-toggle');
+
+  matchPreviewToggle.addEventListener('click', () => {
+    const nowHidden = matchPreview.classList.toggle('hidden');
+    matchPreviewToggle.setAttribute('aria-expanded', nowHidden ? 'false' : 'true');
+    matchPreviewToggle.textContent = nowHidden ? '게임 미리보기 ▸' : '미리보기 접기 ▴';
+  });
 
   // 부스 프리뷰 — gameId(=zoneId) → 게임 GIF. 준비된 게임만 등록(없으면 프리뷰 생략).
   // 다른 GIF 로 바꾸려면 경로만 교체하면 된다. 프리뷰는 부스에 올라선 순간부터
@@ -1001,10 +1008,19 @@
     matchModalCard.classList.remove('is-starting');
     matchStartingView.setAttribute('aria-hidden', 'true');
     matchStartingAt = 0;
-    // 게임 프리뷰 썸네일 — 상단 플로팅 프리뷰 대신 모달 안에서 작게 보여준다.
+    // 게임 프리뷰 — 토글 버튼으로 열어볼 수 있게. 기본은 숨김.
     const previewGif = activeProposal.gameId && BOOTH_PREVIEWS[activeProposal.gameId];
-    if (previewGif) { matchPreview.src = previewGif; matchPreview.classList.remove('hidden'); }
-    else { matchPreview.removeAttribute('src'); matchPreview.classList.add('hidden'); }
+    if (previewGif) {
+      matchPreview.src = previewGif;
+      matchPreview.classList.add('hidden');
+      matchPreviewToggle.textContent = '게임 미리보기 ▸';
+      matchPreviewToggle.setAttribute('aria-expanded', 'false');
+      matchPreviewToggle.classList.remove('hidden');
+    } else {
+      matchPreview.removeAttribute('src');
+      matchPreview.classList.add('hidden');
+      matchPreviewToggle.classList.add('hidden');
+    }
     matchModal.classList.remove('hidden');
     matchModal.setAttribute('aria-hidden', 'false');
   }
@@ -1020,6 +1036,9 @@
     matchStartingAt = 0;
     matchPreview.removeAttribute('src');
     matchPreview.classList.add('hidden');
+    matchPreviewToggle.classList.add('hidden');
+    matchPreviewToggle.setAttribute('aria-expanded', 'false');
+    matchPreviewToggle.textContent = '게임 미리보기 ▸';
     activeProposal = null;
     panelZone = null;
   }
@@ -1167,9 +1186,10 @@
     matchStartingView.setAttribute('aria-hidden', 'true');
     matchStartingAt = 0;
     lastPanelStatus = '';  // 새 패널 — 다음 카운트다운 갱신 때 무조건 한 번 쓴다.
-    const gifUrl = BOOTH_PREVIEWS[zoneId];
-    if (gifUrl) { matchPreview.src = gifUrl; matchPreview.classList.remove('hidden'); }
-    else { matchPreview.removeAttribute('src'); matchPreview.classList.add('hidden'); }
+    // pre-match 단계에선 프리뷰 없이 제목+카운트다운만. 프리뷰는 match_proposal 이후.
+    matchPreview.removeAttribute('src');
+    matchPreview.classList.add('hidden');
+    matchPreviewToggle.classList.add('hidden');
     matchModal.classList.remove('hidden');
     matchModal.setAttribute('aria-hidden', 'false');
     // pre-match 동안은 조이스틱을 숨기지 않는다 — 그냥 걸어 나가면 카운트다운이 취소되도록.
