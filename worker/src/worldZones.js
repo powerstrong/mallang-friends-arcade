@@ -22,9 +22,11 @@ const BOOTH_CATALOG = [
 ];
 
 // Portrait(960x960) 광장 자동 레이아웃. 상단에 3열 그리드로 배치해 스폰 지점
-// SPAWN_POINT y=520)에서 충분히 떨어뜨린다. 부스가 3개를 넘으면 다음 행으로 내려간다.
-// cols=3, w=165, gapX=8, marginTop=80
-const BOOTH_LAYOUT = { plazaWidth: 960, cols: 3, w: 165, h: 200, gapX: 8, gapY: 24, marginTop: 80 };
+// (SPAWN_POINT y=520)에서 충분히 떨어뜨린다. 부스가 3개를 넘으면 다음 행으로 내려간다.
+// marginTop=200: object-fit:cover 가 가로 넓은 화면(Fold·가로모드)에서 위아래를
+// ~130px 잘라내므로, 부스가 크롭 영역 바깥에 오도록 여유를 준다.
+// cols=3, w=165, gapX=8, marginTop=200
+const BOOTH_LAYOUT = { plazaWidth: 960, cols: 3, w: 165, h: 200, gapX: 8, gapY: 24, marginTop: 200 };
 
 function boothRect(index) {
   const L = BOOTH_LAYOUT;
