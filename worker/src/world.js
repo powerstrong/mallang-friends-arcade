@@ -24,8 +24,8 @@ const PROTOCOL_VERSION = 1;
 const MAX_NAME_LEN = 16;
 const HEARTBEAT_TIMEOUT_MS = 30_000;
 
-const WORLD_BOUNDS = { width: 540, height: 960 };
-const SPAWN_POINT = { x: 270, y: 520 };
+const WORLD_BOUNDS = { width: 960, height: 960 };
+const SPAWN_POINT = { x: 480, y: 520 };
 
 // Movement validation. Server is authoritative on bounds and direction.
 // Speed cheat-prevention is a soft check: positions are clamped to bounds

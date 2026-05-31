@@ -21,10 +21,10 @@ const BOOTH_CATALOG = [
   { gameId: 'sseuk-sseuk',         title: '말랑프렌즈 쓱쓱',     minPlayers: 2, maxPlayers: 6 },
 ];
 
-// Portrait(540x960) 광장 자동 레이아웃. 상단에 3열 그리드로 배치해 스폰 지점
-// (SPAWN_POINT y=520)에서 충분히 떨어뜨린다. 부스가 3개를 넘으면 다음 행으로 내려간다.
-// cols=3, w=165, gapX=8, marginTop=80 → 기존 3부스 좌표(x:15/188/361, y:80)와 정확히 동일.
-const BOOTH_LAYOUT = { plazaWidth: 540, cols: 3, w: 165, h: 200, gapX: 8, gapY: 24, marginTop: 80 };
+// Portrait(960x960) 광장 자동 레이아웃. 상단에 3열 그리드로 배치해 스폰 지점
+// SPAWN_POINT y=520)에서 충분히 떨어뜨린다. 부스가 3개를 넘으면 다음 행으로 내려간다.
+// cols=3, w=165, gapX=8, marginTop=80
+const BOOTH_LAYOUT = { plazaWidth: 960, cols: 3, w: 165, h: 200, gapX: 8, gapY: 24, marginTop: 80 };
 
 function boothRect(index) {
   const L = BOOTH_LAYOUT;
