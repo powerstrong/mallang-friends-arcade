@@ -167,11 +167,13 @@
   const matchPreview = document.getElementById('match-preview');
   const matchPreviewToggle = document.getElementById('match-preview-toggle');
 
-  matchPreviewToggle.addEventListener('click', () => {
-    const nowHidden = matchPreview.classList.toggle('hidden');
-    matchPreviewToggle.setAttribute('aria-expanded', nowHidden ? 'false' : 'true');
-    matchPreviewToggle.textContent = nowHidden ? '게임 미리보기 ▸' : '미리보기 접기 ▴';
-  });
+  if (matchPreviewToggle) {
+    matchPreviewToggle.addEventListener('click', () => {
+      const nowHidden = matchPreview.classList.toggle('hidden');
+      matchPreviewToggle.setAttribute('aria-expanded', nowHidden ? 'false' : 'true');
+      matchPreviewToggle.textContent = nowHidden ? '게임 미리보기 ▸' : '미리보기 접기 ▴';
+    });
+  }
 
   // 부스 프리뷰 — gameId(=zoneId) → 게임 GIF. 준비된 게임만 등록(없으면 프리뷰 생략).
   // 다른 GIF 로 바꾸려면 경로만 교체하면 된다. 프리뷰는 부스에 올라선 순간부터
@@ -935,6 +937,9 @@
     matchStartingView.setAttribute('aria-hidden', 'false');
     matchAcceptBtn.disabled = true;
     matchDeclineBtn.disabled = true;
+    // is-starting 전환 시 열린 GIF가 남지 않도록 접기.
+    matchPreview.classList.add('hidden');
+    matchPreviewToggle.classList.add('hidden');
 
     // go_to_game 이 너무 빨리 도착해도 최소 700ms 는 화면을 잡아둔다.
     // 그래야 트랜지션 의도가 인지된다.
@@ -950,6 +955,14 @@
     matchModalCard.classList.remove('is-starting');
     matchStartingView.setAttribute('aria-hidden', 'true');
     matchStartingAt = 0;
+    // 시작 취소(unstarting) 시 토글 버튼을 기본 접힘 상태로 복원.
+    const gif = activeProposal.gameId && BOOTH_PREVIEWS[activeProposal.gameId];
+    if (gif) {
+      matchPreview.classList.add('hidden');
+      matchPreviewToggle.textContent = '게임 미리보기 ▸';
+      matchPreviewToggle.setAttribute('aria-expanded', 'false');
+      matchPreviewToggle.classList.remove('hidden');
+    }
     refreshMatchActions();
   }
 
