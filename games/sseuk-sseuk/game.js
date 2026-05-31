@@ -109,9 +109,32 @@ const rankingsList     = document.getElementById('rankingsList');
 const exitBtn          = document.getElementById('exitBtn');
 
 /* ── Screen helpers ─────────────────────────────────── */
+
+/* Android 뒤로가기 가드 — 게임 화면일 때 history 더미 항목을 심어두고
+ * popstate 가 오면 확인창을 띄운다. 설치/해제는 showScreen 에서 자동 관리. */
+let backGuardActive = false;
+function armBackGuard() {
+  if (backGuardActive) return;
+  history.pushState({ backGuard: true }, '');
+  backGuardActive = true;
+}
+function disarmBackGuard() {
+  backGuardActive = false;
+}
+window.addEventListener('popstate', () => {
+  if (!backGuardActive || intentionalClose) return;
+  history.pushState({ backGuard: true }, '');   // 다음 탭도 잡도록 재설치
+  if (confirm('게임에서 나갈까요?\n진행 중인 라운드에서 빠지게 됩니다.')) {
+    disarmBackGuard();
+    leaveToRoom();
+  }
+});
+
 function showScreen(which) {
   for (const s of [setupScreen, gameScreen, resultScreen]) s.classList.remove('is-active');
   ({ setup: setupScreen, game: gameScreen, result: resultScreen })[which].classList.add('is-active');
+  if (which === 'game') armBackGuard();
+  else disarmBackGuard();
 }
 function showSubPanel(which) {
   for (const p of [volunteerPanel, lotteryPanel, drawingPanel, roundEndPanel]) p.classList.add('is-hidden');
