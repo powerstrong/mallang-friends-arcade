@@ -167,17 +167,18 @@
   const matchPreview = document.getElementById('match-preview');
 
   // 부스 프리뷰 — gameId(=zoneId) → 게임 GIF. 준비된 게임만 등록(없으면 프리뷰 생략).
-  // 다른 GIF 로 바꾸려면 경로만 교체하면 된다.
-  const boothPreview = document.getElementById('booth-preview');
-  const boothPreviewImg = document.getElementById('booth-preview-img');
-  const boothPreviewTitle = document.getElementById('booth-preview-title');
+  // 다른 GIF 로 바꾸려면 경로만 교체하면 된다. 프리뷰는 부스에 올라선 순간부터
+  // 하단 매칭 패널(match-modal) 안에서 보여준다(상단 플로팅 프리뷰는 폐지).
   const BOOTH_PREVIEWS = {
     // 주의: Cloudflare Pages 가 docs/ 는 서빙하지 않으므로 서빙되는 world/assets/ 에 둔다.
     'jump-climber': '/world/assets/preview_jump.gif',
     'sseuk-sseuk': '/world/assets/preview_sseuk.gif',
     // 'mallang-quiz-battle': 프리뷰 GIF 준비되면 world/assets/preview_quiz.gif 추가
   };
-  let boothPreviewZone = null;
+  // 하단 패널이 현재 pre-match(참가 준비) 로 띄워 둔 zoneId. null 이면 미표시.
+  let panelZone = null;
+  // pre-match 카운트다운 문구 캐시 — 매 프레임 동일 문자열을 다시 쓰지 않도록.
+  let lastPanelStatus = '';
   const matchStartingView = document.getElementById('match-starting-view');
   const starterPortrait = document.getElementById('starter-portrait');
   const starterText = document.getElementById('starter-text');
@@ -993,6 +994,9 @@
     matchTitle.textContent = activeProposal.title;
     renderMatchMembers();
     refreshMatchActions();
+    // pre-match(참가 준비) 로 떠 있던 같은 패널이 그대로 이어받는다 — 멤버·버튼 노출.
+    matchModalCard.classList.remove('is-prematch');
+    panelZone = null;
     // 새 modal 은 항상 평시 상태로 — 이전 트랜지션 잔재 제거.
     matchModalCard.classList.remove('is-starting');
     matchStartingView.setAttribute('aria-hidden', 'true');
@@ -1011,11 +1015,13 @@
     if (matchCloseTimer) { clearTimeout(matchCloseTimer); matchCloseTimer = null; }
     if (joystickEl) joystickEl.style.visibility = '';
     matchModalCard.classList.remove('is-starting');
+    matchModalCard.classList.remove('is-prematch');
     matchStartingView.setAttribute('aria-hidden', 'true');
     matchStartingAt = 0;
     matchPreview.removeAttribute('src');
     matchPreview.classList.add('hidden');
     activeProposal = null;
+    panelZone = null;
   }
 
   function renderMatchMembers() {
@@ -1097,8 +1103,11 @@
     matchDeclineBtn.disabled = true;
     matchStatus.textContent = '나가는 중...';
     send({ t: 'match_leave', d: { matchId: activeProposal.matchId } });
-    // Close immediately for snappy feedback — server's zone_progress(null)
-    // will also try to close but the modal is already gone.
+    // Close immediately for snappy feedback. Optimistically clear zone progress
+    // too — the server turns us to ROAM on leave (no re-candidacy until we move
+    // again), so without this the render loop would reopen the pre-match panel
+    // for one frame before server's zone_progress(null) arrives.
+    myZoneProgress = null;
     closeMatchModal();
   }
 
@@ -1125,26 +1134,65 @@
     };
   }
 
-  // 부스 프리뷰 표시/숨김. 렌더 루프에서 매 프레임 호출(변경 없으면 빠르게 반환).
-  // 게임 칸에 들어서면 해당 게임 GIF 를 띄우고, 나가거나 매칭 모달이 열리면 숨긴다.
-  function updateBoothPreview(zoneId) {
-    // 부스에 머무는 동안 상단에 게임 GIF 를 띄운다. 단 매칭/시작 모달이 열리면 상단
-    // 플로팅 프리뷰는 숨긴다(모달 안 썸네일이 대신 보여줌) — 둘이 화면을 다 덮지 않도록.
-    const gifUrl = zoneId ? BOOTH_PREVIEWS[zoneId] : null;
-    const modalOpen = activeProposal && !matchModal.classList.contains('hidden');
-    if (!gifUrl || modalOpen) {
-      if (boothPreviewZone !== null) {
-        boothPreview.classList.add('hidden');  // opacity 페이드아웃 — src 유지해 이미지가 같이 페이드
-        boothPreviewZone = null;
-      }
+  // 하단 매칭 패널 동기화. 렌더 루프에서 매 프레임 호출(변경 없으면 빠르게 반환).
+  // 부스(프리뷰 있는 게임)에 올라선 순간부터 패널을 pre-match(참가 준비) 로 띄우고,
+  // 매칭 제안이 오면 openMatchModal 이 같은 패널을 멤버+시작 버튼으로 이어받는다.
+  // 부스를 벗어나면 닫는다. 위→아래로 위치가 바뀌던 기존 상단 프리뷰는 폐지.
+  function syncMatchPanel() {
+    // 실제 매칭 제안/시작 모달이 떠 있으면 그쪽이 패널을 점유한다 — 건드리지 않는다.
+    if (activeProposal) { panelZone = null; return; }
+    const zoneId = myZoneProgress ? myZoneProgress.zoneId : null;
+    // 프리뷰가 준비된 게임에서만 pre-match 패널을 띄운다(없으면 기존처럼 제안 시점에).
+    const target = (zoneId && BOOTH_PREVIEWS[zoneId]) ? zoneId : null;
+    if (!target) {
+      if (panelZone !== null) { closeMatchModal(); panelZone = null; }
       return;
     }
-    if (boothPreviewZone === zoneId) return;  // 이미 같은 프리뷰 표시 중
-    boothPreviewZone = zoneId;
+    if (panelZone !== target) {
+      openZonePanel(target);
+      panelZone = target;
+    }
+    updateZonePanelCountdown();
+  }
+
+  // 부스에 올라선 동안 하단 패널을 pre-match 상태로 연다. 멤버 목록·시작 버튼은
+  // 숨기고(프리뷰 + 카운트다운만), 제안이 오면 openMatchModal 이 이어받는다.
+  function openZonePanel(zoneId) {
+    if (matchCloseTimer) { clearTimeout(matchCloseTimer); matchCloseTimer = null; }
     const zone = zonesCatalog.find((z) => z.id === zoneId);
-    boothPreviewTitle.textContent = zone ? zone.title : '';
-    boothPreviewImg.src = gifUrl;
-    boothPreview.classList.remove('hidden');
+    matchTitle.textContent = zone ? zone.title : '';
+    matchMembers.innerHTML = '';
+    matchModalCard.classList.add('is-prematch');
+    matchModalCard.classList.remove('is-starting');
+    matchStartingView.setAttribute('aria-hidden', 'true');
+    matchStartingAt = 0;
+    lastPanelStatus = '';  // 새 패널 — 다음 카운트다운 갱신 때 무조건 한 번 쓴다.
+    const gifUrl = BOOTH_PREVIEWS[zoneId];
+    if (gifUrl) { matchPreview.src = gifUrl; matchPreview.classList.remove('hidden'); }
+    else { matchPreview.removeAttribute('src'); matchPreview.classList.add('hidden'); }
+    matchModal.classList.remove('hidden');
+    matchModal.setAttribute('aria-hidden', 'false');
+    // pre-match 동안은 조이스틱을 숨기지 않는다 — 그냥 걸어 나가면 카운트다운이 취소되도록.
+  }
+
+  // pre-match 패널의 카운트다운 문구를 매 프레임 갱신(드로우 코스트 거의 없음).
+  function updateZonePanelCountdown() {
+    if (!myZoneProgress) return;
+    let text;
+    if (myZoneProgress.ready) {
+      text = '준비 완료 — 친구를 기다리는 중...';
+    } else {
+      const elapsedClient = performance.now() - myZoneProgress.clientAt;
+      const baseElapsed = Math.max(0, myZoneProgress.serverNow - myZoneProgress.candidateSince);
+      const elapsed = baseElapsed + elapsedClient;
+      const remain = Math.max(0, myZoneProgress.holdMs - elapsed);
+      text = `참가 준비 ${(remain / 1000).toFixed(1)}초`;
+    }
+    // 0.1초 단위로만 바뀌므로 같은 문자열을 60fps 로 다시 쓰는 낭비를 막는다.
+    if (text !== lastPanelStatus) {
+      matchStatus.textContent = text;
+      lastPanelStatus = text;
+    }
   }
 
   function handleServerError(d) {
@@ -1179,8 +1227,11 @@
     ws = null;
     setConnStatus(false);
     stopHeartbeat();
-    // Tear down any open match proposal so its card + countdown don't linger.
-    if (activeProposal) closeMatchModal();
+    // Tear down any open proposal/pre-match panel so its card + countdown don't
+    // linger across a disconnect. zone_progress is re-sent fresh after
+    // reconnect+rejoin, reopening the panel if the player is still on a booth.
+    myZoneProgress = null;
+    if (activeProposal || panelZone !== null) closeMatchModal();
 
     // Intentional leave — leaveWorld already swapped panels; don't reconnect.
     if (leaving) { leaving = false; return; }
@@ -1227,7 +1278,7 @@
       lastFrameAt = now;
       step(dt);
       draw();
-      updateBoothPreview(myZoneProgress ? myZoneProgress.zoneId : null);
+      syncMatchPanel();
       rafHandle = requestAnimationFrame(loop);
     };
     rafHandle = requestAnimationFrame(loop);
