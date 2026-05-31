@@ -4,8 +4,7 @@
 
 [![게임 레지스트리 검증](https://github.com/powerstrong/mallang-friends-arcade/actions/workflows/validate.yml/badge.svg)](https://github.com/powerstrong/mallang-friends-arcade/actions/workflows/validate.yml)
 
-로그인 없이 방 코드나 광장에서 바로 모여 즐기는 웹 미니게임 아케이드.
-오픈소스 기반 멀티플레이 플랫폼을 제공하며, 게임 개발에 참여하실 분 환영합니다.
+로그인 없이 방 코드나 광장에서 바로 모여 즐기는 웹 미니게임 아케이드입니다. 오픈소스 기반 멀티플레이 플랫폼을 제공하며, 게임 개발에 참여하실 분 환영합니다.
 
 ![말랑프렌즈 아케이드 플레이 — 광장에서 말랑프렌즈 점프 한 판](./docs/media/demo.gif)
 
