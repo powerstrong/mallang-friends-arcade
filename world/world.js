@@ -1303,6 +1303,46 @@
     }
   }
 
+  // ── Render helpers ────────────────────────────────────────────────────────
+  // canvas 좌표(960) ↔ 물리 화면 px 비율. object-fit:cover 라서 실제 표시 배율은
+  // 박스의 가로·세로 중 "큰 쪽"이 결정한다(세로 긴 폰은 높이 기준, 좌우가 잘림).
+  // 따라서 width 만으로 계산하면 틀린다 — max(clientW, clientH) 를 써야 한다.
+  // 값 = "물리 1px 당 canvas unit 수" (Fold 접힘 ≈ 2.7, 일반 폰 ≈ 1.85, 태블릿 ≈ 1.0).
+  // 프레임당 1회 refreshPxScale() 로 갱신하고 이후엔 캐시값을 읽는다(레이아웃 reflow 최소화).
+  let _pxScale = 1;
+  let _tier = 'mobile';
+  function refreshPxScale() {
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    // floor 1.0: 큰 화면(렌더 >960px)에선 캔버스 원래 크기 유지 — 폰트는 base 로
+    // 고정되는데 박스(이름표·말풍선 높이)만 toCanvasPx 로 줄어 텍스트가 잘리던 회귀 방지.
+    _pxScale = (w && h) ? Math.max(1, canvas.width / Math.max(w, h)) : 1;
+    const cw = w || 960;
+    _tier = cw < 350 ? 'ultra-small' : (cw < 700 ? 'mobile' : 'desktop');
+  }
+  function getPxScale() { return _pxScale; }
+  function toCanvasPx(physicalPx) { return physicalPx * _pxScale; }
+
+  const FONT_FAMILY = '-apple-system, system-ui, sans-serif';
+
+  // 최소 물리 가독 크기(minPhysicalSize)를 보장하되 큰 화면에선 baseCanvasSize 로
+  // 내려앉는 canvas 폰트 크기(정수).
+  function adaptiveSize(baseCanvasSize, minPhysicalSize) {
+    return Math.floor(Math.max(baseCanvasSize, minPhysicalSize * _pxScale));
+  }
+  function adaptiveFont(baseCanvasSize, minPhysicalSize, weight = 'normal', family = FONT_FAMILY) {
+    return `${weight} ${adaptiveSize(baseCanvasSize, minPhysicalSize)}px ${family}`;
+  }
+
+  // 텍스트가 maxW(canvas px)를 넘으면 비례 축소한 크기를 돌려준다 — 옆 부스 침범 방지.
+  function widthCappedSize(text, size, weight, maxW) {
+    ctx.font = `${weight} ${size}px ${FONT_FAMILY}`;
+    const w = ctx.measureText(text).width;
+    if (w <= maxW || w <= 0) return size;
+    return Math.max(8, Math.floor(size * maxW / w));
+  }
+
+  function getDisplayTier() { return _tier; } // refreshPxScale() 에서 프레임당 1회 갱신
+
   // ── Render loop ─────────────────────────────────────────────────────────────
   function startRenderLoop() {
     lastFrameAt = performance.now();
@@ -1368,6 +1408,7 @@
   }
 
   function draw() {
+    refreshPxScale();
     if (worldBgReady) {
       ctx.drawImage(worldBg, 0, 0, canvas.width, canvas.height);
     } else {
@@ -1411,11 +1452,16 @@
   // 부스 표시 정책 (사용자 피드백):
   //   • 기본: 작은 원형 영역 + 라벨만. 월드가 산만하지 않도록 일러스트는 숨김.
   //   • 들어선 순간(inHere): 일러스트 노출 + 카운트다운 진행.
+  //   • 초소형 기기(Fold folded): 라벨 숨김 (아이콘만), 근접 시 툴팁으로 표시.
   function drawBooth(z, r, st, inHere, near) {
     const t = zoneTheme(z);
+    const tier = getDisplayTier();
     const cx = r.x + r.w / 2;
     const cy = r.y + r.h / 2;
-    const markerR = Math.min(36, Math.min(r.w, r.h) * 0.18); // 작은 원형 마커
+    
+    // 마커 크기: rect 비례(0.22, 상한 44 canvas)로 키우고, 작은 화면에선 물리 13px 하한 보장.
+    const rmin = Math.min(r.w, r.h);
+    const markerR = Math.max(toCanvasPx(13), Math.min(44, rmin * 0.22));
     ctx.save();
 
     if (inHere) {
@@ -1475,35 +1521,58 @@
       }
     }
 
-    // Title — 마커/일러스트 아래.
-    const titleY = inHere ? r.y + r.h + 16 : cy + markerR + 14;
-    ctx.font = 'bold 14px -apple-system, system-ui, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'alphabetic';
-    ctx.lineWidth = 3;
-    ctx.lineJoin = 'round';
-    ctx.strokeStyle = 'rgba(20,30,16,0.85)';
-    ctx.strokeText(z.title, cx, titleY);
-    ctx.fillStyle = '#ffffff';
-    ctx.fillText(z.title, cx, titleY);
+    // 초소형 기기(Fold 등)에서 평상시 텍스트 라벨은 숨김 (공간 부족 및 겹침 방지).
+    // 단, 들어가 있거나(inHere) 가까이 갔을 때(near)는 표시.
+    const showText = tier !== 'ultra-small' || inHere || near;
+    if (showText) {
+      const laneMaxW = r.w - 8; // 옆 부스(gapX=8) 침범 방지 폭 상한
+      // 제목 — 긴 제목은 lane 폭에 맞춰 비례 축소(measureText cap).
+      const titleSize = widthCappedSize(z.title, adaptiveSize(15, 12), 'bold', laneMaxW);
 
-    // Status line / countdown.
-    if (inHere && myZoneProgress && myZoneProgress.zoneId === z.id) {
-      drawZoneCountdown(z, r);
-    } else {
+      // 상태 텍스트(대기 인원) — countdown 이 아니고, 표시 조건을 만족할 때만.
+      const isCountdown = inHere && myZoneProgress && myZoneProgress.zoneId === z.id;
+      const showStatus = !isCountdown && (tier !== 'ultra-small' || near);
       const enough = st.count >= z.minPlayers;
       const statusText = enough
         ? `대기 ${st.count}/${z.maxPlayers} · 곧 시작!`
         : `대기 ${st.count}/${z.maxPlayers} · ${z.minPlayers}명 모이면 시작`;
-      ctx.font = '11px -apple-system, system-ui, sans-serif';
+      const statusSize = showStatus
+        ? widthCappedSize(statusText, adaptiveSize(11, 10), 'normal', laneMaxW) : 0;
+
+      // 세로 배치(폰트 크기에 비례). 마커 모드일 땐 rect 아래로 넘치지 않게 클램프.
+      const gapMarker = Math.max(6, titleSize * 0.4);
+      const gapLine = Math.max(3, statusSize * 0.3);
+      let titleY = inHere ? r.y + r.h + 12 + titleSize : cy + markerR + gapMarker + titleSize;
+      let statusY = titleY + gapLine + statusSize;
+      if (!inHere) {
+        const maxBottom = r.y + r.h - 6;
+        const bottom = showStatus ? statusY : titleY;
+        if (bottom > maxBottom) { const o = bottom - maxBottom; titleY -= o; statusY -= o; }
+      }
+
       ctx.textAlign = 'center';
-      ctx.lineWidth = 3;
+      ctx.textBaseline = 'alphabetic';
       ctx.lineJoin = 'round';
-      ctx.strokeStyle = 'rgba(20,30,16,0.8)';
-      const statusY = titleY + 17;
-      ctx.strokeText(statusText, cx, statusY);
-      ctx.fillStyle = enough ? '#d6ffe6' : '#eef2ff';
-      ctx.fillText(statusText, cx, statusY);
+
+      // Title
+      ctx.font = `bold ${titleSize}px ${FONT_FAMILY}`;
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = 'rgba(20,30,16,0.9)';
+      ctx.strokeText(z.title, cx, titleY);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(z.title, cx, titleY);
+
+      // Status line / countdown.
+      if (isCountdown) {
+        drawZoneCountdown(z, r, titleY); // 제목 baseline 아래로 스택(겹침 방지)
+      } else if (showStatus) {
+        ctx.font = `${statusSize}px ${FONT_FAMILY}`;
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = 'rgba(20,30,16,0.85)';
+        ctx.strokeText(statusText, cx, statusY);
+        ctx.fillStyle = enough ? '#d6ffe6' : '#eef2ff';
+        ctx.fillText(statusText, cx, statusY);
+      }
     }
     ctx.restore();
 
@@ -1515,15 +1584,16 @@
     const sec = Math.round((z.holdMs || 3000) / 1000);
     const text = `들어가서 ${sec}초 → 시작!`;
     ctx.save();
-    ctx.font = 'bold 11px -apple-system, system-ui, sans-serif';
-    const w = ctx.measureText(text).width + 18;
+    ctx.font = adaptiveFont(11, 10, 'bold');
+    const w = ctx.measureText(text).width + toCanvasPx(12);
+    const h = toCanvasPx(18);
     const cx = r.x + r.w / 2;
-    const y = inHere ? (r.y - 66) : (markerTopY - 22);
+    const y = inHere ? (r.y - 66) : (markerTopY - toCanvasPx(16));
     ctx.fillStyle = t.dark;
-    roundRect(cx - w / 2, y - 11, w, 22, 8);
+    roundRect(cx - w / 2, y - h / 2, w, h, h / 2);
     ctx.fill();
     ctx.beginPath();
-    ctx.moveTo(cx - 5, y + 11); ctx.lineTo(cx, y + 16); ctx.lineTo(cx + 5, y + 11);
+    ctx.moveTo(cx - 5, y + h / 2); ctx.lineTo(cx, y + h / 2 + 5); ctx.lineTo(cx + 5, y + h / 2);
     ctx.closePath();
     ctx.fill();
     ctx.fillStyle = '#fff';
@@ -1533,7 +1603,7 @@
     ctx.restore();
   }
 
-  function drawZoneCountdown(zone, r) {
+  function drawZoneCountdown(zone, r, titleBaselineY) {
     if (!myZoneProgress) return;
     const elapsedClient = performance.now() - myZoneProgress.clientAt;
     // serverNow - candidateSince = elapsed at the moment server stamped this
@@ -1543,24 +1613,30 @@
     const ratio = clamp(elapsed / myZoneProgress.holdMs, 0, 1);
     const cx = r.x + r.w / 2;
 
-    ctx.font = 'bold 11px -apple-system, system-ui, sans-serif';
+    const cdSize = adaptiveSize(11, 10);
+    ctx.font = `bold ${cdSize}px ${FONT_FAMILY}`;
     ctx.textAlign = 'center';
     const status = myZoneProgress.ready ? '준비 완료 — 모이는 중...' : `참가 준비 ${(remain / 1000).toFixed(1)}초`;
     ctx.lineWidth = 3;
     ctx.lineJoin = 'round';
     ctx.strokeStyle = 'rgba(20,30,16,0.8)';
-    ctx.strokeText(status, cx, r.y + r.h + 33);
+    // 제목 baseline 아래로 한 줄 띄워 배치 — 제목과 겹치지 않게(폰트 비례 gap).
+    // titleBaselineY 가 없으면(이전 호출부 호환) rect 아래 기존 위치로 폴백.
+    const textY = (titleBaselineY != null)
+      ? titleBaselineY + Math.max(4, cdSize * 0.35) + cdSize
+      : r.y + r.h + toCanvasPx(24);
+    ctx.strokeText(status, cx, textY);
     ctx.fillStyle = myZoneProgress.ready ? '#d6ffe6' : '#ffffff';
-    ctx.fillText(status, cx, r.y + r.h + 33);
+    ctx.fillText(status, cx, textY);
 
     // Progress bar.
-    const padX = 18, barW = r.w - padX * 2, barH = 6;
-    const barX = r.x + padX, barY = r.y + r.h + 39;
+    const padX = 18, barW = r.w - padX * 2, barH = Math.max(6, toCanvasPx(4));
+    const barX = r.x + padX, barY = textY + toCanvasPx(6);
     ctx.fillStyle = 'rgba(0,0,0,0.3)';
-    roundRect(barX, barY, barW, barH, 3);
+    roundRect(barX, barY, barW, barH, barH / 2);
     ctx.fill();
     ctx.fillStyle = myZoneProgress.ready ? '#6bdfa1' : '#ffd27a';
-    roundRect(barX, barY, barW * ratio, barH, 3);
+    roundRect(barX, barY, barW * ratio, barH, barH / 2);
     ctx.fill();
   }
 
@@ -1584,16 +1660,16 @@
   function drawBubble(cx, cy, text, alpha) {
     ctx.save();
     ctx.globalAlpha = alpha;
-    ctx.font = 'bold 14px -apple-system, system-ui, sans-serif';
-    const padX = 11, padY = 7, lineH = 18;
-    const lines = wrapText(text, 220);
+    ctx.font = adaptiveFont(14, 12, 'bold');
+    const padX = toCanvasPx(11), padY = toCanvasPx(7), lineH = toCanvasPx(18);
+    const lines = wrapText(text, toCanvasPx(160));
     const w = Math.max(...lines.map((l) => ctx.measureText(l).width)) + padX * 2;
     const h = lines.length * lineH + padY * 2;
     // Sit just above the name pill so the tail visually connects to the
     // character. Clamp to keep the bubble inside the canvas.
-    const top = Math.max(8, cy - 118 - h);
-    const tailH = 12;
-    const tailHalfW = 8;
+    const top = Math.max(8, cy - toCanvasPx(100) - h);
+    const tailH = toCanvasPx(10);
+    const tailHalfW = toCanvasPx(7);
 
     // Drop shadow for contrast over the grass.
     ctx.shadowColor = 'rgba(0,0,0,0.38)';
@@ -1640,10 +1716,10 @@
   function drawReaction(cx, cy, glyph, alpha) {
     ctx.save();
     ctx.globalAlpha = alpha;
-    ctx.font = '24px serif';
+    ctx.font = `${Math.floor(toCanvasPx(24))}px serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'bottom';
-    ctx.fillText(glyph, cx, cy - 30);
+    ctx.fillText(glyph, cx, cy - toCanvasPx(30));
     ctx.restore();
   }
 
@@ -1731,18 +1807,18 @@
     // recognizable at a glance.
     const name = p.name || '';
     if (name) {
-      ctx.font = 'bold 15px -apple-system, system-ui, sans-serif';
+      ctx.font = adaptiveFont(15, 12, 'bold');
       const w = ctx.measureText(name).width;
-      const padX = 9, tagH = 22;
+      const padX = toCanvasPx(9), tagH = toCanvasPx(22);
       const tagW = w + padX * 2;
       const tagTop = nameTagY - tagH;
       ctx.fillStyle = 'rgba(20, 30, 16, 0.78)';
-      roundRect(-tagW / 2, tagTop, tagW, tagH, 11);
+      roundRect(-tagW / 2, tagTop, tagW, tagH, tagH / 2);
       ctx.fill();
       if (isYou) {
         ctx.strokeStyle = '#ffb96b';
         ctx.lineWidth = 1.8;
-        roundRect(-tagW / 2, tagTop, tagW, tagH, 11);
+        roundRect(-tagW / 2, tagTop, tagW, tagH, tagH / 2);
         ctx.stroke();
       }
       ctx.fillStyle = isYou ? '#ffd9a8' : nameColor(p.name);
