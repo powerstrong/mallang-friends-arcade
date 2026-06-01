@@ -250,6 +250,8 @@ export class WorldChannel {
 
     this._broadcast({ t: 'player_left', d: { id: attach.sessionId } }, ws);
 
+    this._track(this._logSessionLeft(attach.sessionId)); // 퇴장 시각 기록
+
     const prevZoneId = attach.currentZoneId ?? null;
     if (prevZoneId) {
       ws.serializeAttachment({
@@ -267,6 +269,45 @@ export class WorldChannel {
 
   async webSocketError(ws) {
     return this.webSocketClose(ws);
+  }
+
+  // ── Access / chat logging to D1 (관리자 통계) ────────────────────────────────
+  // 광장 접속·대화를 D1 에 영구 적재. 라이브 WS 경로를 막지 않도록 호출부에서
+  // _track() 으로 fire-and-forget 하고, 여기선 절대 throw 하지 않는다(leaderboard
+  // 제출과 동일 관례). DB 바인딩이 없으면(로컬 등) 조용히 무시. 보관기간 정리는
+  // index.js 의 scheduled(cron) 가 담당한다.
+
+  // 백그라운드 쓰기 추적 — waitUntil 가능하면 DO 가 곧장 idle 돼도 안 끊기게.
+  _track(promise) {
+    const p = Promise.resolve(promise).catch((err) =>
+      console.error('[world] log write failed', err && err.stack ? err.stack : err));
+    if (this.state && typeof this.state.waitUntil === 'function') {
+      try { this.state.waitUntil(p); } catch { /* ignore */ }
+    }
+  }
+
+  async _logSessionJoin(me) {
+    if (!this.env?.DB || !me?.id) return;
+    await this.env.DB.prepare(
+      `INSERT INTO world_sessions (session_id, lounge_id, name, character_id, joined_at)
+       VALUES (?, ?, ?, ?, ?)`
+    ).bind(me.id, this.loungeId, me.name, me.characterId || null, Date.now()).run();
+  }
+
+  async _logSessionLeft(sessionId) {
+    if (!this.env?.DB || !sessionId) return;
+    await this.env.DB.prepare(
+      `UPDATE world_sessions SET left_at = ?
+       WHERE session_id = ? AND left_at IS NULL`
+    ).bind(Date.now(), sessionId).run();
+  }
+
+  async _logChat(entry, zoneId) {
+    if (!this.env?.DB || !entry?.text) return;
+    await this.env.DB.prepare(
+      `INSERT INTO world_chat_log (session_id, lounge_id, name, text, zone_id, ts)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    ).bind(entry.id || null, this.loungeId, entry.name, entry.text, zoneId || null, entry.ts).run();
   }
 
   // ── Handlers ────────────────────────────────────────────────────────────────
@@ -339,6 +380,8 @@ export class WorldChannel {
     });
 
     this._broadcast({ t: 'player_joined', d: { player: me } }, ws);
+
+    this._track(this._logSessionJoin(me)); // 접속 기록(관리자 통계)
   }
 
   async _handleMove(ws, attach, d) {
@@ -914,6 +957,8 @@ export class WorldChannel {
     // Echo to sender too so the bubble appears reliably even if local optimistic
     // render is skipped. Client de-dupes by id+ts if it ever needs to.
     this._broadcast({ t: 'chat', d: entry });
+
+    this._track(this._logChat(entry, attach.currentZoneId ?? null)); // 대화 기록
   }
 
   // Chat history — persisted in DO storage so it survives hibernation and is

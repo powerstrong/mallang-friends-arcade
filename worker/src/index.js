@@ -5,6 +5,21 @@ export { WorldChannel } from './world.js';
 
 const LOUNGE_ID_PATTERN = /^lounge-[a-z0-9-]{1,32}$/;
 
+// 광장 접속·대화 로그 보관기간(일). 개인정보(닉네임·대화)이므로 무한 보관하지 않고
+// 아래 scheduled(cron) 가 매일 이 기간보다 오래된 행을 삭제한다. 기간 조정은 이 값만.
+const WORLD_LOG_RETENTION_DAYS = 90;
+
+async function pruneWorldLogs(env) {
+  if (!env?.DB) return;
+  const cutoff = Date.now() - WORLD_LOG_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+  try {
+    await env.DB.prepare('DELETE FROM world_chat_log WHERE ts < ?').bind(cutoff).run();
+    await env.DB.prepare('DELETE FROM world_sessions WHERE joined_at < ?').bind(cutoff).run();
+  } catch (err) {
+    console.error('[cron] world log prune failed', err && err.stack ? err.stack : err);
+  }
+}
+
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
@@ -120,5 +135,10 @@ export default {
     }
 
     return corsResponse(JSON.stringify({ error: 'Not Found' }), { status: 404 });
+  },
+
+  // Cron(wrangler.toml [triggers].crons) — 광장 로그 보관기간 정리.
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(pruneWorldLogs(env));
   },
 };

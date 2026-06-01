@@ -2,6 +2,12 @@ name = "game-lobby"
 main = "src/index.js"
 compatibility_date = "2024-01-01"
 
+# 광장 접속·대화 로그 보관기간 정리 — 매일 1회(UTC 18:17 ≈ KST 03:17, 저트래픽).
+# 삭제 기준일수는 src/index.js 의 WORLD_LOG_RETENTION_DAYS. staging 은 prod DB 를
+# 공유하므로 cron 을 두지 않는다(prod cron 이 같은 DB 를 정리).
+[triggers]
+crons = ["17 18 * * *"]
+
 # NOTE: dev-only `[assets]` block intentionally lives in the npm `dev` script
 # as a `--assets ../` CLI flag, NOT in this file. If we put it here, every
 # `wrangler deploy` would upload the entire worktree (.claude/, .omc/, etc.)
