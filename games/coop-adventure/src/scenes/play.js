@@ -27,9 +27,14 @@ var PlayScene = new Phaser.Class({
   },
 
   // S10: 캐릭터 스프라이트(말랑 병아리=나, 민트 고양이=친구). 무빌드라 씬 preload로 로드.
+  // 달리기 사이클은 3x3=9프레임 시트(프레임 256). 정지 포즈용 단일 이미지도 유지.
   preload: function () {
     if (!this.textures.exists('chick')) this.load.image('chick', './assets/chick.png');
     if (!this.textures.exists('cat')) this.load.image('cat', './assets/cat.png');
+    if (!this.textures.exists('chick-run'))
+      this.load.spritesheet('chick-run', './assets/chick-run.png', { frameWidth: 256, frameHeight: 256 });
+    if (!this.textures.exists('cat-run'))
+      this.load.spritesheet('cat-run', './assets/cat-run.png', { frameWidth: 256, frameHeight: 256 });
   },
 
   create: function () {
@@ -91,8 +96,20 @@ var PlayScene = new Phaser.Class({
     this.player.body.setMaxVelocity(this.MOVE, 1500);
     this.physics.add.collider(this.player, this.solids);
     this.facing = 1;
-    this.playerSprite = this.add.image(this.spawn.x, this.spawn.y, 'chick')
-      .setDepth(7).setDisplaySize(58, 58);
+    // 달리기 애니메이션(게임 전역 anims에 1회 등록)
+    if (!this.anims.exists('chick-run'))
+      this.anims.create({ key: 'chick-run', frames: this.anims.generateFrameNumbers('chick-run', { start: 0, end: 8 }), frameRate: 14, repeat: -1 });
+    if (!this.anims.exists('cat-run'))
+      this.anims.create({ key: 'cat-run', frames: this.anims.generateFrameNumbers('cat-run', { start: 0, end: 8 }), frameRate: 14, repeat: -1 });
+    this.playerSprite = this.add.sprite(this.spawn.x, this.spawn.y, 'chick-run', 0)
+      .setDepth(7).setDisplaySize(96, 96);
+    // juice: 스쿼시/스트레치 스프링용 기준 스케일. 모든 프레임 동일 크기(256)라 스케일 일정.
+    // 프레임 애니(텍스처 교체)와 스케일 스프링은 속성이 달라 공존(충돌 없음).
+    this._sBaseX = this.playerSprite.scaleX;
+    this._sBaseY = this.playerSprite.scaleY;
+    this._wasGrounded = true;
+    this._lastSquash = -9999; // 착지 스쿼시 쿨다운(발판 가장자리 떨림 과트리거 방지)
+    this._JUMP_FRAME = 4; this._FALL_FRAME = 1; this._IDLE_FRAME = 0;
 
     // ===== 카메라 따라가기 (offset은 _layout에서 화면폭 기준) =====
     this.cameras.main.startFollow(this.player, true, 0.18, 0.16);
@@ -121,8 +138,8 @@ var PlayScene = new Phaser.Class({
 
     // ===== S4: 원격 친구(고스트) — NetClient 중계 또는 솔로(숨김) =====
     // 친구 비주얼은 항상 만들되 기본 숨김. 피어 스냅이 들어오면 표시(솔로면 안 보임).
-    this.ghost = this.add.image(this.spawn.x, 660, 'cat')
-      .setAlpha(0.85).setDepth(5).setDisplaySize(56, 56).setVisible(false);
+    this.ghost = this.add.sprite(this.spawn.x, 660, 'cat-run', 0)
+      .setAlpha(0.85).setDepth(5).setDisplaySize(92, 92).setVisible(false);
     this._ghostPrevX = this.spawn.x;
     this._hasPeer = false;
     this.ghostTag = this.add.text(this.spawn.x, 626, '친구', {
@@ -252,11 +269,33 @@ var PlayScene = new Phaser.Class({
     // 추후: this.net && this.net.sendEmote(type)
   },
 
+  // juice: 등장/소멸 뿅 연출
+  _poof: function (x, y) {
+    var p = this.add.text(x, y, '💨', { fontSize: '32px' }).setOrigin(0.5).setDepth(12);
+    this.tweens.add({ targets: p, scale: 1.8, alpha: 0, duration: 380,
+      onComplete: function (tw, tg) { tg[0].destroy(); } });
+  },
+
+  // 클리어 꽃가루 (화면 고정 좌표, 가벼운 사각형 다발)
+  _confetti: function () {
+    var W = this.scale.width, H = this.scale.height;
+    var colors = [0xff7ea8, 0x6ca8ff, 0xffd84d, 0x8ef0a0, 0xb98cff, 0xffa94d];
+    for (var i = 0; i < 22; i++) {
+      var c = this.add.rectangle(W / 2 + (Math.random() * 160 - 80), H * 0.3, 8, 13, colors[i % colors.length])
+        .setScrollFactor(0).setDepth(220).setAngle(Math.random() * 360);
+      this.tweens.add({ targets: c, y: H * 0.95, x: c.x + (Math.random() * 240 - 120),
+        angle: c.angle + (Math.random() * 540 - 270), alpha: 0,
+        duration: 1100 + Math.random() * 700, ease: 'Quad.in',
+        onComplete: function (tw, tg) { tg[0].destroy(); } });
+    }
+  },
+
   _respawn: function () {
     var sp = this.checkpoint || this.spawn;
     this.player.body.reset(sp.x, sp.y);
     this._jumping = false;
     this._didCut = false;
+    this._poof(sp.x, sp.y); // 재등장 뿅
     // S8: 리스폰 무적 + 깜빡임 연출 (보이는 스프라이트를 대상으로)
     this.invulnUntil = this.time.now + this.INVULN_MS;
     this.tweens.killTweensOf(this.playerSprite);
@@ -319,6 +358,20 @@ var PlayScene = new Phaser.Class({
     this.earnedStars = earned;
     if (window.ProgressStore) ProgressStore.recordClear(this.stageId, this.stageIndex, earned);
 
+    // 합류/클리어 연출: 꽃가루 + 환호 바운스(친구가 있으면 함께 점프 — "함께 골인" 보상)
+    this._confetti();
+    // MED 리뷰: update 정지 후라 스프링이 안 돌므로, 스쿼시 잔상(scaleX)·무적 깜빡임(alpha)을
+    // base로 고정하고 진행 중 트윈을 정리한 뒤 연출(좌우 잔상/깜빡임 경합 방지).
+    this.tweens.killTweensOf(this.playerSprite);
+    this.playerSprite.anims.stop();
+    this.playerSprite.setAlpha(1).setScale(this._sBaseX, this._sBaseY);
+    this.tweens.add({ targets: this.playerSprite, y: this.playerSprite.y - 28,
+      scaleY: this._sBaseY * 1.15, duration: 240, yoyo: true, repeat: 2, ease: 'Quad.out' });
+    if (this._hasPeer && this.ghost.visible) {
+      this.tweens.add({ targets: [this.ghost, this.ghostTag], y: '-=24',
+        duration: 240, yoyo: true, repeat: 2, ease: 'Quad.out' });
+    }
+
     var starLine = '★'.repeat(earned) + '☆'.repeat(3 - earned);
     var msg = '🎉 클리어!\n' + starLine +
       '\n별 ' + this.starCount + '/' + this.totalStars + '   죽음 ' + this.deaths +
@@ -335,6 +388,13 @@ var PlayScene = new Phaser.Class({
     var b = this.player.body;
     var grounded = b.blocked.down || b.touching.down;
     if (grounded) { this._lastGrounded = time; this._didCut = false; }
+    // juice: 착지 스쿼시(공중→접지 전이 시 납작하게 → 스프링이 복원). 쿨다운으로 가장자리 떨림 방지.
+    if (grounded && !this._wasGrounded && (time - this._lastSquash) > 150) {
+      this.playerSprite.scaleX = this._sBaseX * 1.32;
+      this.playerSprite.scaleY = this._sBaseY * 0.7;
+      this._lastSquash = time;
+    }
+    this._wasGrounded = grounded;
 
     var dir = (inp.right ? 1 : 0) - (inp.left ? 1 : 0);
     if (dir !== 0) this.facing = dir; // S10: 바라보는 방향(스프라이트 flip용)
@@ -349,6 +409,9 @@ var PlayScene = new Phaser.Class({
       b.setVelocityY(this.JUMP_V);
       this._lastJumpReq = -9999; this._lastGrounded = -9999;
       this._didCut = false; this._jumping = true;
+      // juice: 점프 스트레치(위로 길쭉 → 스프링 복원)
+      this.playerSprite.scaleX = this._sBaseX * 0.82;
+      this.playerSprite.scaleY = this._sBaseY * 1.24;
     }
     if (this._jumping && !inp.jumpHeld && b.velocity.y < 0 && !this._didCut) {
       b.setVelocityY(b.velocity.y * this.CUT);
@@ -419,10 +482,23 @@ var PlayScene = new Phaser.Class({
       this._respawn();
     }
 
-    // S10: 병아리 스프라이트 위치/방향 동기화(기본 우향 → 좌측 이동 시 flipX)
-    this.playerSprite.x = this.player.x;
-    this.playerSprite.y = this.player.y;
-    this.playerSprite.setFlipX(this.facing < 0);
+    // 애니 상태머신: 공중=점프/낙하 포즈, 접지+이동=달리기 사이클, 접지+정지=idle
+    var spr = this.playerSprite;
+    if (!grounded) {
+      spr.anims.stop();
+      spr.setFrame(b.velocity.y < 0 ? this._JUMP_FRAME : this._FALL_FRAME);
+    } else if (dir !== 0) {
+      spr.play('chick-run', true); // ignoreIfPlaying — 달리는 동안 사이클 유지
+    } else {
+      spr.anims.stop();
+      spr.setFrame(this._IDLE_FRAME);
+    }
+    // 스쿼시/스트레치 스프링 복원(프레임 애니와 별개 속성) + 위치/방향 동기화
+    spr.scaleX += (this._sBaseX - spr.scaleX) * 0.22;
+    spr.scaleY += (this._sBaseY - spr.scaleY) * 0.22;
+    spr.x = this.player.x;
+    spr.y = this.player.y;
+    spr.setFlipX(this.facing < 0);
 
     // S8: 이모트 말풍선이 캐릭터를 따라다님
     this.emoteBubble.x = this.player.x;
@@ -441,6 +517,7 @@ var PlayScene = new Phaser.Class({
     this._hasPeer = !!rs;
     if (rs) {
       this.ghost.setVisible(true); this.ghostTag.setVisible(true);
+      this.ghost.play('cat-run', true); // 친구도 달리기 사이클
       this.ghost.x = rs.x; this.ghost.y = rs.y;
       this.ghost.setFlipX(rs.x < this._ghostPrevX - 0.5); // 진행 방향 따라 flip
       this._ghostPrevX = rs.x;
