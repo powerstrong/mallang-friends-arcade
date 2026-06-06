@@ -27,14 +27,14 @@ var PlayScene = new Phaser.Class({
   },
 
   // S10: 캐릭터 스프라이트(말랑 병아리=나, 민트 고양이=친구). 무빌드라 씬 preload로 로드.
-  // 달리기 사이클은 3x3=9프레임 시트(프레임 256). 정지 포즈용 단일 이미지도 유지.
+  // 달리기=4x4=16프레임 시트(프레임 256), 정지=idle 단일 포즈(256). 모두 발 baseline 정렬됨.
   preload: function () {
-    if (!this.textures.exists('chick')) this.load.image('chick', './assets/chick.png');
-    if (!this.textures.exists('cat')) this.load.image('cat', './assets/cat.png');
     if (!this.textures.exists('chick-run'))
       this.load.spritesheet('chick-run', './assets/chick-run.png', { frameWidth: 256, frameHeight: 256 });
     if (!this.textures.exists('cat-run'))
       this.load.spritesheet('cat-run', './assets/cat-run.png', { frameWidth: 256, frameHeight: 256 });
+    if (!this.textures.exists('chick-idle')) this.load.image('chick-idle', './assets/chick-idle.png');
+    if (!this.textures.exists('cat-idle')) this.load.image('cat-idle', './assets/cat-idle.png');
   },
 
   create: function () {
@@ -96,20 +96,22 @@ var PlayScene = new Phaser.Class({
     this.player.body.setMaxVelocity(this.MOVE, 1500);
     this.physics.add.collider(this.player, this.solids);
     this.facing = 1;
-    // 달리기 애니메이션(게임 전역 anims에 1회 등록)
+    // 달리기 애니메이션 16프레임(게임 전역 anims에 1회 등록)
     if (!this.anims.exists('chick-run'))
-      this.anims.create({ key: 'chick-run', frames: this.anims.generateFrameNumbers('chick-run', { start: 0, end: 8 }), frameRate: 14, repeat: -1 });
+      this.anims.create({ key: 'chick-run', frames: this.anims.generateFrameNumbers('chick-run', { start: 0, end: 15 }), frameRate: 20, repeat: -1 });
     if (!this.anims.exists('cat-run'))
-      this.anims.create({ key: 'cat-run', frames: this.anims.generateFrameNumbers('cat-run', { start: 0, end: 8 }), frameRate: 14, repeat: -1 });
-    this.playerSprite = this.add.sprite(this.spawn.x, this.spawn.y, 'chick-run', 0)
-      .setDepth(7).setDisplaySize(96, 96);
-    // juice: 스쿼시/스트레치 스프링용 기준 스케일. 모든 프레임 동일 크기(256)라 스케일 일정.
-    // 프레임 애니(텍스처 교체)와 스케일 스프링은 속성이 달라 공존(충돌 없음).
+      this.anims.create({ key: 'cat-run', frames: this.anims.generateFrameNumbers('cat-run', { start: 0, end: 15 }), frameRate: 20, repeat: -1 });
+    // origin (0.5,1)=발바닥 기준 → 스프라이트 y를 바디 바닥에 맞추면 발이 지면에. 스쿼시도 발 기준으로 눌림.
+    this._footY = this.player.height / 2; // 바디 절반 높이(player.y + footY = 바디 바닥). 하드코딩 대신 유도(리뷰)
+    this.playerSprite = this.add.sprite(this.spawn.x, this.spawn.y + this._footY, 'chick-idle')
+      .setOrigin(0.5, 1).setDepth(7).setDisplaySize(96, 96);
+    // juice: 스쿼시/스트레치 스프링 기준 스케일. idle/run 모두 프레임 256이라 텍스처 교체해도 스케일 일정.
     this._sBaseX = this.playerSprite.scaleX;
     this._sBaseY = this.playerSprite.scaleY;
     this._wasGrounded = true;
+    this._pose = 'idle';
     this._lastSquash = -9999; // 착지 스쿼시 쿨다운(발판 가장자리 떨림 과트리거 방지)
-    this._JUMP_FRAME = 4; this._FALL_FRAME = 1; this._IDLE_FRAME = 0;
+    this._JUMP_FRAME = 1; this._FALL_FRAME = 9; // 공중 포즈용 달리기 시트 프레임
 
     // ===== 카메라 따라가기 (offset은 _layout에서 화면폭 기준) =====
     this.cameras.main.startFollow(this.player, true, 0.18, 0.16);
@@ -138,8 +140,8 @@ var PlayScene = new Phaser.Class({
 
     // ===== S4: 원격 친구(고스트) — NetClient 중계 또는 솔로(숨김) =====
     // 친구 비주얼은 항상 만들되 기본 숨김. 피어 스냅이 들어오면 표시(솔로면 안 보임).
-    this.ghost = this.add.sprite(this.spawn.x, 660, 'cat-run', 0)
-      .setAlpha(0.85).setDepth(5).setDisplaySize(92, 92).setVisible(false);
+    this.ghost = this.add.sprite(this.spawn.x, 660, 'cat-idle')
+      .setOrigin(0.5, 1).setAlpha(0.85).setDepth(5).setDisplaySize(92, 92).setVisible(false);
     this._ghostPrevX = this.spawn.x;
     this._hasPeer = false;
     this.ghostTag = this.add.text(this.spawn.x, 626, '친구', {
@@ -482,22 +484,22 @@ var PlayScene = new Phaser.Class({
       this._respawn();
     }
 
-    // 애니 상태머신: 공중=점프/낙하 포즈, 접지+이동=달리기 사이클, 접지+정지=idle
+    // 애니 상태머신: 공중=점프/낙하 포즈(달리기 시트 프레임), 접지+이동=달리기, 접지+정지=idle 텍스처
     var spr = this.playerSprite;
     if (!grounded) {
-      spr.anims.stop();
+      if (this._pose !== 'air') { spr.anims.stop(); spr.setTexture('chick-run'); this._pose = 'air'; }
       spr.setFrame(b.velocity.y < 0 ? this._JUMP_FRAME : this._FALL_FRAME);
     } else if (dir !== 0) {
+      if (this._pose !== 'run') this._pose = 'run';
       spr.play('chick-run', true); // ignoreIfPlaying — 달리는 동안 사이클 유지
     } else {
-      spr.anims.stop();
-      spr.setFrame(this._IDLE_FRAME);
+      if (this._pose !== 'idle') { spr.anims.stop(); spr.setTexture('chick-idle'); this._pose = 'idle'; }
     }
-    // 스쿼시/스트레치 스프링 복원(프레임 애니와 별개 속성) + 위치/방향 동기화
+    // 스쿼시/스트레치 스프링 복원(프레임 애니와 별개 속성) + 위치(발바닥 origin)/방향 동기화
     spr.scaleX += (this._sBaseX - spr.scaleX) * 0.22;
     spr.scaleY += (this._sBaseY - spr.scaleY) * 0.22;
     spr.x = this.player.x;
-    spr.y = this.player.y;
+    spr.y = this.player.y + this._footY;
     spr.setFlipX(this.facing < 0);
 
     // S8: 이모트 말풍선이 캐릭터를 따라다님
@@ -518,10 +520,10 @@ var PlayScene = new Phaser.Class({
     if (rs) {
       this.ghost.setVisible(true); this.ghostTag.setVisible(true);
       this.ghost.play('cat-run', true); // 친구도 달리기 사이클
-      this.ghost.x = rs.x; this.ghost.y = rs.y;
+      this.ghost.x = rs.x; this.ghost.y = rs.y + this._footY; // 발바닥 origin
       this.ghost.setFlipX(rs.x < this._ghostPrevX - 0.5); // 진행 방향 따라 flip
       this._ghostPrevX = rs.x;
-      this.ghostTag.x = rs.x; this.ghostTag.y = rs.y - 34;
+      this.ghostTag.x = rs.x; this.ghostTag.y = this.ghost.y - 84;
     } else if (this.ghost.visible) {
       this.ghost.setVisible(false); this.ghostTag.setVisible(false);
     }
