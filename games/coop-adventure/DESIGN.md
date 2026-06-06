@@ -127,8 +127,9 @@ GameBoot 연동: `window.GameBoot.submitResult({ score })`, `.exit()` (기존 �
 > **재개 지점:** 아래 "현재 단계"부터. 각 단계 완료 시 체크 + 날짜 기록.
 
 ### 현재 단계
-**S4 — PlayScene NetClient 배선** (다음 착수, 코드 솔로 가능). S1·S2·S3·**S5·S7·S8 완료**(브라우저 계측 검증 + codex 리뷰 반영). 보간 레이어(net.js)/transport/netclient는 S4-ready.
-> 검증 방식: 프리뷰 페이지가 hidden 탭이라 rAF가 멈춤 → `g.loop.step(t)`로 결정적 프레임 펌프 + 계측 eval로 검증(스크린샷은 hidden-rAF로 타임아웃). S1~S8 모두 이 방식으로 통과.
+**솔로 완주 가능 범위 완료** — S1·S2·S3·S4(배선)·S5·S7·S8·S10 모두 브라우저 계측 검증 + codex 리뷰 반영.
+다음은 **사용자 단계가 필요한 작업**: ① S4 실멀티 통합테스트(RelayTransport+worker+2클라), ② S6 부활/합류(실 피어 상호작용 필요), ③ S5 2인 이벤트 권위(DO), ④ S9 D1 진도 동기화(worker).
+> 검증 방식: 프리뷰 페이지가 hidden 탭이라 rAF가 멈춤 → `g.loop.step(t)`로 결정적 프레임 펌프 + 계측 eval로 검증(스크린샷은 hidden-rAF로 타임아웃). S1~S10 모두 이 방식으로 통과. 멀티는 페이크 동기 transport 주입으로 PlayScene 배선까지 검증.
 
 ### ⚠️ S4 검증 경계 (혼자 못 끝내는 지점)
 S4 실제 멀티는 (a) worker(wrangler dev) 구동 + (b) **클라 2개(2기기/2탭)**가 있어야 end-to-end 검증 가능.
@@ -143,11 +144,21 @@ net.js에 이미 반영됨: RemoteClock(EWMA), push seq/단조검사, delay 180/
 3. 연결 규칙: `relay.ready` 후 송신 / `from===playerId` 무시 / presence 이탈 시 buffer 제거 / reconnect 시 `remote.reset()` 후 첫 2스냅까지 hold.
 4. DO는 권위 아님 → 비정상 좌표는 clamp만, 승패 판정엔 미사용.
 
-### 다음 작업 (즉시 할 것)
-1. (혼자 검증 OK) **S7 월드맵 + localStorage 진도** — 스테이지 선택·별 평가·해금
-2. (혼자 검증 OK) **S8 이모트 + 폴리시 + DDA**
-3. S4 마무리(부분 solo): PlayScene에 NetClient 배선(DummyPeer 교체, `controlMode`처럼 멀티/솔로 분기). 단, **실 동작은 RelayTransport+worker+2클라 통합테스트(사용자)** 필요.
-4. (정리) `games/_template-phaser/` 추출
+### 다음 작업
+**솔로 검증 가능 범위(S1~S8·S10·S4배선)는 모두 완료.** 남은 건 실멀티 환경이 필요:
+1. **(사용자 단계) S4 실멀티 통합테스트** — `worker`(wrangler dev) + 2클라(2탭/2기기). registry에 `RelayTransport` 주입. wrangler reload 이슈([[platform_wrangler_dev_reload_loop]]) 우회 확인 필요.
+2. **(사용자 단계) S6 부활/합류** — 실 피어 근접 부활·공동 운명. NetClient 피어 sample 위에 구현하되 검증은 2클라 필요.
+3. **(사용자 단계) S5 2인 이벤트 권위 / S9 D1 진도 동기화** — DO 공유상태·idempotency, worker 필요.
+4. (정리, 솔로 가능) `games/_template-phaser/` 표준 템플릿 추출.
+
+### S4 배선 메모 (codex 3차 리뷰 반영 — 2026-06-06)
+- **주입 계약:** PlayScene은 registry `coopTransportFactory`(전송계층 **팩토리 함수**)를 읽는다. 없으면 솔로. 있으면 매 create마다 `_transport=factory()` 새로 만들고 NetClient 생성, shutdown에서 `_transport.leave()`. → transport 소유권=PlayScene, 재진입 시 죽은 transport 재사용 안 함(HIGH 수정).
+- **반영:** (HIGH)팩토리 소유권, (MED1)`net.ready` 후에만 sendPos(relay는 WS open 전 send=false라 초기 위치 드롭 방지).
+- **실멀티 통합 단계 TODO(실 RelayTransport+worker+2클라에서만 발현·검증):**
+  - (MED2) scene pause/transition 중 WS 수신 콜백이 멈춘 `scene.time.now`로 `RemoteClock.observe`를 오염시킬 수 있음 → 비활성 시 수신 무시 또는 monotonic clock.
+  - (MED3) 같은 id 무중단 재합류 / sender seq 0 리셋 시 `RemotePlayer.lastSeq`로 새 스냅 장기 drop → reconnect 시 `remote.reset()` 계약 구현.
+  - (MED4) `firstPeerId()`는 2인 전용. 3인+면 친구 슬롯/파티 페어/전체 렌더 중 택1 명시.
+  - (LOW) 수신 좌표 finite-huge clamp(월드 밖 ghost 방지), grounded/facing을 sample 결과에 반영(원격 애니메이션), 이탈 후 지연 메시지의 ghost 일시 재생성.
 
 ### S4 메모 (codex 2차 리뷰 반영 완료)
 - transport.js(Loopback+Relay) + netclient.js 작성·하드닝 완료. 루프백 결정적 검증 통과.
@@ -169,7 +180,7 @@ net.js에 이미 반영됨: RemoteClock(EWMA), push seq/단조검사, delay 180/
 - [x] **S1. 단일 캐릭터 손맛** — 가상패드, 코요테, 점프버퍼, 가변점프, 카메라 바이어스 ✅ 2026-06-06 (계측+시각 검증 완료)
 - [x] **S2. 단일 로컬 스테이지** — 골인 깃발, 체크포인트, 별 수집, 죽음/재시작 ✅ 2026-06-06 (4기믹 계측+클리어 화면 검증)
 - [x] **S3. 더미 2P 고스트** — 보간 렌더 레이어(net.js) + 진행도 인디케이터 ✅ 2026-06-06 (10Hz 피드→60fps 보간 매끄러움 계측, codex 리뷰 반영 후 재검증)
-- [~] **S4. DO 상대 위치 중계** — 진행중. ✅ transport 추상화(Loopback+Relay)+NetClient+루프백 결정적 검증(clock도메인/seq/보간). ⬜ PlayScene에 NetClient 배선(DummyPeer 교체) ⬜ RelayTransport worker+2클라 통합테스트(사용자 단계)
+- [~] **S4. DO 상대 위치 중계** — ✅ transport 추상화(Loopback+Relay)+NetClient+루프백 검증. ✅ **PlayScene 배선 완료**(DummyPeer 제거 → registry 'coopTransport' 주입 시 멀티/없으면 솔로, ghost·진행바 가시성 토글, shutdown leave). 솔로+페이크 동기 transport 멀티 계측 검증. ⬜ 남음: RelayTransport+worker+2클라 **실멀티 통합테스트(사용자 단계)**
 - [x] **S5. 공유 상태(솔로 버전)** — 비대칭 스위치→문(게이트, 4초 유지) + 게이트 뒤 보상 별 ✅ 2026-06-06 (계측 검증 + codex 리뷰: 끼임방지 pending-close/bounds판정/카운트다운 표시 반영). 2인 이벤트 권위는 S4 배선 후 확장
 - [ ] **S6. 부활/합류 체크포인트** — 너그러운 근접 판정, 공동 운명 (S4 배선 후: 피어 대상)
 - [x] **S7. 월드맵 + 진도 저장(localStorage)** — 별 1~3 평가, 스테이지 해금 ✅ 2026-06-06 (MapScene + ProgressStore + stages.js, 부트가 맵→플레이 연결, 클리어 시 recordClear)
@@ -188,6 +199,8 @@ net.js에 이미 반영됨: RemoteClock(EWMA), push seq/단조검사, delay 180/
 - 2026-06-06: **S7 완료(문서 후행 동기화)** — MapScene(월드맵/스테이지 선택, 반응형 _layout) + ProgressStore(기기고정 익명 ID + 개인단위 진도 localStorage) + stages.js(1-1·1-2·1-3). 부트가 [MapScene, PlayScene]로 맵 우선, 클리어 시 별평가→recordClear→해금. (코드가 이전 세션에서 먼저 들어갔고 이번에 추적기 반영)
 - 2026-06-06: **S5 완료** — 비대칭 스위치→문(게이트). 솔로: 밟으면 4초 유지, 게이트 뒤 보상 별. codex 리뷰 반영: (HIGH)게이트 닫힘 시 플레이어 겹침이면 'closing' 상태로 바디 재활성 보류→끼임/튕김 방지, (MED)스위치 판정을 switchPlate.getBounds() 기반 overlap으로, (LOW)카운트다운은 밟는 중 🔓·내려온 뒤 초표시. 결정적 계측 검증(open/closing/closed 전이).
 - 2026-06-06: **S8 완료** — 이모트 버튼 3종(🙋빨리와/🙇미안/👍굿) 머리 위 말풍선(추후 파트너 전송), 별 획득 "+1" 팝+HUD 펀치, DDA(같은 스테이지 3사망→coyote+80·buffer+100 1회 발동 + 리스폰 무적 깜빡임 INVULN_MS). 계측 검증(이모트/별+1/DDA 발동/무적 set).
+- 2026-06-06: **S10 캐릭터 스프라이트** — codex imagegen 위탁으로 말랑병아리(나)·민트고양이(친구) 측면 달리기 스프라이트 생성(크로마키 제거+128px). 물리 사각형(30x40)은 비가시로 유지하고 스프라이트 오버레이로 적용 → 손맛/충돌 회귀 0. 이동방향 flipX. 계측 검증.
+- 2026-06-06: **S4 PlayScene 배선 완료** — DummyPeer 제거, registry 'coopTransport' 주입 시 NetClient로 멀티(내 위치 sendPos throttle + 원격 firstPeer sample 보간), 없으면 솔로(친구·진행바 숨김). now=scene 시간축 통일. shutdown에서 transport.leave(). 솔로+페이크 동기 transport 멀티 계측 검증(피어 등록·고스트 추적·진행바). 실 RelayTransport+worker+2클라 통합은 사용자 단계.
 
 ---
 

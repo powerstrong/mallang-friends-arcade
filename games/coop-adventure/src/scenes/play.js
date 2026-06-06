@@ -119,27 +119,31 @@ var PlayScene = new Phaser.Class({
       fontFamily: 'sans-serif', fontSize: '13px', color: '#5a4a2a', fontStyle: 'bold'
     }).setOrigin(0.5).setDepth(3);
 
-    // ===== S3: 더미 2P 고스트 (보간 렌더 레이어) =====
-    this.remote = new RemotePlayer({ x: this.spawn.x, y: 660 });
-    this.remoteClock = new RemoteClock();
-    this._rxSeq = 0;
-    this.dummy = new DummyPeer({ startX: 120, groundY: 660, speed: 170, stopX: this.goalX, t0: this.time.now });
+    // ===== S4: 원격 친구(고스트) — NetClient 중계 또는 솔로(숨김) =====
+    // 친구 비주얼은 항상 만들되 기본 숨김. 피어 스냅이 들어오면 표시(솔로면 안 보임).
     this.ghost = this.add.image(this.spawn.x, 660, 'cat')
-      .setAlpha(0.85).setDepth(5).setDisplaySize(56, 56);
+      .setAlpha(0.85).setDepth(5).setDisplaySize(56, 56).setVisible(false);
     this._ghostPrevX = this.spawn.x;
+    this._hasPeer = false;
     this.ghostTag = this.add.text(this.spawn.x, 626, '친구', {
       fontFamily: 'sans-serif', fontSize: '13px', color: '#fff', fontStyle: 'bold',
       backgroundColor: 'rgba(70,120,200,0.85)', padding: { x: 4, y: 1 }
-    }).setOrigin(0.5, 1).setDepth(6);
-    this.time.addEvent({ delay: 100, loop: true, callback: function () {
-      var serverTs = self.time.now;
-      self.remoteClock.observe(serverTs, self.time.now);
-      var tp = self.dummy.truePos(serverTs);
-      self.remote.push({
-        seq: self._rxSeq++, t: self.remoteClock.toLocal(serverTs),
-        x: tp.x, y: tp.y, vx: tp.vx, vy: tp.vy
-      });
-    } });
+    }).setOrigin(0.5, 1).setDepth(6).setVisible(false);
+
+    // 전송계층 팩토리(coopTransportFactory)가 주입돼 있으면 멀티, 없으면 솔로.
+    // HIGH 리뷰 반영: 인스턴스가 아니라 "팩토리"를 받아 매 PlayScene마다 새 transport를 생성한다.
+    //   → 소유권이 PlayScene에 명확. 맵 갔다 재진입해도 닫힌 transport를 재사용하지 않는다.
+    // now는 scene 시간축으로 통일 → sample(id, this.time.now)와 일관(보간/clock 도메인).
+    // DummyPeer/RemotePlayer 직접 운용은 NetClient 내부로 이동(피어별 RemoteClock+RemotePlayer).
+    this.net = null; this._transport = null; this._netReady = false;
+    var makeTransport = this.registry.get('coopTransportFactory');
+    if (typeof makeTransport === 'function' && window.NetClient) {
+      this._transport = makeTransport();
+      if (this._transport) {
+        this.net = new NetClient(this._transport, { now: function () { return self.time.now; } });
+        this.net.ready.then(function () { self._netReady = true; }); // MED 리뷰: ready 후에만 송신
+      }
+    }
 
     // ===== 손맛 타이머 상태 =====
     this._lastGrounded = -9999;
@@ -200,6 +204,8 @@ var PlayScene = new Phaser.Class({
       self._emoteBtns.forEach(function (b) { b.el.removeEventListener('pointerdown', b.handler); });
       self._emoteBtns.length = 0;
       if (self._emoteBar) self._emoteBar.classList.remove('is-active');
+      // S4: 전송계층 이탈(이 PlayScene이 만든 transport만 정리 — 팩토리 소유권)
+      if (self._transport && self._transport.leave) self._transport.leave();
     });
 
     // 클리어 후 탭 → 지도(스테이지 선택)로
@@ -422,16 +428,32 @@ var PlayScene = new Phaser.Class({
     this.emoteBubble.x = this.player.x;
     this.emoteBubble.y = this.player.y - 30;
 
-    // 원격 고스트 보간 렌더 + 진행도 인디케이터
-    var rs = this.remote.sample(time);
-    this.ghost.x = rs.x; this.ghost.y = rs.y;
-    this.ghost.setFlipX(rs.x < this._ghostPrevX - 0.5); // 진행 방향 따라 flip
-    this._ghostPrevX = rs.x;
-    this.ghostTag.x = rs.x; this.ghostTag.y = rs.y - 34;
-    var meP = Phaser.Math.Clamp(px / this.goalX, 0, 1);
-    var frP = Phaser.Math.Clamp(this.ghost.x / this.goalX, 0, 1);
-    this.pbMe.x = this.pbX0 + this.pbW * meP;
-    this.pbFriend.x = this.pbX0 + this.pbW * frP;
+    // S4: 멀티면 내 위치 송신 + 원격 친구 보간 렌더. 솔로면 친구 숨김.
+    var rs = null;
+    if (this.net) {
+      if (this._netReady) { // ready(WS open) 전 송신은 relay에서 드롭되므로 게이트
+        this.net.sendPos({ x: px, y: py, vx: b.velocity.x, vy: b.velocity.y,
+          grounded: grounded, facing: this.facing, name: '나' });
+      }
+      var pid = this.net.firstPeerId();
+      rs = pid ? this.net.sample(pid, time) : null;
+    }
+    this._hasPeer = !!rs;
+    if (rs) {
+      this.ghost.setVisible(true); this.ghostTag.setVisible(true);
+      this.ghost.x = rs.x; this.ghost.y = rs.y;
+      this.ghost.setFlipX(rs.x < this._ghostPrevX - 0.5); // 진행 방향 따라 flip
+      this._ghostPrevX = rs.x;
+      this.ghostTag.x = rs.x; this.ghostTag.y = rs.y - 34;
+    } else if (this.ghost.visible) {
+      this.ghost.setVisible(false); this.ghostTag.setVisible(false);
+    }
+    // 진행도 인디케이터: 나는 항상, 친구는 피어 있을 때만
+    this.pbMe.x = this.pbX0 + this.pbW * Phaser.Math.Clamp(px / this.goalX, 0, 1);
+    this.pbFriend.setVisible(this._hasPeer);
+    if (this._hasPeer) {
+      this.pbFriend.x = this.pbX0 + this.pbW * Phaser.Math.Clamp(this.ghost.x / this.goalX, 0, 1);
+    }
 
     this.hud.setText(
       'vx ' + b.velocity.x.toFixed(0) + ' vy ' + b.velocity.y.toFixed(0) +
