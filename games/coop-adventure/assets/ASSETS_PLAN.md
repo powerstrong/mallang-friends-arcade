@@ -46,7 +46,8 @@ img=~/.codex/generated_images/$sid/$(ls ~/.codex/generated_images/$sid | head -1
 - **chick-idle.png/cat-idle.png 는 폐기**(이제 시트 frame0=idle 사용).
 - **play.js 배선 변경**:
   - preload: `chick-run`/`cat-run` spritesheet(frameW/H 256) 만 로드. `chick-idle`/`cat-idle` 로드 제거.
-  - anims: 달리기는 `generateFrameNumbers(key,{start:1,end:15})` (frame0=idle 제외). frameRate 20.
+  - anims: **디퓨전 시트는 시간순이 아니라** 1→15 재생 시 다리가 뚝뚝 튄다 → `_gen/_order.py <sheet> 4`로 **유사도 정렬 순서**를 산출해 `generateFrameNumbers(key,{frames:[정렬리스트]})` + `yoyo:true`로 등록(인접 프레임 최소 변화). frameRate ~18. frame0=idle 제외.
+    - 이미 산출됨 — chick:[12,15,14,7,13,11,8,5,1,4,3,2,9,10,6], cat:[4,14,2,10,12,8,3,6,1,15,7,5,13,9,11]. puppy/rabbit/hamster는 배선 시 `_order.py`로 산출해 동일 적용.
   - 상태머신: idle = `setFrame(0)` (텍스처 교체 X), run = `play(key,true)`, air = `setFrame(JUMP/FALL)`(run 프레임 중 택1, 예: 5/12). → 텍스처 단일이라 scale base 일정, origin(0.5,1) 유지.
   - 캐릭터 선택 확장 시: player=선택 캐릭터 `-run` 시트, ghost=상대 캐릭터 시트. registry로 캐릭터 id 전달.
 

@@ -95,11 +95,14 @@ var PlayScene = new Phaser.Class({
     this.physics.add.collider(this.player, this.solids);
     this.facing = 1;
     // 달리기 애니메이션 16프레임(게임 전역 anims에 1회 등록)
-    // frame0 = idle(서있기), frame1~15 = 달리기 사이클 (한 시트라 몸 비율 일치)
+    // frame0 = idle. 달리기 1~15는 디퓨전이라 시간순이 아님 → 유사도 정렬 순서로 재배열(인접 프레임 비슷)
+    // + yoyo로 양끝 끊김 없이. (순서는 _gen/_order.py로 산출, 캐릭터별 상이)
     if (!this.anims.exists('chick-run'))
-      this.anims.create({ key: 'chick-run', frames: this.anims.generateFrameNumbers('chick-run', { start: 1, end: 15 }), frameRate: 20, repeat: -1 });
+      this.anims.create({ key: 'chick-run', frameRate: 18, yoyo: true, repeat: -1,
+        frames: this.anims.generateFrameNumbers('chick-run', { frames: [12, 15, 14, 7, 13, 11, 8, 5, 1, 4, 3, 2, 9, 10, 6] }) });
     if (!this.anims.exists('cat-run'))
-      this.anims.create({ key: 'cat-run', frames: this.anims.generateFrameNumbers('cat-run', { start: 1, end: 15 }), frameRate: 20, repeat: -1 });
+      this.anims.create({ key: 'cat-run', frameRate: 18, yoyo: true, repeat: -1,
+        frames: this.anims.generateFrameNumbers('cat-run', { frames: [4, 14, 2, 10, 12, 8, 3, 6, 1, 15, 7, 5, 13, 9, 11] }) });
     // origin (0.5,1)=발바닥 기준 → 스프라이트 y를 바디 바닥에 맞추면 발이 지면에. 스쿼시도 발 기준으로 눌림.
     this._footY = this.player.height / 2; // 바디 절반 높이(player.y + footY = 바디 바닥). 하드코딩 대신 유도(리뷰)
     this.playerSprite = this.add.sprite(this.spawn.x, this.spawn.y + this._footY, 'chick-run', 0)
