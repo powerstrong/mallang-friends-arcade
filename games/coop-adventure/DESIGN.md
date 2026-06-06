@@ -214,6 +214,11 @@ net.js에 이미 반영됨: RemoteClock(EWMA), push seq/단조검사, delay 180/
   - **정렬 파이프라인**: 슬라이서가 크로마 제거→프레임 트림→중앙값 높이 단일 스케일(크기 pulsing 방지)→발 baseline+가로중심 정렬. 게임은 origin(0.5,1)로 발을 바디 바닥(player.y+20)에 고정(스쿼시도 발 기준).
   - idle/run/air 텍스처 모두 프레임 256 → setTexture해도 scale base 일정(juice 스프링 유지). 미사용 chick.png/cat.png 제거.
   - 계측 검증: 16프레임·idle 텍스처 발 y=700(바디바닥)·달리기 진행·공중 스트레치 공존. 콘솔 에러 0.
+- 2026-06-06: **에셋 일괄 생성(19종) + 비율버그 근본수정** — 자세한 처리/반영은 `assets/ASSETS_PLAN.md`.
+  - codex 병렬 생성: 캐릭터 5(병아리·강아지·고양이·토끼·햄스터, 각 **idle+달리기 단일 시트**), 배경 3, 발판타일 3, 이펙트 4, UI/배너 4.
+  - **#1 비율 어색함 수정**: idle/run 따로 생성→몸 비율 달랐던 것. **한 시트(frame0=idle, 1~15=run)에서 생성**해 같은 디퓨전 패스로 비율 일치. 측정으로 원인 확인 후 적용.
+  - 측면 보장: 1차 정면 생성됨 → 측면 강조 재생성. cat·puppy·rabbit 프로필, 둥근 chick·hamster는 2차 재생성으로 측면 확보.
+  - play.js를 단일시트 방식으로 전환(idle=setFrame0, run anims 1~15, 공중 f6/f12, 텍스처 교체 제거). chick(나)·cat(친구) 배선·검증 완료. 나머지(캐릭터선택·배경·타일·이펙트·UI)는 ASSETS_PLAN대로 다음 세션 반영.
 
 ---
 

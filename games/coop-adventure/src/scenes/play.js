@@ -33,8 +33,6 @@ var PlayScene = new Phaser.Class({
       this.load.spritesheet('chick-run', './assets/chick-run.png', { frameWidth: 256, frameHeight: 256 });
     if (!this.textures.exists('cat-run'))
       this.load.spritesheet('cat-run', './assets/cat-run.png', { frameWidth: 256, frameHeight: 256 });
-    if (!this.textures.exists('chick-idle')) this.load.image('chick-idle', './assets/chick-idle.png');
-    if (!this.textures.exists('cat-idle')) this.load.image('cat-idle', './assets/cat-idle.png');
   },
 
   create: function () {
@@ -97,21 +95,22 @@ var PlayScene = new Phaser.Class({
     this.physics.add.collider(this.player, this.solids);
     this.facing = 1;
     // 달리기 애니메이션 16프레임(게임 전역 anims에 1회 등록)
+    // frame0 = idle(서있기), frame1~15 = 달리기 사이클 (한 시트라 몸 비율 일치)
     if (!this.anims.exists('chick-run'))
-      this.anims.create({ key: 'chick-run', frames: this.anims.generateFrameNumbers('chick-run', { start: 0, end: 15 }), frameRate: 20, repeat: -1 });
+      this.anims.create({ key: 'chick-run', frames: this.anims.generateFrameNumbers('chick-run', { start: 1, end: 15 }), frameRate: 20, repeat: -1 });
     if (!this.anims.exists('cat-run'))
-      this.anims.create({ key: 'cat-run', frames: this.anims.generateFrameNumbers('cat-run', { start: 0, end: 15 }), frameRate: 20, repeat: -1 });
+      this.anims.create({ key: 'cat-run', frames: this.anims.generateFrameNumbers('cat-run', { start: 1, end: 15 }), frameRate: 20, repeat: -1 });
     // origin (0.5,1)=발바닥 기준 → 스프라이트 y를 바디 바닥에 맞추면 발이 지면에. 스쿼시도 발 기준으로 눌림.
     this._footY = this.player.height / 2; // 바디 절반 높이(player.y + footY = 바디 바닥). 하드코딩 대신 유도(리뷰)
-    this.playerSprite = this.add.sprite(this.spawn.x, this.spawn.y + this._footY, 'chick-idle')
+    this.playerSprite = this.add.sprite(this.spawn.x, this.spawn.y + this._footY, 'chick-run', 0)
       .setOrigin(0.5, 1).setDepth(7).setDisplaySize(96, 96);
-    // juice: 스쿼시/스트레치 스프링 기준 스케일. idle/run 모두 프레임 256이라 텍스처 교체해도 스케일 일정.
+    // juice: 스쿼시/스트레치 스프링 기준 스케일. 단일 시트(frame0=idle, 1~15=run)라 스케일 일정.
     this._sBaseX = this.playerSprite.scaleX;
     this._sBaseY = this.playerSprite.scaleY;
     this._wasGrounded = true;
     this._pose = 'idle';
     this._lastSquash = -9999; // 착지 스쿼시 쿨다운(발판 가장자리 떨림 과트리거 방지)
-    this._JUMP_FRAME = 1; this._FALL_FRAME = 9; // 공중 포즈용 달리기 시트 프레임
+    this._IDLE_FRAME = 0; this._JUMP_FRAME = 6; this._FALL_FRAME = 12; // 정지/공중 포즈용 시트 프레임
 
     // ===== 카메라 따라가기 (offset은 _layout에서 화면폭 기준) =====
     this.cameras.main.startFollow(this.player, true, 0.18, 0.16);
@@ -140,7 +139,7 @@ var PlayScene = new Phaser.Class({
 
     // ===== S4: 원격 친구(고스트) — NetClient 중계 또는 솔로(숨김) =====
     // 친구 비주얼은 항상 만들되 기본 숨김. 피어 스냅이 들어오면 표시(솔로면 안 보임).
-    this.ghost = this.add.sprite(this.spawn.x, 660, 'cat-idle')
+    this.ghost = this.add.sprite(this.spawn.x, 660, 'cat-run', 0)
       .setOrigin(0.5, 1).setAlpha(0.85).setDepth(5).setDisplaySize(92, 92).setVisible(false);
     this._ghostPrevX = this.spawn.x;
     this._hasPeer = false;
@@ -484,16 +483,16 @@ var PlayScene = new Phaser.Class({
       this._respawn();
     }
 
-    // 애니 상태머신: 공중=점프/낙하 포즈(달리기 시트 프레임), 접지+이동=달리기, 접지+정지=idle 텍스처
+    // 애니 상태머신(단일 시트 프레임만 사용): 공중=점프(f6)/낙하(f12), 접지+이동=달리기(1~15), 접지+정지=idle(f0)
     var spr = this.playerSprite;
     if (!grounded) {
-      if (this._pose !== 'air') { spr.anims.stop(); spr.setTexture('chick-run'); this._pose = 'air'; }
+      if (this._pose !== 'air') { spr.anims.stop(); this._pose = 'air'; }
       spr.setFrame(b.velocity.y < 0 ? this._JUMP_FRAME : this._FALL_FRAME);
     } else if (dir !== 0) {
-      if (this._pose !== 'run') this._pose = 'run';
+      this._pose = 'run';
       spr.play('chick-run', true); // ignoreIfPlaying — 달리는 동안 사이클 유지
     } else {
-      if (this._pose !== 'idle') { spr.anims.stop(); spr.setTexture('chick-idle'); this._pose = 'idle'; }
+      if (this._pose !== 'idle') { spr.anims.stop(); spr.setFrame(this._IDLE_FRAME); this._pose = 'idle'; }
     }
     // 스쿼시/스트레치 스프링 복원(프레임 애니와 별개 속성) + 위치(발바닥 origin)/방향 동기화
     spr.scaleX += (this._sBaseX - spr.scaleX) * 0.22;
