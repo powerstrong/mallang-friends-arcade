@@ -110,7 +110,7 @@ var PlayScene = new Phaser.Class({
     this._wasGrounded = true;
     this._pose = 'idle';
     this._lastSquash = -9999; // 착지 스쿼시 쿨다운(발판 가장자리 떨림 과트리거 방지)
-    this._IDLE_FRAME = 0; this._JUMP_FRAME = 6; this._FALL_FRAME = 12; // 정지/공중 포즈용 시트 프레임
+    this._IDLE_FRAME = 0; this._AIR_FRAME = 3; // 정지=f0, 공중=단일 프레임(정점 snap 방지). 점프/하강감은 스쿼시/스트레치가 담당
 
     // ===== 카메라 따라가기 (offset은 _layout에서 화면폭 기준) =====
     this.cameras.main.startFollow(this.player, true, 0.18, 0.16);
@@ -486,8 +486,8 @@ var PlayScene = new Phaser.Class({
     // 애니 상태머신(단일 시트 프레임만 사용): 공중=점프(f6)/낙하(f12), 접지+이동=달리기(1~15), 접지+정지=idle(f0)
     var spr = this.playerSprite;
     if (!grounded) {
-      if (this._pose !== 'air') { spr.anims.stop(); this._pose = 'air'; }
-      spr.setFrame(b.velocity.y < 0 ? this._JUMP_FRAME : this._FALL_FRAME);
+      // 공중 내내 단일 프레임 → 정점(상승↔하강)에서 프레임이 안 바뀌어 끊김 없음
+      if (this._pose !== 'air') { spr.anims.stop(); spr.setFrame(this._AIR_FRAME); this._pose = 'air'; }
     } else if (dir !== 0) {
       this._pose = 'run';
       spr.play('chick-run', true); // ignoreIfPlaying — 달리는 동안 사이클 유지
