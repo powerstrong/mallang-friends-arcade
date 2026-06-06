@@ -10,6 +10,7 @@
 """
 import sys, os, subprocess, tempfile
 from PIL import Image
+import numpy as np
 
 SCRIPT = os.path.expanduser('~/.codex/skills/.system/imagegen/scripts/remove_chroma_key.py')
 
@@ -20,9 +21,14 @@ def dechroma(inp, key):
                    check=True, capture_output=True)
     return Image.open(tmp).convert('RGBA')
 
-def trim(cell):
-    bb = cell.getchannel('A').getbbox()
-    return cell.crop(bb) if bb else cell
+def trim(cell, minpx=4):
+    # robust bbox: 행/열별 불투명 픽셀이 minpx 미만이면 잔여 점(speck)으로 보고 무시
+    a = np.array(cell.getchannel('A')) > 40
+    rows = a.sum(axis=1); cols = a.sum(axis=0)
+    ys = np.where(rows >= minpx)[0]; xs = np.where(cols >= minpx)[0]
+    if len(ys) == 0 or len(xs) == 0:
+        bb = cell.getchannel('A').getbbox(); return cell.crop(bb) if bb else cell
+    return cell.crop((int(xs[0]), int(ys[0]), int(xs[-1]) + 1, int(ys[-1]) + 1))
 
 def scale_by(img, s):
     w, h = img.size
@@ -31,8 +37,11 @@ def scale_by(img, s):
 def place_bottom(content, frame, bottom_margin=6):
     canvas = Image.new('RGBA', (frame, frame), (0, 0, 0, 0))
     cw, ch = content.size
-    if cw > frame:
-        content = scale_by(content, frame / cw); cw, ch = content.size
+    # 폭/높이 어느 쪽이든 프레임을 넘으면 비율 유지 축소(넘쳐서 위로 클램프되는 버그 방지)
+    maxw = frame; maxh = frame - bottom_margin
+    sc = min(1.0, maxw / cw, maxh / ch)
+    if sc < 1.0:
+        content = scale_by(content, sc); cw, ch = content.size
     x = (frame - cw) // 2
     y = frame - bottom_margin - ch
     canvas.alpha_composite(content, (x, max(0, y)))

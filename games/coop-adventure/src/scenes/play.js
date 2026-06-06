@@ -500,6 +500,13 @@ var PlayScene = new Phaser.Class({
     spr.x = this.player.x;
     spr.y = this.player.y + this._footY;
     spr.setFlipX(this.facing < 0);
+    // 공중 상승/하강 구분: 속도 기반 기울기(연속 → 정점에서 끊김 없음). 상승=뒤로 젖힘, 하강=앞으로 다이브.
+    var targetRot = 0;
+    if (!grounded) {
+      var lean = Phaser.Math.Clamp(b.velocity.y * 0.0007, -0.16, 0.30);
+      targetRot = (this.facing < 0) ? -lean : lean; // 좌향이면 시각적으로 같은 방향 되도록 부호 반전
+    }
+    spr.rotation += (targetRot - spr.rotation) * 0.25; // 부드럽게 들어가고 착지 시 0으로 복귀
 
     // S8: 이모트 말풍선이 캐릭터를 따라다님
     this.emoteBubble.x = this.player.x;
