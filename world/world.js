@@ -40,9 +40,9 @@
   }
 
   // ── Character sprite sheets ───────────────────────────────────────────────
-  // 3x3 grid. row: 0=down 1=side(left) 2=up. col: 0=idle 1=stepA 2=stepB.
-  // The side row art faces LEFT, so the `right` direction reuses the side row
-  // mirrored horizontally.
+  // 3x3 grid. row: 0=down 1=side(right) 2=up. col: 0=idle 1=stepA 2=stepB.
+  // The `left` direction reuses the side row, mirrored horizontally.
+  // 예외: 라떼 강아지 시트는 side row가 왼쪽을 향해 미러링 방향이 반대다.
   // Source frame size is derived from the loaded sheet dimensions so large
   // AI-generated sprite atlases do not get cropped to an old fixed size.
   const SPRITE_FRAME = window.CHARACTER_FRAME || { width: 32, height: 32, cols: 3, rows: 3 };
@@ -1781,7 +1781,11 @@
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = 'high';
       ctx.save();
-      if (dir === 'right') ctx.scale(-1, 1);
+      // 대부분 시트의 side row 아트는 오른쪽을 향해 left일 때 미러링한다.
+      // 라떼 강아지 시트만 side row가 왼쪽을 향해 반대로 미러링해야 한다.
+      const sideFacesLeft = p.characterId === 'latte_puppy';
+      const mirror = sideFacesLeft ? (dir === 'right') : (dir === 'left');
+      if (mirror) ctx.scale(-1, 1);
       ctx.drawImage(sprite.img, col * fw, row * fh, fw, fh, destX, destY, drawW, drawH);
       ctx.restore();
     } else {
