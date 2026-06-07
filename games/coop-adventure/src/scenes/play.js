@@ -26,13 +26,10 @@ var PlayScene = new Phaser.Class({
     this.stageName = data.stageName || '스테이지';
   },
 
-  // S10: 캐릭터 스프라이트(말랑 병아리=나, 민트 고양이=친구). 무빌드라 씬 preload로 로드.
-  // 달리기=4x4=16프레임 시트(프레임 256), 정지=idle 단일 포즈(256). 모두 발 baseline 정렬됨.
+  // 캐릭터 스프라이트(선택 캐릭터=나, 친구=고스트). 무빌드라 씬 preload로 로드.
+  // 달리기=4x4=16프레임 시트(프레임 256, frame0=idle). 5종 전체를 공통 모듈에서 로드/등록.
   preload: function () {
-    if (!this.textures.exists('chick-run'))
-      this.load.spritesheet('chick-run', './assets/chick-run.png', { frameWidth: 256, frameHeight: 256 });
-    if (!this.textures.exists('cat-run'))
-      this.load.spritesheet('cat-run', './assets/cat-run.png', { frameWidth: 256, frameHeight: 256 });
+    if (window.CoopCharAssets) CoopCharAssets.preload(this);
   },
 
   create: function () {
@@ -94,18 +91,17 @@ var PlayScene = new Phaser.Class({
     this.player.body.setMaxVelocity(this.MOVE, 1500);
     this.physics.add.collider(this.player, this.solids);
     this.facing = 1;
-    // 달리기 애니메이션 16프레임(게임 전역 anims에 1회 등록)
+    // 선택 캐릭터 결정: registry('coopCharId') 우선 → localStorage → 기본 병아리. 친구(고스트)는 다른 종.
+    this.charId = this.registry.get('coopCharId') || (window.CoopCharStore && CoopCharStore.get()) || 'chick';
+    this.playerKey = this.charId + '-run';
+    this.ghostKey = (window.CoopFriendOf ? CoopFriendOf(this.charId) : 'cat') + '-run';
+    // 달리기 애니메이션 16프레임(5종 전체를 게임 전역 anims에 1회 등록)
     // frame0 = idle. 달리기 1~15는 디퓨전이라 시간순이 아님 → 유사도 정렬 순서로 재배열(인접 프레임 비슷)
-    // + yoyo로 양끝 끊김 없이. (순서는 _gen/_order.py로 산출, 캐릭터별 상이)
-    if (!this.anims.exists('chick-run'))
-      this.anims.create({ key: 'chick-run', frameRate: 18, yoyo: true, repeat: -1,
-        frames: this.anims.generateFrameNumbers('chick-run', { frames: [12, 15, 14, 7, 13, 11, 8, 5, 1, 4, 3, 2, 9, 10, 6] }) });
-    if (!this.anims.exists('cat-run'))
-      this.anims.create({ key: 'cat-run', frameRate: 18, yoyo: true, repeat: -1,
-        frames: this.anims.generateFrameNumbers('cat-run', { frames: [4, 14, 2, 10, 12, 8, 3, 6, 1, 15, 7, 5, 13, 9, 11] }) });
+    // + yoyo로 양끝 끊김 없이. (순서는 characters.js, _gen/_order.py로 산출, 캐릭터별 상이)
+    if (window.CoopCharAssets) CoopCharAssets.ensureAnims(this);
     // origin (0.5,1)=발바닥 기준 → 스프라이트 y를 바디 바닥에 맞추면 발이 지면에. 스쿼시도 발 기준으로 눌림.
     this._footY = this.player.height / 2; // 바디 절반 높이(player.y + footY = 바디 바닥). 하드코딩 대신 유도(리뷰)
-    this.playerSprite = this.add.sprite(this.spawn.x, this.spawn.y + this._footY, 'chick-run', 0)
+    this.playerSprite = this.add.sprite(this.spawn.x, this.spawn.y + this._footY, this.playerKey, 0)
       .setOrigin(0.5, 1).setDepth(7).setDisplaySize(96, 96);
     // juice: 스쿼시/스트레치 스프링 기준 스케일. 단일 시트(frame0=idle, 1~15=run)라 스케일 일정.
     this._sBaseX = this.playerSprite.scaleX;
@@ -142,7 +138,7 @@ var PlayScene = new Phaser.Class({
 
     // ===== S4: 원격 친구(고스트) — NetClient 중계 또는 솔로(숨김) =====
     // 친구 비주얼은 항상 만들되 기본 숨김. 피어 스냅이 들어오면 표시(솔로면 안 보임).
-    this.ghost = this.add.sprite(this.spawn.x, 660, 'cat-run', 0)
+    this.ghost = this.add.sprite(this.spawn.x, 660, this.ghostKey, 0)
       .setOrigin(0.5, 1).setAlpha(0.85).setDepth(5).setDisplaySize(92, 92).setVisible(false);
     this._ghostPrevX = this.spawn.x;
     this._hasPeer = false;
@@ -493,7 +489,7 @@ var PlayScene = new Phaser.Class({
       if (this._pose !== 'air') { spr.anims.stop(); spr.setFrame(this._AIR_FRAME); this._pose = 'air'; }
     } else if (dir !== 0) {
       this._pose = 'run';
-      spr.play('chick-run', true); // ignoreIfPlaying — 달리는 동안 사이클 유지
+      spr.play(this.playerKey, true); // ignoreIfPlaying — 달리는 동안 사이클 유지
     } else {
       if (this._pose !== 'idle') { spr.anims.stop(); spr.setFrame(this._IDLE_FRAME); this._pose = 'idle'; }
     }
@@ -528,7 +524,7 @@ var PlayScene = new Phaser.Class({
     this._hasPeer = !!rs;
     if (rs) {
       this.ghost.setVisible(true); this.ghostTag.setVisible(true);
-      this.ghost.play('cat-run', true); // 친구도 달리기 사이클
+      this.ghost.play(this.ghostKey, true); // 친구도 달리기 사이클
       this.ghost.x = rs.x; this.ghost.y = rs.y + this._footY; // 발바닥 origin
       this.ghost.setFlipX(rs.x < this._ghostPrevX - 0.5); // 진행 방향 따라 flip
       this._ghostPrevX = rs.x;

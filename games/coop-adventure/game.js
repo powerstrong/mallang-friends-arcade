@@ -27,7 +27,7 @@
       default: 'arcade',
       arcade: { gravity: { y: 1400 }, fps: 60, debug: false }
     },
-    scene: [MapScene, PlayScene]
+    scene: [SelectScene, MapScene, PlayScene]
   };
 
   var game = new Phaser.Game(config);
