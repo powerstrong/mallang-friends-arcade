@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>기계동물 러너 (프로토타입)</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <div id="game" class="game-canvas"></div>
+
+    <!-- 엔진: 버전 고정 vendor (무빌드) -->
+    <script src="/shared/vendor/phaser-3.88.2.min.js"></script>
+    <!-- 입력 → 부대모델 → 스테이지 → 씬 → 부트 -->
+    <script src="./src/input.js"></script>
+    <script src="./src/squad.js"></script>
+    <script src="./src/stage1.js"></script>
+    <script src="./src/scenes/play.js"></script>
+    <script src="./game.js"></script>
+  </body>
+</html>

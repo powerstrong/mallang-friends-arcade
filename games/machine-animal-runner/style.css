@@ -1,0 +1,21 @@
+html, body {
+  margin: 0;
+  height: 100%;
+  background: #0b1020;
+  overflow: hidden;
+  /* 모바일 더블탭 확대/스크롤 차단 */
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  overscroll-behavior: none;
+}
+
+#game {
+  width: 100vw;
+  height: 100vh;
+}
+
+#game canvas {
+  display: block;
+  touch-action: none;
+}
