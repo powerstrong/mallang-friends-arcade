@@ -40,8 +40,9 @@
   }
 
   // ── Character sprite sheets ───────────────────────────────────────────────
-  // 3x3 grid. row: 0=down 1=side(right) 2=up. col: 0=idle 1=stepA 2=stepB.
-  // The `left` direction reuses the side row, mirrored horizontally.
+  // 3x3 grid. row: 0=down 1=side(left) 2=up. col: 0=idle 1=stepA 2=stepB.
+  // The side row art faces LEFT, so the `right` direction reuses the side row
+  // mirrored horizontally.
   // Source frame size is derived from the loaded sheet dimensions so large
   // AI-generated sprite atlases do not get cropped to an old fixed size.
   const SPRITE_FRAME = window.CHARACTER_FRAME || { width: 32, height: 32, cols: 3, rows: 3 };
@@ -1780,7 +1781,7 @@
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = 'high';
       ctx.save();
-      if (dir === 'left') ctx.scale(-1, 1);
+      if (dir === 'right') ctx.scale(-1, 1);
       ctx.drawImage(sprite.img, col * fw, row * fh, fw, fh, destX, destY, drawW, drawH);
       ctx.restore();
     } else {
