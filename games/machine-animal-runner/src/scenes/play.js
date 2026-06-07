@@ -26,6 +26,9 @@
     if (!this.textures.exists('chick'))
       this.load.spritesheet('chick', '/games/coop-adventure/assets/chick-run.png',
         { frameWidth: 256, frameHeight: 256 });
+    // 적/보스 (codex 생성, 말랑프렌즈 하우스 스타일 기계 버전). 배경 길은 절차적(seamless).
+    if (!this.textures.exists('enemy-mech')) this.load.image('enemy-mech', './assets/enemy-mech-chick.png');
+    if (!this.textures.exists('boss-mech')) this.load.image('boss-mech', './assets/boss-mech.png');
   };
 
   PlayScene.prototype.create = function () {
@@ -68,28 +71,30 @@
     window.__mar.squad = this.squad;
   };
 
-  // ---- 배경 ----------------------------------------------------------------
+  // ---- 배경 (절차적 탑다운 길: 완전 seamless, 파스텔 톤) --------------------
   PlayScene.prototype._buildBackground = function () {
     var W = this.W, H = this.H;
-    this.add.rectangle(W / 2, H / 2, W, H, 0xbfe3ff).setDepth(-10); // 물/하늘
-    var roadW = W * 0.72;
-    this.add.rectangle(W / 2, H / 2, roadW, H, 0xe7ddca).setDepth(-9); // 길
-    this.add.rectangle(W / 2 - roadW / 2, H / 2, 8, H, 0xc7b89a).setDepth(-9);
-    this.add.rectangle(W / 2 + roadW / 2, H / 2, 8, H, 0xc7b89a).setDepth(-9);
-    // 진행감용 중앙 점선 (스크롤됨)
-    this.dashes = [];
-    var n = 10, gap = H / n;
+    var roadW = W * 0.66; this._roadW = roadW;
+    var railL = W / 2 - roadW / 2, railR = W / 2 + roadW / 2;
+    this.add.rectangle(W / 2, H / 2, W, H, 0x77d6f0).setDepth(-10);          // 물
+    this.add.rectangle(W / 2, H / 2, roadW, H, 0xe6ddc8).setDepth(-9);       // 길
+    this.add.rectangle(railL, H / 2, 12, H, 0xcdbf9f).setDepth(-8);          // 좌 난간
+    this.add.rectangle(railR, H / 2, 12, H, 0xcdbf9f).setDepth(-8);          // 우 난간
+    // 스크롤 난간 기둥(전진감) — 위/아래 래핑이라 이음새 없음.
+    this.posts = [];
+    var gap = 84, n = Math.ceil(H / gap) + 2;
     for (var i = 0; i < n; i++) {
-      var d = this.add.rectangle(W / 2, i * gap, 8, gap * 0.4, 0xffffff, 0.55).setDepth(-8);
-      this.dashes.push(d);
+      this.posts.push(this.add.rectangle(railL, 0, 18, 24, 0xb7a888).setDepth(-7));
+      this.posts.push(this.add.rectangle(railR, 0, 18, 24, 0xb7a888).setDepth(-7));
     }
-    this._dashGap = gap;
+    this._postGap = gap;
+    this._updateBgScroll();
   };
   PlayScene.prototype._updateBgScroll = function () {
-    var gap = this._dashGap, H = this.H;
-    var off = (this.traveled * 0.6) % gap;
-    for (var i = 0; i < this.dashes.length; i++) {
-      this.dashes[i].y = ((i * gap + off) % (H + gap)) - gap * 0.5;
+    var gap = this._postGap, H = this.H, off = this.traveled % gap;
+    for (var i = 0; i < this.posts.length; i++) {
+      var base = Math.floor(i / 2) * gap;                  // 기둥 쌍 단위 위치
+      this.posts[i].y = ((base + off) % (H + gap)) - gap;  // 아래로 흐르며 래핑
     }
   };
 
@@ -140,16 +145,21 @@
 
   PlayScene.prototype._makeEnemy = function (dist, x, kind, hp) {
     var c = this.add.container(x, -200).setDepth(2);
-    var size = kind === 'armor' ? 64 : 34;
-    var col = kind === 'armor' ? 0x8a96a8 : 0xb8c2d0;
-    var body = this.add.rectangle(0, 0, size, size, col).setStrokeStyle(2, 0x5b6470);
-    body.setData && body.setData('r', 1);
-    var eye = this.add.circle(0, -size * 0.12, size * 0.13, 0x29e6ff);
-    c.add([body, eye]);
+    var size = kind === 'armor' ? 96 : 48;
+    if (this.textures.exists('enemy-mech')) {
+      var spr = this.add.image(0, 0, 'enemy-mech').setDisplaySize(size, size);
+      if (kind === 'armor') spr.setTint(0xbfd4ff); // 장갑은 살짝 푸른 금속 톤
+      c.add(spr);
+    } else {
+      var col = kind === 'armor' ? 0x8a96a8 : 0xb8c2d0;
+      c.add(this.add.rectangle(0, 0, size, size, col).setStrokeStyle(2, 0x5b6470));
+      c.add(this.add.circle(0, -size * 0.12, size * 0.13, 0x29e6ff));
+    }
     var hpText = null;
     if (kind === 'armor') {
-      hpText = this.add.text(0, 0, String(hp), {
-        fontFamily: 'sans-serif', fontSize: '18px', color: '#ffffff', fontStyle: 'bold'
+      hpText = this.add.text(0, size * 0.05, String(hp), {
+        fontFamily: 'sans-serif', fontSize: '20px', color: '#ffffff', fontStyle: 'bold',
+        stroke: '#000000', strokeThickness: 3
       }).setOrigin(0.5);
       c.add(hpText);
     }
@@ -170,11 +180,14 @@
   PlayScene.prototype._makeBoss = function (dist, hp) {
     var W = this.W;
     var c = this.add.container(W / 2, -300).setDepth(3).setVisible(false);
-    var body = this.add.rectangle(0, 0, 150, 130, 0x6b7384).setStrokeStyle(4, 0x3c4350);
-    var core = this.add.circle(0, 0, 22, 0xff5a3c);
-    var eyeL = this.add.circle(-34, -34, 10, 0xff8a3d);
-    var eyeR = this.add.circle(34, -34, 10, 0xff8a3d);
-    c.add([body, core, eyeL, eyeR]);
+    if (this.textures.exists('boss-mech')) {
+      c.add(this.add.image(0, 0, 'boss-mech').setDisplaySize(200, 180));
+    } else {
+      var body = this.add.rectangle(0, 0, 150, 130, 0x6b7384).setStrokeStyle(4, 0x3c4350);
+      var core = this.add.circle(0, 0, 22, 0xff5a3c);
+      c.add([body, core,
+        this.add.circle(-34, -34, 10, 0xff8a3d), this.add.circle(34, -34, 10, 0xff8a3d)]);
+    }
     return { type: 'boss', dist: dist, display: c, hp: hp, maxHp: hp, dead: false, engaged: false };
   };
 
