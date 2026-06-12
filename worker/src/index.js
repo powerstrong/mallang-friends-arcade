@@ -15,9 +15,53 @@ async function pruneWorldLogs(env) {
   try {
     await env.DB.prepare('DELETE FROM world_chat_log WHERE ts < ?').bind(cutoff).run();
     await env.DB.prepare('DELETE FROM world_sessions WHERE joined_at < ?').bind(cutoff).run();
+    await env.DB.prepare('DELETE FROM runner_events WHERE ts < ?').bind(cutoff).run();
   } catch (err) {
     console.error('[cron] world log prune failed', err && err.stack ? err.stack : err);
   }
+}
+
+// 러너 텔레메트리 배치 적재 한도 — 인증 없는 공개 엔드포인트라 남용 방어가 필수(codex 리뷰).
+// IP 레이트리밋은 KV/DO 없이는 비용이 커서 미구현(광장 로깅과 동일한 수용 리스크) —
+// 대신 본문 크기·이벤트 allowlist·ts/stage clamp·run_id 1회성으로 쓰기 비용을 제한한다.
+const TELEMETRY_MAX_BODY = 32 * 1024; // Content-Length 사전 차단
+const TELEMETRY_MAX_EVENTS = 60;
+const TELEMETRY_MAX_PAYLOAD = 1024; // 이벤트당 payload JSON 문자열 최대 길이
+const TELEMETRY_GAME_PATTERN = /^[a-z0-9-]{1,40}$/;
+const TELEMETRY_RUN_PATTERN = /^[a-z0-9]{1,40}$/;
+const TELEMETRY_EVENT_ALLOWLIST = new Set(['run_start', 'gate', 'death', 'run_end']);
+
+async function ingestRunnerTelemetry(env, body) {
+  if (!env?.DB) return { ok: false, status: 503 };
+  const game = typeof body?.game === 'string' ? body.game : '';
+  const runId = typeof body?.runId === 'string' ? body.runId : '';
+  const stage = Number.isInteger(body?.stage) ? Math.max(0, Math.min(99, body.stage)) : 0;
+  const events = Array.isArray(body?.events) ? body.events.slice(0, TELEMETRY_MAX_EVENTS) : [];
+  if (!TELEMETRY_GAME_PATTERN.test(game) || !TELEMETRY_RUN_PATTERN.test(runId) || events.length === 0) {
+    return { ok: false, status: 400 };
+  }
+  // run_id 는 1회성 — 같은 런 재전송(리플레이 스팸) 거부. 읽기 1회 비용으로 쓰기 남용을 줄인다.
+  const dup = await env.DB.prepare('SELECT 1 FROM runner_events WHERE run_id = ? LIMIT 1')
+    .bind(runId).first();
+  if (dup) return { ok: false, status: 409 };
+  const now = Date.now();
+  const stmt = env.DB.prepare(
+    'INSERT INTO runner_events (game, run_id, stage, ev, payload, ts) VALUES (?, ?, ?, ?, ?, ?)'
+  );
+  const rows = [];
+  for (const e of events) {
+    const ev = typeof e?.ev === 'string' ? e.ev : '';
+    if (!TELEMETRY_EVENT_ALLOWLIST.has(ev)) continue;
+    let payload = '';
+    try { payload = JSON.stringify(e.payload ?? {}).slice(0, TELEMETRY_MAX_PAYLOAD); } catch { payload = '{}'; }
+    // 클라 ts 는 정렬용으로만 신뢰 — 미래/과거 ts 로 보관기간(cron, ts 기준)을 우회 못 하게 clamp.
+    let ts = Number.isFinite(e?.ts) ? e.ts : now;
+    if (ts > now + 5 * 60 * 1000 || ts < now - 24 * 60 * 60 * 1000) ts = now;
+    rows.push(stmt.bind(game, runId, stage, ev, payload, ts));
+  }
+  if (rows.length === 0) return { ok: false, status: 400 };
+  await env.DB.batch(rows);
+  return { ok: true, status: 204 };
 }
 
 const CORS_HEADERS = {
@@ -53,6 +97,25 @@ export default {
 
       const entries = await getWeeklyLeaderboard(env.DB, game);
       return corsResponse(JSON.stringify({ game, week: getWeekKey(), entries }));
+    }
+
+    // POST /api/telemetry/runner - 러너류 게임 플레이 텔레메트리 배치 적재.
+    // 실패해도 클라는 무시하므로(파이어&포겟) 에러는 상태코드로만 답한다.
+    if (method === 'POST' && url.pathname === '/api/telemetry/runner') {
+      const clen = parseInt(request.headers.get('content-length') || '0', 10);
+      if (clen > TELEMETRY_MAX_BODY) {
+        return new Response(null, { status: 413, headers: CORS_HEADERS });
+      }
+      let body = null;
+      try { body = await request.json(); } catch { /* malformed */ }
+      if (!body) return corsResponse(JSON.stringify({ error: 'Bad Request' }), { status: 400 });
+      try {
+        const r = await ingestRunnerTelemetry(env, body);
+        return new Response(null, { status: r.status, headers: CORS_HEADERS });
+      } catch (err) {
+        console.error('[telemetry] ingest failed', err && err.stack ? err.stack : err);
+        return new Response(null, { status: 500, headers: CORS_HEADERS });
+      }
     }
 
     // POST /api/rooms - create a new room.
