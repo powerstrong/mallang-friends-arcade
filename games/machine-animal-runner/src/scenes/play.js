@@ -40,6 +40,7 @@
         { frameWidth: 256, frameHeight: 256 });
     if (!this.textures.exists('enemy-mech')) this.load.image('enemy-mech', './assets/enemy-mech-chick.png');
     if (!this.textures.exists('boss-mech')) this.load.image('boss-mech', './assets/boss-mech.png');
+    if (!this.textures.exists('barrier-fence')) this.load.image('barrier-fence', './assets/barrier-fence.png');
     this.load.on('loaderror', function (file) {
       if (file && file.key === 'unit-chick') this._unitChickFailed = true;
     }, this);
@@ -221,12 +222,21 @@
   PlayScene.prototype._makeBarrier = function (dist, b) {
     var W = this.W, w = W * 0.66, h = 46;
     var c = this.add.container(W / 2, -200).setDepth(2);
-    var rect = this.add.rectangle(0, 0, w, h, 0x9b6b4a, 0.92).setStrokeStyle(3, 0x6e4a31);
+    var spr = null;
+    if (this.textures.exists('barrier-fence')) {
+      spr = this.add.image(0, 0, 'barrier-fence');
+      spr.setDisplaySize(w, w * (spr.height / spr.width));
+      c.add(spr);
+    } else {
+      c.add(this.add.rectangle(0, 0, w, h, 0x9b6b4a, 0.92).setStrokeStyle(3, 0x6e4a31));
+    }
+    // 팻말(이미지 중앙 원판) 위에 HP 숫자
     var t = this.add.text(0, 0, String(b.hp), {
-      fontFamily: 'sans-serif', fontSize: '24px', color: '#ffffff', fontStyle: 'bold'
+      fontFamily: 'sans-serif', fontSize: '24px', color: '#ffffff', fontStyle: 'bold',
+      stroke: '#6e4a31', strokeThickness: 4
     }).setOrigin(0.5);
-    c.add([rect, t]);
-    return { type: 'barrier', dist: dist, display: c, rect: rect, hpText: t, hp: b.hp, maxHp: b.hp, dead: false };
+    c.add(t);
+    return { type: 'barrier', dist: dist, display: c, spr: spr, hpText: t, hp: b.hp, maxHp: b.hp, dead: false };
   };
 
   PlayScene.prototype._makeBoss = function (dist, hp) {
