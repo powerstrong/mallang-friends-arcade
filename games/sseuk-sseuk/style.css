@@ -38,6 +38,10 @@ button {
    * 태블릿/데스크탑은 480px에서 멈춰 비례 깨짐 방지. */
   max-width: 480px;
   height: 100dvh;
+  /* 가상 키보드 대응 — JS(visualViewport)가 채우는 --vvh 가 있으면 그걸
+   * 사용. iOS 는 키보드가 overlay 라 100dvh 가 안 줄어 캔버스가 화면 밖으로
+   * 밀렸다. var() 미지원 구형 브라우저는 위의 100dvh 로 폴백. */
+  height: var(--vvh, 100dvh);
   overflow: hidden;
   margin: 0 auto;
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
@@ -691,6 +695,30 @@ h2 { margin: 4px 0 8px; font-size: 20px; color: #064e3b; }
   flex-shrink: 0;
 }
 .chat-send-btn:disabled { background: #6ee7b7; }
+
+/* ── 모바일 키보드 컴팩트 모드 ───────────────────────────
+ * 채팅 입력 포커스 동안(body.is-typing, 터치 기기 한정) 키보드가 차지하고
+ * 남은 높이(--vvh) 안에 "글자 수 슬롯 + 캔버스 + 채팅 입력줄"이 모두
+ * 보이도록 비핵심 요소를 숨기고 캔버스 변 길이를 가용 높이에서 계산한다. */
+body.is-typing .timer-bar-track,
+body.is-typing .drawer-banner,
+body.is-typing .mini-leaderboard,
+body.is-typing .canvas-toolbar { display: none; }
+body.is-typing .screen--game { padding: 6px 12px; gap: 4px; }
+body.is-typing .drawing-panel { padding: 10px; }
+body.is-typing .keyword-slot { margin: 0 0 6px; font-size: 20px; gap: 6px; }
+body.is-typing .keyword-slot__cell { min-width: 26px; height: 32px; border-bottom-width: 3px; }
+body.is-typing .canvas-wrap {
+  /* 가용 높이 = --vvh − (헤더·슬롯·채팅 입력줄·패딩 합 ≈ 250px).
+   * 아주 작은 화면에서도 최소 120px 은 보장, 가로는 컨테이너를 안 넘게. */
+  width: min(100%, max(120px, calc(var(--vvh, 100dvh) - 250px)));
+}
+body.is-typing .chat-box { margin-top: 6px; }
+body.is-typing .chat-messages {
+  /* 키보드가 열린 동안은 최근 2~3줄만 — 나머지 높이를 캔버스에 양보. */
+  flex: 0 0 auto;
+  height: 52px;
+}
 
 /* ── Keyword slot 펄스 (Phase D) ─────────────────────── */
 .keyword-slot__cell.is-pulse {

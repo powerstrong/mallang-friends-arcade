@@ -650,6 +650,44 @@ chatForm.addEventListener('submit', (e) => {
   chatInput.value = '';
 });
 
+/* ── 모바일 키보드 대응 ─────────────────────────────────
+ * 가상 키보드가 올라오면 보이는 높이가 절반 가까이 줄어 캔버스가 화면
+ * 밖으로 밀리던 문제. 두 갈래로 잡는다:
+ *  1) visualViewport.height 를 --vvh 로 노출 — 셸 높이가 키보드를 제외한
+ *     실제 가시 영역을 따라간다. iOS 는 키보드가 overlay 방식이라 100dvh
+ *     가 안 줄어들고 meta interactive-widget 도 미지원이라 JS 보정이 필수.
+ *  2) 터치 기기에서 채팅 입력 포커스 동안 body.is-typing — 배너·툴바·
+ *     진행바를 숨기고 채팅 로그를 고정 높이로 줄여, 남는 높이를 캔버스가
+ *     갖게 한다 (CSS 의 --vvh 기반 calc 가 캔버스 변 길이를 결정). */
+const vv = window.visualViewport;
+function syncVvh() {
+  const h = vv ? vv.height : window.innerHeight;
+  document.documentElement.style.setProperty('--vvh', `${Math.round(h)}px`);
+  // iOS 가 포커스된 입력을 보이게 하려고 문서를 밀어올린 경우 원위치 —
+  // 셸은 이미 --vvh 에 맞춰져 있어 스크롤 0 이 정확한 정렬이다.
+  if (document.body.classList.contains('is-typing')) window.scrollTo(0, 0);
+}
+vv?.addEventListener('resize', syncVvh);
+vv?.addEventListener('scroll', syncVvh);
+window.addEventListener('resize', syncVvh);
+syncVvh();
+
+const coarsePointer = window.matchMedia('(pointer: coarse)').matches;
+chatInput.addEventListener('focus', () => {
+  if (!coarsePointer) return;       // 데스크탑은 키보드가 화면을 안 가림.
+  document.body.classList.add('is-typing');
+  syncVvh();
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+});
+chatInput.addEventListener('blur', () => {
+  document.body.classList.remove('is-typing');
+  syncVvh();
+});
+// 보내기 버튼을 눌러도 입력 포커스를 유지 — 키보드가 닫혔다 다시 열리며
+// 레이아웃이 출렁이는 것 방지. (mousedown 의 기본 동작이 포커스 이동이라
+// 이를 막으면 click/submit 은 그대로 동작하면서 키보드만 유지된다.)
+chatSend.addEventListener('mousedown', (e) => e.preventDefault());
+
 /* ── Round end / Game end ───────────────────────────── */
 
 /* 정답 리플레이 — round-end 패널 안에서 allStrokes 를 1.5초 안에 빠르게
