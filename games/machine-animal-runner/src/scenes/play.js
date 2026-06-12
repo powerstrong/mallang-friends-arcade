@@ -19,6 +19,7 @@
   var BOSS_SHOT_EVERY = 1.1, BOSS_SHOT_SPEED = 230, BOSS_SHOT_DMG = 6, BOSS_SHOT_HIT_W = 56;
   var BOSS_TELEGRAPH = 0.5;  // 조준탄 경고선 노출 시간(s) — 이 동안 착탄점이 고정된다
   var EVOLVE_AT = [15, 35]; // 진화 마일스톤(머릿수, 한 판 내 단방향)
+  var RISK_H = 320;         // 리스크 레인 통로 길이(px)
   var UNIT_H = [30, 35, 40];          // 진화 단계별 유닛 표시 높이
   var BULLET_STYLE = [                 // 진화 단계별 탄환 시각
     { r: 4, color: 0xfff15a },
@@ -29,6 +30,13 @@
   function PlayScene() { Phaser.Scene.call(this, { key: 'PlayScene' }); }
   PlayScene.prototype = Object.create(Phaser.Scene.prototype);
   PlayScene.prototype.constructor = PlayScene;
+
+  /* 스테이지 번호(1-base)는 restart data 로 전달. 최초 부트는 해금된 최고 스테이지. */
+  PlayScene.prototype.init = function (data) {
+    var maxStage = (window.MARProgress ? MARProgress.maxStage() : 1);
+    this.stageNo = Math.max(1, Math.min(global.MAR_STAGES.length,
+      (data && data.stage) || maxStage));
+  };
 
   PlayScene.prototype.preload = function () {
     // 정식 유닛: 후방뷰 병아리 3프레임 스트립(말랑프렌즈 하우스 스타일, codex 생성).
@@ -47,6 +55,8 @@
     if (!this.textures.exists('boss-mech')) this.load.image('boss-mech', './assets/boss-mech.png');
     if (!this.textures.exists('barrier-fence')) this.load.image('barrier-fence', './assets/barrier-fence.png');
     if (!this.textures.exists('gate-arch')) this.load.image('gate-arch', './assets/gate-arch.png');
+    if (!this.textures.exists('gate-neg')) this.load.image('gate-neg', './assets/gate-neg.png');
+    if (!this.textures.exists('risk-wall')) this.load.image('risk-wall', './assets/risk-wall.png');
     if (!this.textures.exists('warn-stripe')) this.load.image('warn-stripe', './assets/warn-stripe.png');
     this.load.on('loaderror', function (file) {
       if (file && file.key === 'unit-chick') this._unitChickFailed = true;
@@ -60,6 +70,8 @@
     this.laneMin = W * LANE_MIN_R;
     this.laneMax = W * LANE_MAX_R;
 
+    this.S = global.MAR_STAGES[this.stageNo - 1];
+
     this.input0 = this.game.registry.get('input');
     if (this.input0 && this.game.canvas) this.input0.attachPointer(this.game.canvas);
     if (this.input0) this.input0.targetX = 0.5; // restart 시 중앙 출발 보장
@@ -67,13 +79,25 @@
     this._buildBackground();
     this._buildAnims();
 
-    this.squad = new SquadModel(5, 1);
+    // 숨김 어시스트(연속 전멸 보정, UI 비표시 — DESIGN.md):
+    // tier1 +3 / tier2+ +6 (머릿수는 여기까지 — 시작이 사수상한을 넘으면 긴장 훼손)
+    // tier3+ 는 체감형: 첫 피격 보호막 + 보스탄 속도 −10% + 장벽 잔여피해 −20%
+    this.assistTier = window.MARProgress ? MARProgress.assistTier(this.stageNo) : 0;
+    var bonus = this.assistTier >= 2 ? 6 : (this.assistTier >= 1 ? 3 : 0);
+    this.squad = new SquadModel(5 + bonus, 1);
+    this._assistShield = this.assistTier >= 3;
+    this._shotSpeedMul = this.assistTier >= 3 ? 0.9 : 1;
+    this._barrierResidualMul = this.assistTier >= 3 ? 0.8 : 1;
+
+    this._invulnUntil = 0;   // 네거티브 게이트 무적(time.now 기준)
+    this._shieldFx = null;
     this.leaderX = W * 0.5;
     this.evolveTier = 0;
 
     this.unitLayer = this.add.container(0, 0).setDepth(5);
     this.units = [];
     this.bulletLayer = this.add.container(0, 0).setDepth(4);
+    this._bulletPool = []; // 탄환 재사용 풀(개체수 증가 대비 — tween+destroy 비용 제거)
     this.bossShots = [];
     this.telegraphs = [];
 
@@ -120,26 +144,26 @@
     }
   };
 
-  // ---- 배경 (절차적 파스텔 들판 + 길: 완전 seamless) ------------------------
+  // ---- 배경 (절차적 파스텔 들판 + 길: 완전 seamless, 색은 스테이지 팔레트) ----
   PlayScene.prototype._buildBackground = function () {
-    var W = this.W, H = this.H;
+    var W = this.W, H = this.H, P = this.S.palette;
     var roadW = W * 0.66; this._roadW = roadW;
     var railL = W / 2 - roadW / 2, railR = W / 2 + roadW / 2;
-    this.add.rectangle(W / 2, H / 2, W, H, 0xb5e8a3).setDepth(-10);          // 잔디
-    this.add.rectangle(W / 2, H / 2, roadW, H, 0xf2e8d0).setDepth(-9);       // 길
-    this.add.rectangle(railL, H / 2, 12, H, 0xd8c9a4).setDepth(-8);          // 좌 난간
-    this.add.rectangle(railR, H / 2, 12, H, 0xd8c9a4).setDepth(-8);          // 우 난간
+    this.add.rectangle(W / 2, H / 2, W, H, P.grass).setDepth(-10);           // 잔디
+    this.add.rectangle(W / 2, H / 2, roadW, H, P.road).setDepth(-9);         // 길
+    this.add.rectangle(railL, H / 2, 12, H, P.rail).setDepth(-8);            // 좌 난간
+    this.add.rectangle(railR, H / 2, 12, H, P.rail).setDepth(-8);            // 우 난간
     // 스크롤 데코(전진감) — 전부 traveled 기반 래핑이라 이음새 없음.
     this.scrollDeco = [];
     var gap = 84, n = Math.ceil(H / gap) + 2;
     for (var i = 0; i < n; i++) {
-      this.scrollDeco.push(this.add.rectangle(railL, 0, 18, 24, 0xc4b28c).setDepth(-7));
-      this.scrollDeco.push(this.add.rectangle(railR, 0, 18, 24, 0xc4b28c).setDepth(-7));
+      this.scrollDeco.push(this.add.rectangle(railL, 0, 18, 24, P.deco).setDepth(-7));
+      this.scrollDeco.push(this.add.rectangle(railR, 0, 18, 24, P.deco).setDepth(-7));
     }
     this._decoGap = gap;
-    // 잔디 꽃: 고정 시드 손배치(좌우 갓길), 색은 파스텔 3종.
+    // 잔디 꽃: 고정 시드 손배치(좌우 갓길), 색은 팔레트 3종(밤엔 별처럼 보임).
     this.flowers = [];
-    var cols = [0xffc4d6, 0xfff3b0, 0xffffff];
+    var cols = P.flowers;
     var fGap = 64, fn = Math.ceil(H / fGap) + 2;
     for (var j = 0; j < fn; j++) {
       var lx = railL * (0.25 + 0.5 * ((j * 7919) % 100) / 100);
@@ -164,7 +188,7 @@
 
   // ---- 트랙 빌드 -----------------------------------------------------------
   PlayScene.prototype._buildTrack = function () {
-    var S = global.MAR_STAGE1, W = this.W;
+    var S = this.S, W = this.W;
     this.track = [];
     var self = this;
     S.events.forEach(function (ev) {
@@ -179,12 +203,16 @@
         self.track.push(self._makeEnemy(ev.at, W / 2, 'armor', ev.armor.hp));
       } else if (ev.barrier) {
         self.track.push(self._makeBarrier(ev.at, ev.barrier));
+      } else if (ev.risk) {
+        self.track.push(self._makeRisk(ev.at, ev.risk));
       }
     });
-    // 보스
+    // 보스 (스테이지별 파라미터)
     this.boss = this._makeBoss(S.bossAt, S.bossHp);
     this.track.push(this.boss);
     this.bossAt = S.bossAt;
+    this._bossShotEvery = S.bossShotEvery || BOSS_SHOT_EVERY;
+    this._bossDrain = S.bossDrain || BOSS_DRAIN;
   };
 
   PlayScene.prototype._makeGate = function (dist, g) {
@@ -193,8 +221,16 @@
     var useArch = this.textures.exists('gate-arch');
     function half(sign, side) {
       var body, labelY = 0;
-      var icon = side.op === 'pow' ? '⚔ ' : '🐤 ';
-      if (useArch) {
+      var icon = side.op === 'pow' ? '⚔ ' : (side.op === 'neg' ? '🛡 ' : '🐤 ');
+      var useNegArch = side.op === 'neg' && this.textures.exists('gate-neg');
+      if (useNegArch) {
+        // 네거티브 게이트: 보라 가시 아치 전용 에셋(틴트 없음)
+        body = this.add.image(sign * halfX, 0, 'gate-neg');
+        var nh = gw * (body.height / body.width);
+        body.setDisplaySize(gw, nh);
+        labelY = -nh * 0.27;
+        c.add(body);
+      } else if (useArch) {
         // 장난감 아치(크림색 원본)에 진영색 틴트 + 배너 위 라벨
         body = this.add.image(sign * halfX, 0, 'gate-arch');
         var ah = gw * (body.height / body.width);
@@ -208,11 +244,14 @@
         c.add([glow, body]);
         this.tweens.add({ targets: glow, alpha: 0.08, duration: 600, yoyo: true, repeat: -1 });
       }
+      var onArch = useArch || useNegArch;
       var t = this.add.text(sign * halfX, labelY, icon + side.label, {
-        fontFamily: 'sans-serif', fontSize: '24px', color: '#5b3a1e', fontStyle: 'bold',
-        stroke: '#ffffff', strokeThickness: useArch ? 4 : 0
+        fontFamily: 'sans-serif',
+        fontSize: (side.label.length > 5 ? '18px' : '24px'), // 긴 라벨(무적 등)은 축소
+        color: useNegArch ? '#3d2a5e' : '#5b3a1e', fontStyle: 'bold',
+        stroke: '#ffffff', strokeThickness: onArch ? 4 : 0
       }).setOrigin(0.5);
-      if (!useArch) t.setColor('#ffffff');
+      if (!onArch) t.setColor('#ffffff');
       c.add(t);
       return body;
     }
@@ -271,6 +310,46 @@
     return { type: 'barrier', dist: dist, display: c, spr: spr, hpText: t, hp: b.hp, maxHp: b.hp, dead: false };
   };
 
+  /* 리스크 레인 — 좁은 통로(길이 RISK_H). 조작으로 통과하면 ×mult, 벽에 닿으면 −graze.
+   * 운빨 없음(실력 기반, codex 권고로 50% ×3 기각). dist 는 통로 중심. */
+  PlayScene.prototype._makeRisk = function (dist, r) {
+    var W = this.W;
+    var roadL = W / 2 - this._roadW / 2, roadR = W / 2 + this._roadW / 2;
+    var gapC = roadL + this._roadW * r.gapR;
+    var gapL = gapC - r.gapW / 2, gapRt = gapC + r.gapW / 2;
+    var c = this.add.container(0, -500).setDepth(2);
+    var hasTex = this.textures.exists('risk-wall');
+    var self = this;
+    function fill(x0, x1) {
+      if (x1 - x0 < 4) return;
+      var rect = self.add.rectangle((x0 + x1) / 2, 0, x1 - x0, RISK_H, 0xffb066, 0.92)
+        .setStrokeStyle(3, 0xd86a2a);
+      c.add(rect);
+    }
+    if (hasTex) {
+      // 안쪽(통로 쪽) 가장자리에 가시 기둥, 나머지는 블록색 채움
+      var pw = 44;
+      fill(roadL, gapL - pw * 0.4);
+      fill(gapRt + pw * 0.4, roadR);
+      var pl = this.add.image(gapL - pw / 2, 0, 'risk-wall').setDisplaySize(pw, RISK_H);
+      var pr = this.add.image(gapRt + pw / 2, 0, 'risk-wall').setDisplaySize(pw, RISK_H);
+      c.add([pl, pr]);
+    } else {
+      fill(roadL, gapL);
+      fill(gapRt, roadR);
+    }
+    // 통로 위 안내: ×3 보상 라벨(통로 중앙)
+    var t = this.add.text(gapC, 0, '×' + r.mult, {
+      fontFamily: 'sans-serif', fontSize: '26px', color: '#2e9b50', fontStyle: 'bold',
+      stroke: '#ffffff', strokeThickness: 5
+    }).setOrigin(0.5);
+    c.add(t);
+    return {
+      type: 'risk', dist: dist, display: c, gapL: gapL, gapR: gapRt,
+      mult: r.mult, graze: r.graze, touched: false, grazed: false, resolved: false, dead: false
+    };
+  };
+
   PlayScene.prototype._makeBoss = function (dist, hp) {
     var W = this.W;
     var c = this.add.container(W / 2, -300).setDepth(3).setVisible(false);
@@ -316,31 +395,58 @@
     }
   };
 
-  // ---- 시작 오버레이 -------------------------------------------------------
+  // ---- 시작 오버레이 (스테이지명 + 해금된 스테이지 선택 칩) -------------------
   PlayScene.prototype._buildStartOverlay = function () {
-    var W = this.W, H = this.H;
+    var W = this.W, H = this.H, self = this;
     var dim = this.add.rectangle(W / 2, H / 2, W, H, 0x1b2a3a, 0.45).setDepth(30);
-    var t1 = this.add.text(W / 2, H * 0.34, '말랑프렌즈 러너', {
+    var t1 = this.add.text(W / 2, H * 0.30, '말랑프렌즈 러너', {
       fontFamily: 'sans-serif', fontSize: '42px', color: '#ffffff', fontStyle: 'bold',
       stroke: '#1b2a3a', strokeThickness: 6
     }).setOrigin(0.5).setDepth(31);
-    var t2 = this.add.text(W / 2, H * 0.42, '기계군단을 막아라!', {
+    var t2 = this.add.text(W / 2, H * 0.38,
+      '스테이지 ' + this.stageNo + ' — ' + this.S.name, {
       fontFamily: 'sans-serif', fontSize: '22px', color: '#ffe08a', fontStyle: 'bold'
     }).setOrigin(0.5).setDepth(31);
-    var t3 = this.add.text(W / 2, H * 0.55, '좌우로 드래그해서 부대를 조종하세요\n게이트를 골라 부대를 키우세요 🐤', {
+    var t3 = this.add.text(W / 2, H * 0.51, '좌우로 드래그해서 부대를 조종하세요\n게이트를 골라 부대를 키우세요 🐤', {
       fontFamily: 'sans-serif', fontSize: '19px', color: '#ffffff', align: 'center', lineSpacing: 8
     }).setOrigin(0.5).setDepth(31);
-    var t4 = this.add.text(W / 2, H * 0.66, '▶ 탭해서 시작', {
+    var t4 = this.add.text(W / 2, H * 0.62, '▶ 탭해서 시작', {
       fontFamily: 'sans-serif', fontSize: '26px', color: '#8ef0a8', fontStyle: 'bold'
     }).setOrigin(0.5).setDepth(31);
     this.tweens.add({ targets: t4, alpha: 0.35, duration: 550, yoyo: true, repeat: -1 });
-    var self = this;
-    this.input.once('pointerdown', function () {
+    var ui = [dim, t1, t2, t3, t4];
+    // 스테이지 선택 칩 — 해금된 것만 탭 가능. 칩 밴드(y±28)는 시작 탭에서 제외.
+    var chipY = H * 0.73;
+    var maxStage = window.MARProgress ? MARProgress.maxStage() : 1;
+    for (var n = 1; n <= global.MAR_STAGES.length; n++) {
+      (function (sn) {
+        var unlocked = sn <= maxStage;
+        var cx = W / 2 + (sn - 2) * 92;
+        var chip = self.add.rectangle(cx, chipY, 76, 50,
+          sn === self.stageNo ? 0x36c275 : (unlocked ? 0x4fa3ff : 0x5a6470), 0.95)
+          .setStrokeStyle(3, 0xffffff, unlocked ? 1 : 0.4).setDepth(31);
+        var lbl = self.add.text(cx, chipY, unlocked ? String(sn) : sn + '🔒', {
+          fontFamily: 'sans-serif', fontSize: '22px', color: '#ffffff', fontStyle: 'bold'
+        }).setOrigin(0.5).setDepth(32);
+        ui.push(chip, lbl);
+        if (unlocked && sn !== self.stageNo) {
+          chip.setInteractive({ useHandCursor: true });
+          chip.on('pointerdown', function () { self.scene.restart({ stage: sn }); });
+        }
+      })(n);
+    }
+    this._startTap = function (pointer) {
+      var py = (pointer && pointer.y != null) ? pointer.y : 0;
+      if (Math.abs(py - chipY) < 28) { // 칩 밴드는 시작 탭 제외(재등록)
+        self.input.once('pointerdown', self._startTap);
+        return;
+      }
       if (window.MARSfx) MARSfx.init(); // 첫 제스처에서 오디오 잠금 해제
-      if (window.MARTelemetry) MARTelemetry.startRun(1, 'chick');
-      [dim, t1, t2, t3, t4].forEach(function (o) { o.destroy(); });
+      if (window.MARTelemetry) MARTelemetry.startRun(self.stageNo, 'chick');
+      ui.forEach(function (o) { o.destroy(); });
       self.state = 'run';
-    });
+    };
+    this.input.once('pointerdown', this._startTap);
   };
 
   // ---- 부대 렌더 + 진화 ----------------------------------------------------
@@ -453,18 +559,33 @@
       this._spawnBullets(f);
     }
   };
+  PlayScene.prototype._getBullet = function (x, y, r, color) {
+    var b = this._bulletPool.pop();
+    if (!b) {
+      b = this.add.circle(0, 0, 4, 0xffffff);
+      this.bulletLayer.add(b);
+    }
+    b.setPosition(x, y).setFillStyle(color).setVisible(true).setActive(true);
+    b.setRadius(r);
+    return b;
+  };
+  PlayScene.prototype._freeBullet = function (b) {
+    b.setVisible(false).setActive(false);
+    this._bulletPool.push(b);
+  };
   PlayScene.prototype._spawnBullets = function (target) {
     var ty = this.squadY - (target.dist - this.traveled);
     if (target.type === 'boss') ty = target.display.y;
     var st = BULLET_STYLE[this.evolveTier];
     var n = this.squad.activeShooters(); // 사수 상한까지만 시각 반영
+    var self = this;
     for (var i = 0; i < n; i++) {
       var u = this.units[i] || { x: this.leaderX, y: this.squadY };
-      var b = this.add.circle(u.x, u.y - 8, st.r, st.color).setDepth(4);
-      this.bulletLayer.add(b);
+      var b = this._getBullet(u.x, u.y - 8, st.r, st.color);
       this.tweens.add({
         targets: b, y: ty, x: target.display.x + Phaser.Math.Between(-14, 14),
-        duration: 130, onComplete: function () { this.destroy(); }, callbackScope: b
+        duration: 130,
+        onComplete: function () { self._freeBullet(this.targets[0]); }
       });
     }
   };
@@ -499,9 +620,47 @@
     o.display.destroy();
   };
   PlayScene.prototype._hitSquad = function (n, cause) {
+    // 네거티브 게이트 무적: 모든 외부 피해 무시(자기 비용인 neg 는 통과)
+    if (cause !== 'neg' && this.time.now < this._invulnUntil) {
+      this._floatLabel('무적!', '#7ad7ff');
+      return;
+    }
+    // 어시스트 tier3: 첫 피격 1회 보호막 ("이번엔 깰 수 있겠다" 체감형)
+    if (cause !== 'neg' && this._assistShield) {
+      this._assistShield = false;
+      this._floatLabel('보호막!', '#8ef0a8');
+      this.cameras.main.flash(120, 160, 240, 255);
+      return;
+    }
     this._lastHitCause = cause || 'unknown'; // 사망 원인 텔레메트리(마지막 피해 출처)
     this.squad.lose(n);
     this.cameras.main.shake(120, 0.006);
+  };
+
+  /* 부대 머리 위 플로팅 라벨(공용) */
+  PlayScene.prototype._floatLabel = function (text, color) {
+    var lbl = this.add.text(this.leaderX, this.squadY - 40, text, {
+      fontFamily: 'sans-serif', fontSize: '24px', color: color, fontStyle: 'bold',
+      stroke: '#ffffff', strokeThickness: 3
+    }).setOrigin(0.5).setDepth(8);
+    this.tweens.add({
+      targets: lbl, y: this.squadY - 90, alpha: 0, duration: 600,
+      onComplete: function () { this.destroy(); }, callbackScope: lbl
+    });
+  };
+
+  /* 네거티브 게이트 무적 시작 — 보호 버블 + 만료 처리 */
+  PlayScene.prototype._startInvuln = function (sec) {
+    this._invulnUntil = this.time.now + sec * 1000;
+    this._destroyShieldFx();
+    var fx = this.add.circle(this.leaderX, this.squadY - 20, 86)
+      .setStrokeStyle(5, 0x7ad7ff, 0.9).setFillStyle(0x7ad7ff, 0.12).setDepth(7);
+    this._shieldFx = fx;
+    this._shieldTween = this.tweens.add({ targets: fx, alpha: 0.5, duration: 300, yoyo: true, repeat: -1 });
+  };
+  PlayScene.prototype._destroyShieldFx = function () {
+    if (this._shieldTween) { this._shieldTween.stop(); this._shieldTween = null; } // repeat:-1 누적 방지
+    if (this._shieldFx) { this._shieldFx.destroy(); this._shieldFx = null; }
   };
   PlayScene.prototype._resolveGate = function (g) {
     g.resolved = true;
@@ -513,6 +672,11 @@
     if (side.op === 'mul') this.squad.mul(side.val);
     else if (side.op === 'add') this.squad.add(side.val);
     else if (side.op === 'pow') this.squad.addPower(side.val);
+    else if (side.op === 'neg') {
+      // 네거티브 게이트: 머릿수를 내주고 무적을 산다 (직후 위협 구간에서 이득 가시화)
+      this._hitSquad(side.val, 'neg');
+      this._startInvuln(side.invulnSec || 3);
+    }
     if (window.MARTelemetry) MARTelemetry.log('gate', {
       seq: ++this._gateSeq, side: chooseLeft ? 'L' : 'R', op: side.op, val: side.val,
       beforeAmount: beforeAmount, beforePower: beforePower,
@@ -521,12 +685,11 @@
     if (window.MARSfx) MARSfx.play('gate');
     this.tweens.add({ targets: chosenRect, scaleX: 1.18, scaleY: 1.18, yoyo: true, duration: 150 });
     if (otherRect) this.tweens.add({ targets: otherRect, alpha: 0.2, duration: 150 });
-    var c = side.op === 'pow' ? '#ff8a3d' : '#2e9bff';
-    var lbl = this.add.text(this.leaderX, this.squadY - 40,
-      side.op === 'pow' ? '무기 강화!' : (side.op === 'mul' ? '×' + side.val : '+' + side.val), {
-      fontFamily: 'sans-serif', fontSize: '24px', color: c, fontStyle: 'bold'
-    }).setOrigin(0.5).setDepth(8);
-    this.tweens.add({ targets: lbl, y: this.squadY - 90, alpha: 0, duration: 600, onComplete: function () { lbl.destroy(); } });
+    var labelText = side.op === 'pow' ? '무기 강화!'
+      : side.op === 'neg' ? '무적 ' + (side.invulnSec || 3) + '초!'
+      : (side.op === 'mul' ? '×' + side.val : '+' + side.val);
+    var labelColor = side.op === 'pow' ? '#ff8a3d' : (side.op === 'neg' ? '#9a6bd0' : '#2e9bff');
+    this._floatLabel(labelText, labelColor);
     this._checkEvolve();
   };
 
@@ -551,6 +714,11 @@
       this._updateTelegraphs(dt);
       this._updateBossShots(dt);
       this._layoutUnits();
+      // 무적 버블: 부대 추적 + 만료 정리
+      if (this._shieldFx) {
+        if (this.time.now >= this._invulnUntil) { this._shieldFx.destroy(); this._shieldFx = null; }
+        else { this._shieldFx.x = this.leaderX; this._shieldFx.y = this.squadY - 20; }
+      }
       this._autoFire(dt);
       this._updateBgScroll();
       this._updateUI();
@@ -585,12 +753,40 @@
         this._hitSquad(o.kind === 'armor' ? ARMOR_CONTACT : MOB_CONTACT, o.kind);
         this._killTrack(o, false);
       } else if (o.type === 'barrier' && sy >= this.squadY) {
-        if (o.hp > 0) this._hitSquad(Math.ceil(o.hp / 12), 'barrier');
+        // 어시스트 tier3: 잔여피해 −20%
+        if (o.hp > 0) this._hitSquad(Math.ceil(o.hp / 12 * this._barrierResidualMul), 'barrier');
         this._killTrack(o, o.hp <= 0);
+      } else if (o.type === 'risk' && !o.resolved) {
+        // 통로 구간(sy는 중심): 머무는 동안 벽 접촉 체크, 빠져나가면 보상/무보상 확정
+        if (Math.abs(sy - this.squadY) < RISK_H / 2) {
+          var inGap = this.leaderX > o.gapL + 8 && this.leaderX < o.gapR - 8;
+          if (!inGap && !o.touched) {
+            o.touched = true;
+            var beforeGraze = this.squad.count();
+            this._hitSquad(o.graze, 'graze');
+            o.grazeLost = beforeGraze - this.squad.count(); // 무적/보호막에 막히면 0
+            o.display.list.forEach(function (ch) { if (ch.setAlpha) ch.setAlpha(0.55); });
+          }
+        } else if (sy - RISK_H / 2 > this.squadY) {
+          o.resolved = true;
+          if (!o.touched) {
+            this.squad.mul(o.mult);
+            this._floatLabel('×' + o.mult + '!', '#2e9b50');
+            if (window.MARSfx) MARSfx.play('gate');
+            this._checkEvolve();
+          }
+          // graze_blocked = 닿았지만 무적/보호막이 막음 — 어시스트 효과 측정용 구분(codex)
+          if (window.MARTelemetry) MARTelemetry.log('gate', {
+            seq: ++this._gateSeq, op: 'risk',
+            result: o.touched ? (o.grazeLost > 0 ? 'graze' : 'graze_blocked') : 'clean',
+            afterAmount: this.squad.count(), afterPower: this.squad.power
+          });
+        }
       }
 
-      // 화면 아래로 빠지면 정리
-      if (!o.dead && sy > H + 140) { o.dead = true; o.display.destroy(); }
+      // 화면 아래로 빠지면 정리 (risk 는 통로 길이만큼 더 늦게)
+      var clearAt = H + 140 + (o.type === 'risk' ? RISK_H / 2 : 0);
+      if (!o.dead && sy > clearAt) { o.dead = true; o.display.destroy(); }
     }
   };
 
@@ -611,12 +807,12 @@
     b.display.x = this.W / 2 + Math.sin(this._bossTime * 1.4) * this.W * 0.16;
     // 조준탄: 경고선이 먼저 깔리고(착탄점 고정) BOSS_TELEGRAPH 후 발사 → 경고선을 보고 비킨다.
     this._bossShotAcc += dt;
-    if (this._bossShotAcc >= BOSS_SHOT_EVERY && b.hp > 0) {
+    if (this._bossShotAcc >= this._bossShotEvery && b.hp > 0) {
       this._bossShotAcc = 0;
       this._startTelegraph(b, this.leaderX);
     }
     if (by >= this.squadY - 64) { // 접근 드레인
-      this._drainAcc += BOSS_DRAIN * dt;
+      this._drainAcc += this._bossDrain * dt;
       if (this._drainAcc >= 1) { var n = Math.floor(this._drainAcc); this._drainAcc -= n; this._hitSquad(n, 'drain'); }
     }
     if (b.hp <= 0) this._startFinish(b);
@@ -739,10 +935,11 @@
     var dx = (targetX - x);
     var dy = (this.squadY + 30 - y);
     var len = Math.sqrt(dx * dx + dy * dy) || 1;
+    var spd = BOSS_SHOT_SPEED * this._shotSpeedMul; // 어시스트 tier3: −10%
     this.bossShots.push({
       obj: core,
-      vx: dx / len * BOSS_SHOT_SPEED,
-      vy: dy / len * BOSS_SHOT_SPEED,
+      vx: dx / len * spd,
+      vy: dy / len * spd,
       dead: false
     });
   };
@@ -784,20 +981,32 @@
       MARTelemetry.endRun({
         win: win, amount: this.squad.count(), power: this.squad.power,
         bossHp: this.boss ? Math.max(0, Math.ceil(this.boss.hp)) : null,
-        assistTier: 0 // M2 숨김 어시스트에서 실제 값 연결
+        assistTier: this.assistTier
       });
     }
+    // 진도/어시스트 기록 + 다음 스테이지 결정
+    var total = global.MAR_STAGES.length;
+    var hasNext = win && this.stageNo < total;
+    if (window.MARProgress) {
+      if (win) MARProgress.recordClear(this.stageNo, total);
+      else MARProgress.recordFail(this.stageNo);
+    }
+    this._nextStage = win ? (hasNext ? this.stageNo + 1 : 1) : this.stageNo;
     if (win && window.MARSfx) MARSfx.play('clear');
     var W = this.W, H = this.H;
     this.add.rectangle(W / 2, H / 2, W, H, 0x000000, 0.55).setDepth(30);
-    this.add.text(W / 2, H / 2 - 60, win ? '클리어! 🎉' : '전멸… 🔩', {
-      fontFamily: 'sans-serif', fontSize: '44px', color: '#ffffff', fontStyle: 'bold'
+    this.add.text(W / 2, H / 2 - 60,
+      win ? (hasNext ? '스테이지 ' + this.stageNo + ' 클리어! 🎉' : '모든 스테이지 클리어! 🏆')
+          : '전멸… 🔩', {
+      fontFamily: 'sans-serif', fontSize: hasNext || !win ? '44px' : '34px',
+      color: '#ffffff', fontStyle: 'bold'
     }).setOrigin(0.5).setDepth(31);
     this.add.text(W / 2, H / 2 + 2,
       '남은 부대원 🐤 ' + this.squad.count() + '   무기 ⚔ Lv ' + this.squad.power, {
       fontFamily: 'sans-serif', fontSize: '22px', color: '#ffe08a', fontStyle: 'bold'
     }).setOrigin(0.5).setDepth(31);
-    this.add.text(W / 2, H / 2 + 56, '탭하면 다시 시작', {
+    this.add.text(W / 2, H / 2 + 56,
+      win ? (hasNext ? '탭하면 다음 스테이지 ▶' : '탭하면 처음부터 다시') : '탭하면 다시 도전', {
       fontFamily: 'sans-serif', fontSize: '22px', color: '#ffffff'
     }).setOrigin(0.5).setDepth(31);
     if (win) {
@@ -815,7 +1024,9 @@
       }
     }
     this.time.delayedCall(350, function () {
-      this.input.once('pointerdown', function () { this.scene.restart(); }, this);
+      this.input.once('pointerdown', function () {
+        this.scene.restart({ stage: this._nextStage });
+      }, this);
     }, [], this);
   };
 
