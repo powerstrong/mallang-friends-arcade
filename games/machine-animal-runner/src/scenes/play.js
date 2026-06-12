@@ -41,6 +41,7 @@
     if (!this.textures.exists('enemy-mech')) this.load.image('enemy-mech', './assets/enemy-mech-chick.png');
     if (!this.textures.exists('boss-mech')) this.load.image('boss-mech', './assets/boss-mech.png');
     if (!this.textures.exists('barrier-fence')) this.load.image('barrier-fence', './assets/barrier-fence.png');
+    if (!this.textures.exists('gate-arch')) this.load.image('gate-arch', './assets/gate-arch.png');
     this.load.on('loaderror', function (file) {
       if (file && file.key === 'unit-chick') this._unitChickFailed = true;
     }, this);
@@ -172,17 +173,31 @@
   PlayScene.prototype._makeGate = function (dist, g) {
     var W = this.W, halfX = W * 0.18, gw = W * 0.32, gh = 70;
     var c = this.add.container(W / 2, -200).setDepth(2);
+    var useArch = this.textures.exists('gate-arch');
     function half(sign, side) {
-      var glow = this.add.rectangle(sign * halfX, 0, gw + 10, gh + 10, side.color, 0.30);
-      var rect = this.add.rectangle(sign * halfX, 0, gw, gh, side.color, 0.88)
-        .setStrokeStyle(3, 0xffffff);
+      var body, labelY = 0;
       var icon = side.op === 'pow' ? '⚔ ' : '🐤 ';
-      var t = this.add.text(sign * halfX, 0, icon + side.label, {
-        fontFamily: 'sans-serif', fontSize: '24px', color: '#ffffff', fontStyle: 'bold'
+      if (useArch) {
+        // 장난감 아치(크림색 원본)에 진영색 틴트 + 배너 위 라벨
+        body = this.add.image(sign * halfX, 0, 'gate-arch');
+        var ah = gw * (body.height / body.width);
+        body.setDisplaySize(gw, ah).setTint(side.color);
+        labelY = -ah * 0.27; // 배너 중앙
+        c.add(body);
+      } else {
+        var glow = this.add.rectangle(sign * halfX, 0, gw + 10, gh + 10, side.color, 0.30);
+        body = this.add.rectangle(sign * halfX, 0, gw, gh, side.color, 0.88)
+          .setStrokeStyle(3, 0xffffff);
+        c.add([glow, body]);
+        this.tweens.add({ targets: glow, alpha: 0.08, duration: 600, yoyo: true, repeat: -1 });
+      }
+      var t = this.add.text(sign * halfX, labelY, icon + side.label, {
+        fontFamily: 'sans-serif', fontSize: '24px', color: '#5b3a1e', fontStyle: 'bold',
+        stroke: '#ffffff', strokeThickness: useArch ? 4 : 0
       }).setOrigin(0.5);
-      c.add([glow, rect, t]);
-      this.tweens.add({ targets: glow, alpha: 0.08, duration: 600, yoyo: true, repeat: -1 });
-      return rect;
+      if (!useArch) t.setColor('#ffffff');
+      c.add(t);
+      return body;
     }
     var leftRect = half.call(this, -1, g.left);
     var rightRect = half.call(this, 1, g.right);
