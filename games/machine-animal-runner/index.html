@@ -11,8 +11,12 @@
 
     <!-- 엔진: 버전 고정 vendor (무빌드) -->
     <script src="/shared/vendor/phaser-3.88.2.min.js"></script>
-    <!-- 입력 → 부대모델 → 스테이지 → 씬 → 부트 -->
+    <!-- API 워커 주소 결정(WORKER_URL) — 텔레메트리 전송에 필요 -->
+    <script src="/shared/config.js"></script>
+    <!-- 입력 → 사운드 → 부대모델 → 스테이지 → 씬 → 부트 -->
     <script src="./src/input.js"></script>
+    <script src="./src/sfx.js"></script>
+    <script src="./src/telemetry.js"></script>
     <script src="./src/squad.js"></script>
     <script src="./src/stage1.js"></script>
     <script src="./src/scenes/play.js"></script>
