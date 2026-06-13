@@ -31,22 +31,35 @@
   PlayScene.prototype = Object.create(Phaser.Scene.prototype);
   PlayScene.prototype.constructor = PlayScene;
 
-  /* 스테이지 번호(1-base)는 restart data 로 전달. 최초 부트는 해금된 최고 스테이지. */
+  /* 스테이지/캐릭터는 restart data 로 전달. 최초 부트는 해금된 최고 스테이지 + 저장된 캐릭터. */
   PlayScene.prototype.init = function (data) {
     var maxStage = (window.MARProgress ? MARProgress.maxStage() : 1);
     this.stageNo = Math.max(1, Math.min(global.MAR_STAGES.length,
       (data && data.stage) || maxStage));
+    var unlocked = global.MARUnlockedChars ? MARUnlockedChars() : ['chick'];
+    var want = (data && data.char) || (window.MARProgress ? MARProgress.character() : 'chick');
+    this.charId = unlocked.indexOf(want) >= 0 ? want : 'chick';
+    this.CH = null;
+    for (var i = 0; i < global.MAR_CHARACTERS.length; i++) {
+      if (global.MAR_CHARACTERS[i].id === this.charId) this.CH = global.MAR_CHARACTERS[i];
+    }
+    this.AB = (this.CH && this.CH.ability) || {};
   };
 
   PlayScene.prototype.preload = function () {
-    // 정식 유닛: 후방뷰 병아리 3프레임 스트립(말랑프렌즈 하우스 스타일, codex 생성).
-    if (!this.textures.exists('unit-chick'))
-      this.load.spritesheet('unit-chick', './assets/unit-chick-back.png',
-        { frameWidth: 256, frameHeight: 256 });
-    // 최종 진화(35+) 골드 외형: 왕관 쓴 황금 병아리 후방뷰 3프레임.
-    if (!this.textures.exists('unit-chick-gold'))
-      this.load.spritesheet('unit-chick-gold', './assets/unit-chick-gold-back.png',
-        { frameWidth: 256, frameHeight: 256 });
+    // 캐릭터 5종: 후방뷰 3프레임 + 골드(최종 진화) + 포트레이트(선택 UI).
+    var self = this;
+    global.MAR_CHARACTERS.forEach(function (ch) {
+      if (!self.textures.exists('unit-' + ch.id))
+        self.load.spritesheet('unit-' + ch.id, './assets/unit-' + ch.id + '-back.png',
+          { frameWidth: 256, frameHeight: 256 });
+      if (!self.textures.exists('unit-' + ch.id + '-gold'))
+        self.load.spritesheet('unit-' + ch.id + '-gold', './assets/unit-' + ch.id + '-gold-back.png',
+          { frameWidth: 256, frameHeight: 256 });
+      if (!self.textures.exists('portrait-' + ch.id))
+        self.load.image('portrait-' + ch.id, './assets/portrait-' + ch.id + '.png');
+    });
+    if (!this.textures.exists('item-giant')) this.load.image('item-giant', './assets/item-giant.png');
     // 폴백: 후방뷰가 없으면 협동대모험 측면 시트 임시 사용.
     if (!this.textures.exists('chick'))
       this.load.spritesheet('chick', '/games/coop-adventure/assets/chick-run.png',
@@ -84,18 +97,29 @@
     // tier3+ 는 체감형: 첫 피격 보호막 + 보스탄 속도 −10% + 장벽 잔여피해 −20%
     this.assistTier = window.MARProgress ? MARProgress.assistTier(this.stageNo) : 0;
     var bonus = this.assistTier >= 2 ? 6 : (this.assistTier >= 1 ? 3 : 0);
-    this.squad = new SquadModel(5 + bonus, 1);
+    // 캐릭터 능력: 민트(사수상한 10·데미지 ×1.2)는 SquadModel 이 직접 반영
+    this.squad = new SquadModel(5 + bonus, 1, this.AB);
     this._assistShield = this.assistTier >= 3;
+    this._charShield = !!this.AB.autoShield; // 햄스터: 스테이지당 1회
     this._shotSpeedMul = this.assistTier >= 3 ? 0.9 : 1;
     this._barrierResidualMul = this.assistTier >= 3 ? 0.8 : 1;
 
-    this._invulnUntil = 0;   // 네거티브 게이트 무적(time.now 기준)
+    this._invulnUntil = 0;   // 네거티브 게이트/보호막 무적(time.now 기준)
+    this._invulnNoDrain = false;
     this._shieldFx = null;
+    this._giantUntil = 0;    // 거대 말랑이(3초 장애물 분쇄)
     this.leaderX = W * 0.5;
     this.evolveTier = 0;
 
     this.unitLayer = this.add.container(0, 0).setDepth(5);
     this.units = [];
+    // 토끼 시각 오라: 능력(회피력)이 안 보이면 체감이 없다(gemini) — 대장 아래 청록 링
+    this._aura = null;
+    if (this.AB.aura) {
+      this._aura = this.add.ellipse(this.leaderX, this.squadY + 14, 120, 34, 0x4fd7ff, 0.25)
+        .setStrokeStyle(3, 0x4fd7ff, 0.7).setDepth(3);
+      this.tweens.add({ targets: this._aura, alpha: 0.55, duration: 420, yoyo: true, repeat: -1 });
+    }
     this.bulletLayer = this.add.container(0, 0).setDepth(4);
     this._bulletPool = []; // 탄환 재사용 풀(개체수 증가 대비 — tween+destroy 비용 제거)
     this.bossShots = [];
@@ -122,18 +146,19 @@
   };
 
   PlayScene.prototype._buildAnims = function () {
-    this._useBackView = this.textures.exists('unit-chick') && !this._unitChickFailed;
-    this._hasGold = this.textures.exists('unit-chick-gold');
+    var id = this.charId;
+    this._useBackView = this.textures.exists('unit-' + id);
+    this._hasGold = this.textures.exists('unit-' + id + '-gold');
     if (this._useBackView) {
-      if (!this.anims.exists('unit-run'))
+      if (!this.anims.exists('unit-run-' + id))
         this.anims.create({
-          key: 'unit-run', frameRate: 10, yoyo: true, repeat: -1,
-          frames: this.anims.generateFrameNumbers('unit-chick', { frames: [0, 1, 2] })
+          key: 'unit-run-' + id, frameRate: 10, yoyo: true, repeat: -1,
+          frames: this.anims.generateFrameNumbers('unit-' + id, { frames: [0, 1, 2] })
         });
-      if (this._hasGold && !this.anims.exists('unit-run-gold'))
+      if (this._hasGold && !this.anims.exists('unit-run-' + id + '-gold'))
         this.anims.create({
-          key: 'unit-run-gold', frameRate: 10, yoyo: true, repeat: -1,
-          frames: this.anims.generateFrameNumbers('unit-chick-gold', { frames: [0, 1, 2] })
+          key: 'unit-run-' + id + '-gold', frameRate: 10, yoyo: true, repeat: -1,
+          frames: this.anims.generateFrameNumbers('unit-' + id + '-gold', { frames: [0, 1, 2] })
         });
     } else if (!this.anims.exists('chick-run')) {
       this.anims.create({
@@ -205,6 +230,8 @@
         self.track.push(self._makeBarrier(ev.at, ev.barrier));
       } else if (ev.risk) {
         self.track.push(self._makeRisk(ev.at, ev.risk));
+      } else if (ev.item) {
+        self.track.push(self._makeItem(ev.at, ev.item));
       }
     });
     // 보스 (스테이지별 파라미터)
@@ -350,6 +377,20 @@
     };
   };
 
+  /* 거대 말랑이 아이템(gemini) — 손배치 픽업. 먹으면 3초 거대화 + 장애물 분쇄. */
+  PlayScene.prototype._makeItem = function (dist, it) {
+    var x = this.laneMin + (this.laneMax - this.laneMin) * it.xr;
+    var c = this.add.container(x, -200).setDepth(2);
+    if (this.textures.exists('item-giant')) {
+      var img = this.add.image(0, 0, 'item-giant').setDisplaySize(56, 56);
+      c.add(img);
+      this.tweens.add({ targets: img, y: -8, duration: 500, yoyo: true, repeat: -1, ease: 'Sine.inOut' });
+    } else {
+      c.add(this.add.circle(0, 0, 26, 0xffb3c8).setStrokeStyle(3, 0xff7da0));
+    }
+    return { type: 'item', dist: dist, x: x, display: c, dead: false };
+  };
+
   PlayScene.prototype._makeBoss = function (dist, hp) {
     var W = this.W;
     var c = this.add.container(W / 2, -300).setDepth(3).setVisible(false);
@@ -399,24 +440,62 @@
   PlayScene.prototype._buildStartOverlay = function () {
     var W = this.W, H = this.H, self = this;
     var dim = this.add.rectangle(W / 2, H / 2, W, H, 0x1b2a3a, 0.45).setDepth(30);
-    var t1 = this.add.text(W / 2, H * 0.30, '말랑프렌즈 러너', {
+    var t1 = this.add.text(W / 2, H * 0.20, '말랑프렌즈 러너', {
       fontFamily: 'sans-serif', fontSize: '42px', color: '#ffffff', fontStyle: 'bold',
       stroke: '#1b2a3a', strokeThickness: 6
     }).setOrigin(0.5).setDepth(31);
-    var t2 = this.add.text(W / 2, H * 0.38,
+    var t2 = this.add.text(W / 2, H * 0.27,
       '스테이지 ' + this.stageNo + ' — ' + this.S.name, {
       fontFamily: 'sans-serif', fontSize: '22px', color: '#ffe08a', fontStyle: 'bold'
     }).setOrigin(0.5).setDepth(31);
-    var t3 = this.add.text(W / 2, H * 0.51, '좌우로 드래그해서 부대를 조종하세요\n게이트를 골라 부대를 키우세요 🐤', {
-      fontFamily: 'sans-serif', fontSize: '19px', color: '#ffffff', align: 'center', lineSpacing: 8
+    var t3 = this.add.text(W / 2, H * 0.36, '좌우로 드래그해서 부대를 조종하세요\n게이트를 골라 부대를 키우세요 🐤', {
+      fontFamily: 'sans-serif', fontSize: '18px', color: '#ffffff', align: 'center', lineSpacing: 6
     }).setOrigin(0.5).setDepth(31);
-    var t4 = this.add.text(W / 2, H * 0.62, '▶ 탭해서 시작', {
+    var t4 = this.add.text(W / 2, H * 0.46, '▶ 탭해서 시작', {
       fontFamily: 'sans-serif', fontSize: '26px', color: '#8ef0a8', fontStyle: 'bold'
     }).setOrigin(0.5).setDepth(31);
     this.tweens.add({ targets: t4, alpha: 0.35, duration: 550, yoyo: true, repeat: -1 });
     var ui = [dim, t1, t2, t3, t4];
+    // ---- 캐릭터 선택(포트레이트 칩 5개 + 능력 설명) — 칩 밴드는 시작 탭 제외 ----
+    var charY = H * 0.60;
+    var unlockedChars = global.MARUnlockedChars ? MARUnlockedChars() : ['chick'];
+    var abilityText = this.add.text(W / 2, charY + 64,
+      this.CH.abilityName + ' — ' + this.CH.abilityDesc, {
+      fontFamily: 'sans-serif', fontSize: '17px', color: '#bfe3ff', fontStyle: 'bold'
+    }).setOrigin(0.5).setDepth(31);
+    ui.push(abilityText);
+    for (var ci = 0; ci < global.MAR_CHARACTERS.length; ci++) {
+      (function (ch, idx) {
+        var cx = W / 2 + (idx - 2) * 96;
+        var isUnlocked = unlockedChars.indexOf(ch.id) >= 0;
+        var isSel = ch.id === self.charId;
+        var ring = self.add.circle(cx, charY, 40, 0xffffff, isSel ? 0.28 : 0.10)
+          .setStrokeStyle(isSel ? 4 : 2, isSel ? 0x8ef0a8 : 0xffffff, isSel ? 1 : 0.45)
+          .setDepth(31);
+        var pr;
+        if (self.textures.exists('portrait-' + ch.id)) {
+          pr = self.add.image(cx, charY, 'portrait-' + ch.id);
+          pr.setDisplaySize(64 * (pr.width / pr.height), 64).setDepth(32);
+          if (!isUnlocked) pr.setTint(0x555f6e).setAlpha(0.8);
+        } else {
+          pr = self.add.text(cx, charY, ch.emoji, { fontSize: '40px' }).setOrigin(0.5).setDepth(32);
+          if (!isUnlocked) pr.setAlpha(0.4);
+        }
+        var nm = self.add.text(cx, charY + 42, isUnlocked ? ch.name : '🔒', {
+          fontFamily: 'sans-serif', fontSize: '12px', color: isSel ? '#8ef0a8' : '#ffffff'
+        }).setOrigin(0.5).setDepth(32);
+        ui.push(ring, pr, nm);
+        if (isUnlocked && !isSel) {
+          ring.setInteractive({ useHandCursor: true });
+          ring.on('pointerdown', function () {
+            if (window.MARProgress) MARProgress.setCharacter(ch.id);
+            self.scene.restart({ stage: self.stageNo, char: ch.id });
+          });
+        }
+      })(global.MAR_CHARACTERS[ci], ci);
+    }
     // 스테이지 선택 칩 — 해금된 것만 탭 가능. 칩 밴드(y±28)는 시작 탭에서 제외.
-    var chipY = H * 0.73;
+    var chipY = H * 0.84;
     var maxStage = window.MARProgress ? MARProgress.maxStage() : 1;
     for (var n = 1; n <= global.MAR_STAGES.length; n++) {
       (function (sn) {
@@ -437,12 +516,13 @@
     }
     this._startTap = function (pointer) {
       var py = (pointer && pointer.y != null) ? pointer.y : 0;
-      if (Math.abs(py - chipY) < 28) { // 칩 밴드는 시작 탭 제외(재등록)
+      // 칩 밴드(스테이지/캐릭터)는 시작 탭에서 제외(리스너 재등록)
+      if (Math.abs(py - chipY) < 28 || Math.abs(py - charY) < 56) {
         self.input.once('pointerdown', self._startTap);
         return;
       }
       if (window.MARSfx) MARSfx.init(); // 첫 제스처에서 오디오 잠금 해제
-      if (window.MARTelemetry) MARTelemetry.startRun(self.stageNo, 'chick');
+      if (window.MARTelemetry) MARTelemetry.startRun(self.stageNo, self.charId);
       ui.forEach(function (o) { o.destroy(); });
       self.state = 'run';
     };
@@ -452,8 +532,8 @@
   // ---- 부대 렌더 + 진화 ----------------------------------------------------
   // 진화 단계별 유닛 애니메이션 키(최종 단계 = 골드 외형, 한 판 내 단방향)
   PlayScene.prototype._unitAnimKey = function () {
-    if (this._useBackView && this._hasGold && this.evolveTier >= 2) return 'unit-run-gold';
-    return this._useBackView ? 'unit-run' : 'chick-run';
+    if (this._useBackView && this._hasGold && this.evolveTier >= 2) return 'unit-run-' + this.charId + '-gold';
+    return this._useBackView ? 'unit-run-' + this.charId : 'chick-run';
   };
   PlayScene.prototype._checkEvolve = function () {
     var n = this.squad.count();
@@ -463,7 +543,7 @@
       // 최종 진화: 부대 전원 골드 외형으로 스왑
       if (this.evolveTier >= 2 && this._useBackView && this._hasGold) {
         for (var k = 0; k < this.units.length; k++) {
-          this.units[k].play({ key: 'unit-run-gold', startFrame: k % 3 });
+          this.units[k].play({ key: this._unitAnimKey(), startFrame: k % 3 });
         }
       }
       var lbl = this.add.text(this.leaderX, this.squadY - 70, '진화! ✨', {
@@ -487,14 +567,15 @@
     }
   };
   PlayScene.prototype._unitScale = function () {
-    return UNIT_H[this.evolveTier] / 256;
+    var giant = this.time.now < this._giantUntil ? 1.5 : 1; // 거대 말랑이: 3초 거대화
+    return UNIT_H[this.evolveTier] / 256 * giant;
   };
   PlayScene.prototype._layoutUnits = function () {
     var want = Math.min(this.squad.count(), MAX_RENDER_UNITS);
     while (this.units.length < want) {
       var s;
       if (this._useBackView) {
-        s = this.add.sprite(0, 0, 'unit-chick');
+        s = this.add.sprite(0, 0, 'unit-' + this.charId);
         // 유닛마다 위상을 흩어 "살아있는 군단" 느낌 (골드 진화 후엔 골드로 합류)
         s.play({ key: this._unitAnimKey(), startFrame: this.units.length % 3 });
       } else {
@@ -620,9 +701,18 @@
     o.display.destroy();
   };
   PlayScene.prototype._hitSquad = function (n, cause) {
-    // 네거티브 게이트 무적: 모든 외부 피해 무시(자기 비용인 neg 는 통과)
-    if (cause !== 'neg' && this.time.now < this._invulnUntil) {
+    // 무적: 외부 피해 무시(자기 비용인 neg 는 통과). 햄스터 보호막발 무적은
+    // 드레인을 막지 않는다("드레인·게이트 페널티 제외" — codex P0).
+    if (cause !== 'neg' && this.time.now < this._invulnUntil &&
+        !(cause === 'drain' && this._invulnNoDrain)) {
       this._floatLabel('무적!', '#7ad7ff');
+      return;
+    }
+    // 햄스터 보호막: 스테이지당 1회 무효 + 1.5초 무적. 보스 드레인·게이트 페널티 제외(DESIGN)
+    if (this._charShield && cause !== 'neg' && cause !== 'drain') {
+      this._charShield = false;
+      this._floatLabel('보호막 발동!', '#ffd24a');
+      this._startInvuln(this.AB.shieldInvulnSec || 1.5, { noDrain: true });
       return;
     }
     // 어시스트 tier3: 첫 피격 1회 보호막 ("이번엔 깰 수 있겠다" 체감형)
@@ -631,6 +721,10 @@
       this._floatLabel('보호막!', '#8ef0a8');
       this.cameras.main.flash(120, 160, 240, 255);
       return;
+    }
+    // 라떼: 받는 피해 −25% (자기 비용인 neg 제외). floor — 작은 피해(2)도 감소 체감(codex P2)
+    if (cause !== 'neg' && this.AB.damageTakenMul) {
+      n = Math.max(1, Math.floor(n * this.AB.damageTakenMul));
     }
     this._lastHitCause = cause || 'unknown'; // 사망 원인 텔레메트리(마지막 피해 출처)
     this.squad.lose(n);
@@ -650,8 +744,9 @@
   };
 
   /* 네거티브 게이트 무적 시작 — 보호 버블 + 만료 처리 */
-  PlayScene.prototype._startInvuln = function (sec) {
+  PlayScene.prototype._startInvuln = function (sec, opts) {
     this._invulnUntil = this.time.now + sec * 1000;
+    this._invulnNoDrain = !!(opts && opts.noDrain); // 보호막발 무적은 드레인 미차단
     this._destroyShieldFx();
     var fx = this.add.circle(this.leaderX, this.squadY - 20, 86)
       .setStrokeStyle(5, 0x7ad7ff, 0.9).setFillStyle(0x7ad7ff, 0.12).setDepth(7);
@@ -670,7 +765,10 @@
     var otherRect = chooseLeft ? g.rightRect : g.leftRect;
     var beforeAmount = this.squad.count(), beforePower = this.squad.power;
     if (side.op === 'mul') this.squad.mul(side.val);
-    else if (side.op === 'add') this.squad.add(side.val);
+    else if (side.op === 'add') {
+      // 병아리 군집: +N 게이트만 +20% (×N 포함 시 상한 도달이 너무 빨라짐 — codex P0)
+      this.squad.add(this.AB.addGateMul ? Math.round(side.val * this.AB.addGateMul) : side.val);
+    }
     else if (side.op === 'pow') this.squad.addPower(side.val);
     else if (side.op === 'neg') {
       // 네거티브 게이트: 머릿수를 내주고 무적을 산다 (직후 위협 구간에서 이득 가시화)
@@ -683,7 +781,7 @@
       afterAmount: this.squad.count(), afterPower: this.squad.power
     });
     if (window.MARSfx) MARSfx.play('gate');
-    this.tweens.add({ targets: chosenRect, scaleX: 1.18, scaleY: 1.18, yoyo: true, duration: 150 });
+    if (chosenRect) this.tweens.add({ targets: chosenRect, scaleX: 1.18, scaleY: 1.18, yoyo: true, duration: 150 });
     if (otherRect) this.tweens.add({ targets: otherRect, alpha: 0.2, duration: 150 });
     var labelText = side.op === 'pow' ? '무기 강화!'
       : side.op === 'neg' ? '무적 ' + (side.invulnSec || 3) + '초!'
@@ -703,7 +801,8 @@
     if (this.state !== 'finish') {
       var ratio = this.input0 ? this.input0.targetX : 0.5;
       var tx = Phaser.Math.Linear(this.laneMin, this.laneMax, ratio);
-      this.leaderX += (tx - this.leaderX) * Math.min(1, dt * 10);
+      var steer = 10 * (this.AB.steerMul || 1); // 토끼: 조향 +25%
+      this.leaderX += (tx - this.leaderX) * Math.min(1, dt * steer);
       this.leaderX = Phaser.Math.Clamp(this.leaderX, this.laneMin, this.laneMax);
     }
 
@@ -716,9 +815,10 @@
       this._layoutUnits();
       // 무적 버블: 부대 추적 + 만료 정리
       if (this._shieldFx) {
-        if (this.time.now >= this._invulnUntil) { this._shieldFx.destroy(); this._shieldFx = null; }
+        if (this.time.now >= this._invulnUntil) this._destroyShieldFx();
         else { this._shieldFx.x = this.leaderX; this._shieldFx.y = this.squadY - 20; }
       }
+      if (this._aura) this._aura.x = this.leaderX; // 토끼 오라 추적
       this._autoFire(dt);
       this._updateBgScroll();
       this._updateUI();
@@ -747,15 +847,29 @@
         o.display.angle = Math.sin((this._time || 0) / 200 + o.dist) * 6;
       }
 
+      var giant = this.time.now < this._giantUntil;
       if (o.type === 'gate' && !o.resolved && sy >= this.squadY) {
         this._resolveGate(o);
+      } else if (o.type === 'item' && sy >= this.squadY) {
+        if (Math.abs(this.leaderX - o.x) < 75) {
+          this._giantUntil = this.time.now + 3000;
+          this._floatLabel('거대 말랑이! 💪', '#ff7da0');
+          if (window.MARSfx) MARSfx.play('evolve');
+          this.cameras.main.flash(140, 255, 200, 220);
+        }
+        o.dead = true; o.display.destroy();
       } else if (o.type === 'enemy' && sy >= this.squadY) {
-        this._hitSquad(o.kind === 'armor' ? ARMOR_CONTACT : MOB_CONTACT, o.kind);
-        this._killTrack(o, false);
+        // 거대화 중엔 무피해 분쇄
+        if (!giant) this._hitSquad(o.kind === 'armor' ? ARMOR_CONTACT : MOB_CONTACT, o.kind);
+        this._killTrack(o, giant);
       } else if (o.type === 'barrier' && sy >= this.squadY) {
-        // 어시스트 tier3: 잔여피해 −20%
-        if (o.hp > 0) this._hitSquad(Math.ceil(o.hp / 12 * this._barrierResidualMul), 'barrier');
-        this._killTrack(o, o.hp <= 0);
+        if (giant) {
+          this._killTrack(o, true); // 거대화: 잔여 HP 무관 분쇄
+        } else {
+          // 어시스트 tier3: 잔여피해 −20%
+          if (o.hp > 0) this._hitSquad(Math.ceil(o.hp / 12 * this._barrierResidualMul), 'barrier');
+          this._killTrack(o, o.hp <= 0);
+        }
       } else if (o.type === 'risk' && !o.resolved) {
         // 통로 구간(sy는 중심): 머무는 동안 벽 접촉 체크, 빠져나가면 보상/무보상 확정
         if (Math.abs(sy - this.squadY) < RISK_H / 2) {
@@ -763,8 +877,9 @@
           if (!inGap && !o.touched) {
             o.touched = true;
             var beforeGraze = this.squad.count();
-            this._hitSquad(o.graze, 'graze');
-            o.grazeLost = beforeGraze - this.squad.count(); // 무적/보호막에 막히면 0
+            // 거대화 중엔 벽 스침도 무피해(분쇄 체감과 판정 일치 — codex P1). ×3 보상은 그래도 소멸.
+            if (!giant) this._hitSquad(o.graze, 'graze');
+            o.grazeLost = beforeGraze - this.squad.count(); // 막히면 0 → graze_blocked
             o.display.list.forEach(function (ch) { if (ch.setAlpha) ch.setAlpha(0.55); });
           }
         } else if (sy - RISK_H / 2 > this.squadY) {
@@ -951,7 +1066,8 @@
       s.obj.y += s.vy * dt;
       // 부대선 도달: 대장 주변에 맞으면 피해, 아니면 통과
       if (s.obj.y >= this.squadY - 6) {
-        if (Math.abs(s.obj.x - this.leaderX) < BOSS_SHOT_HIT_W) {
+        // 토끼: 보스탄 히트박스 −15%
+        if (Math.abs(s.obj.x - this.leaderX) < BOSS_SHOT_HIT_W * (this.AB.shotHitboxMul || 1)) {
           this._hitSquad(BOSS_SHOT_DMG, 'shot');
           this._breakFx(s.obj.x, this.squadY, false);
         }
@@ -981,15 +1097,24 @@
       MARTelemetry.endRun({
         win: win, amount: this.squad.count(), power: this.squad.power,
         bossHp: this.boss ? Math.max(0, Math.ceil(this.boss.hp)) : null,
-        assistTier: this.assistTier
+        assistTier: this.assistTier,
+        character: this.charId // 캐릭터별 밸런스 분석이 run join 에 의존하지 않게(codex P1)
       });
     }
-    // 진도/어시스트 기록 + 다음 스테이지 결정
+    // 진도/어시스트 기록 + 다음 스테이지 결정 (+ 새 캐릭터 해금 감지)
     var total = global.MAR_STAGES.length;
     var hasNext = win && this.stageNo < total;
+    var newChars = [];
     if (window.MARProgress) {
+      var beforeUnlocked = global.MARUnlockedChars ? MARUnlockedChars() : [];
       if (win) MARProgress.recordClear(this.stageNo, total);
       else MARProgress.recordFail(this.stageNo);
+      if (win && global.MARUnlockedChars) {
+        var afterUnlocked = MARUnlockedChars();
+        for (var ni = 0; ni < afterUnlocked.length; ni++) {
+          if (beforeUnlocked.indexOf(afterUnlocked[ni]) < 0) newChars.push(afterUnlocked[ni]);
+        }
+      }
     }
     this._nextStage = win ? (hasNext ? this.stageNo + 1 : 1) : this.stageNo;
     if (win && window.MARSfx) MARSfx.play('clear');
@@ -1005,6 +1130,20 @@
       '남은 부대원 🐤 ' + this.squad.count() + '   무기 ⚔ Lv ' + this.squad.power, {
       fontFamily: 'sans-serif', fontSize: '22px', color: '#ffe08a', fontStyle: 'bold'
     }).setOrigin(0.5).setDepth(31);
+    // 새 캐릭터 해금 토스트
+    if (newChars.length) {
+      var names = newChars.map(function (id) {
+        for (var i = 0; i < global.MAR_CHARACTERS.length; i++)
+          if (global.MAR_CHARACTERS[i].id === id)
+            return global.MAR_CHARACTERS[i].emoji + ' ' + global.MAR_CHARACTERS[i].name;
+        return id;
+      }).join(', ');
+      var unlockLbl = this.add.text(W / 2, H / 2 - 110, '새 친구 합류! ' + names, {
+        fontFamily: 'sans-serif', fontSize: '24px', color: '#ffd24a', fontStyle: 'bold',
+        stroke: '#7a4d00', strokeThickness: 4
+      }).setOrigin(0.5).setDepth(32).setScale(0.2);
+      this.tweens.add({ targets: unlockLbl, scale: 1, duration: 450, ease: 'Back.Out' });
+    }
     this.add.text(W / 2, H / 2 + 56,
       win ? (hasNext ? '탭하면 다음 스테이지 ▶' : '탭하면 처음부터 다시') : '탭하면 다시 도전', {
       fontFamily: 'sans-serif', fontSize: '22px', color: '#ffffff'

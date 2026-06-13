@@ -10,16 +10,20 @@
   var SHOOTER_CAP = 12;
   var DMG_PER_SHOOTER = 7; // 화력 1, 사수 1당 초당 데미지
 
-  function SquadModel(amount, power) {
+  /* opts(M3 캐릭터 능력): shooterCap(민트 10), dmgMul(민트 ×1.2) */
+  function SquadModel(amount, power, opts) {
     this.amount = amount;
     this.power = power;
+    // 사수상한 해제 금지(기둥 1): 캐릭터/어시스트가 무엇을 넣어도 SHOOTER_CAP 초과 불가
+    this.cap = Math.min(SHOOTER_CAP, (opts && opts.shooterCap) || SHOOTER_CAP);
+    this.dmgMul = (opts && opts.dmgMul) || 1;
   }
   SquadModel.prototype.count = function () { return Math.max(0, Math.round(this.amount)); };
   SquadModel.prototype.activeShooters = function () {
-    return Math.min(Math.floor(this.amount), SHOOTER_CAP);
+    return Math.min(Math.floor(this.amount), this.cap);
   };
   SquadModel.prototype.dps = function () {
-    return this.activeShooters() * this.power * DMG_PER_SHOOTER;
+    return this.activeShooters() * this.power * DMG_PER_SHOOTER * this.dmgMul;
   };
   SquadModel.prototype.add = function (n) { this.amount = Math.max(0, this.amount + n); };
   SquadModel.prototype.mul = function (f) { this.amount = Math.max(0, Math.round(this.amount * f)); };
