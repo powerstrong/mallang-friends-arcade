@@ -88,6 +88,10 @@ const JUMP_GAME_SETTINGS = {
   monsterTurnIntervalMinMs: 1400,
   monsterTurnIntervalMaxMs: 2800,
   monsterLifetimeMs: 9000,
+  // 게임성 v2 — 후반 난이도 램프 (클라 settings와 동일 값 유지)
+  monsterSpawnIntervalMinLateMs: 3200,
+  monsterSpawnIntervalMaxLateMs: 6200,
+  monsterRampHeightM: 400,
 };
 
 const PLATFORM_KINDS = ['leaf', 'cloud', 'cake'];
@@ -103,9 +107,9 @@ const JUMP_CHARACTERS = [
 
 const JUMP_CHARACTER_ABILITIES = {
   'mochi-rabbit':    { jumpMul: 1.06, gravityMul: 1.00, moveMul: 1.00, boostMul: 1.00, superJumpEvery: 0 },
-  'pudding-hamster': { jumpMul: 1.00, gravityMul: 1.00, moveMul: 1.18, boostMul: 1.00, superJumpEvery: 0 },
-  'peach-chick':     { jumpMul: 1.00, gravityMul: 0.85, moveMul: 1.00, boostMul: 1.00, superJumpEvery: 0 },
-  'latte-puppy':     { jumpMul: 1.00, gravityMul: 1.00, moveMul: 1.00, boostMul: 1.00, superJumpEvery: 3 },
+  'pudding-hamster': { jumpMul: 1.03, gravityMul: 1.00, moveMul: 1.22, boostMul: 1.00, superJumpEvery: 0 },
+  'peach-chick':     { jumpMul: 1.00, gravityMul: 0.90, moveMul: 1.00, boostMul: 1.00, superJumpEvery: 0 },
+  'latte-puppy':     { jumpMul: 1.00, gravityMul: 1.00, moveMul: 1.00, boostMul: 1.00, superJumpEvery: 4 },
   'mint-kitten':     { jumpMul: 1.00, gravityMul: 1.00, moveMul: 1.00, boostMul: 1.50, superJumpEvery: 0 },
 };
 
@@ -487,6 +491,16 @@ export class GameRoom {
     );
   }
 
+  // 발판 종류 비율 — 후반으로 갈수록 1회용 케이크 비중↑, 안전한 나뭇잎 비중↓.
+  // (클라 pickPlatformKind와 같은 값 유지. 케이크/구름 행동 자체는 클라 로컬 판정)
+  _pickJumpPlatformKind(progress) {
+    const cakeShare = 0.2 + 0.15 * progress;
+    const roll = Math.random();
+    if (roll < cakeShare) return 'cake';
+    if (roll < cakeShare + 0.35) return 'cloud';
+    return 'leaf';
+  }
+
   _createJumpPlatform(game, y, isBase = false, anchorPlatform = null) {
     const profile = getPlatformProfile(y);
     const width = isBase
@@ -509,7 +523,7 @@ export class GameRoom {
       );
       x = nextCenter - width / 2;
     }
-    const kind = isBase ? 'base' : PLATFORM_KINDS[Math.floor(Math.random() * PLATFORM_KINDS.length)];
+    const kind = isBase ? 'base' : this._pickJumpPlatformKind(profile.progress);
     const motion = isBase
       ? { type: 'static', amplitude: 0, speed: 0, phase: 0, rotateAmplitude: 0 }
       : createPlatformMotion();
@@ -533,7 +547,12 @@ export class GameRoom {
   }
 
   _spawnJumpBoost(game, platform) {
-    const kind = Math.random() < 0.5 ? 'rocket' : 'star';
+    // 2P 세션에서만 방해 아이템(storm) 등장 — 먹으면 상대 화면에 먹구름.
+    // 1P 솔로(서버 미사용)·1인 방에선 기존 rocket/star만.
+    const allowStorm = (game.expectedPlayers || 1) > 1;
+    const kind = allowStorm && Math.random() < 0.25
+      ? 'storm'
+      : (Math.random() < 0.5 ? 'rocket' : 'star');
     game.boosts.push({
       id: `boost-${game.nextBoostId++}`,
       x: platform.x + platform.width / 2 - 30,
@@ -569,6 +588,7 @@ export class GameRoom {
       messageSeq: 0,
       running: false,
       worldDirty: true,
+      cheerCount: 0,
     };
 
     participants.forEach((player, slot) => {
@@ -597,6 +617,7 @@ export class GameRoom {
     this.jumpGame.players = {};
     this.jumpGame.running = false;
     this.jumpGame.worldDirty = true;
+    this.jumpGame.cheerCount = 0;
 
     roster.forEach((player, slot) => {
       this.jumpGame.players[player.id] = this._createJumpPlayer(
@@ -896,9 +917,12 @@ export class GameRoom {
 
     if (game.elapsedMs >= game.nextMonsterSpawnAtMs) {
       this._spawnEdgeMonster(game);
+      // 고도에 비례해 스폰 간격 단축 — 후반 긴장감 (클라 updateMonsters와 동일 램프)
+      const heightM = Math.max(0, (JUMP_GAME_SETTINGS.startLineY - 320 - game.cameraY) / 10);
+      const ramp = clamp(heightM / JUMP_GAME_SETTINGS.monsterRampHeightM, 0, 1);
       game.nextMonsterSpawnAtMs = game.elapsedMs + randomBetween(
-        JUMP_GAME_SETTINGS.monsterSpawnIntervalMinMs,
-        JUMP_GAME_SETTINGS.monsterSpawnIntervalMaxMs
+        lerp(JUMP_GAME_SETTINGS.monsterSpawnIntervalMinMs, JUMP_GAME_SETTINGS.monsterSpawnIntervalMinLateMs, ramp),
+        lerp(JUMP_GAME_SETTINGS.monsterSpawnIntervalMaxMs, JUMP_GAME_SETTINGS.monsterSpawnIntervalMaxLateMs, ramp)
       );
     }
   }
@@ -2294,6 +2318,44 @@ export class GameRoom {
     }
   }
 
+  // ── 점프 2P 상호작용: 먹구름 공격 + 응원 (서버는 검증·레이트리밋 후 릴레이만) ──
+
+  _handleJumpAttack(player) {
+    if (!this.jumpGame || !this.jumpGame.running) return;
+    if (player.role !== 'game' || player.gameId !== 'jump-climber' || player.isSpectator) return;
+    const me = this.jumpGame.players[player.id];
+    if (!me || !me.alive) return;
+    const now = Date.now();
+    if (me.lastAttackAtMs && now - me.lastAttackAtMs < 1500) return;
+    me.lastAttackAtMs = now;
+
+    const text = JSON.stringify({ type: 'jump_attack', kind: 'storm', fromSlot: me.slot, fromName: me.name });
+    for (const { ws, player: target } of this._getJumpSessions({ spectators: false })) {
+      if (target.id === player.id) continue;
+      try { ws.send(text); } catch { /* ignore closed */ }
+    }
+  }
+
+  _handleJumpCheer(player) {
+    if (!this.jumpGame || !this.jumpGame.running) return;
+    if (player.role !== 'game' || player.gameId !== 'jump-climber') return;
+    const me = this.jumpGame.players[player.id];
+    const isDeadPlayer = Boolean(me && !me.alive);
+    if (!player.isSpectator && !isDeadPlayer) return; // 생존자 본인은 응원 불가
+
+    const now = Date.now();
+    if (!this.jumpCheerLastAtMs) this.jumpCheerLastAtMs = new Map();
+    const last = this.jumpCheerLastAtMs.get(player.id) || 0;
+    if (now - last < 300) return;
+    this.jumpCheerLastAtMs.set(player.id, now);
+
+    this.jumpGame.cheerCount = (this.jumpGame.cheerCount || 0) + 1;
+    this._broadcastGame(
+      { type: 'jump_cheer', count: this.jumpGame.cheerCount, fromName: player.name },
+      'jump-climber'
+    );
+  }
+
   // ── fetch ──────────────────────────────────────────────────────────────────
 
   async fetch(request) {
@@ -2361,6 +2423,8 @@ export class GameRoom {
       case 'vote_start':    if (player) await this._handleVoteStart(ws, player, msg);     break;
       case 'player_input':  if (player) this._handlePlayerInput(player, msg);             break;
       case 'player_state':  if (player) this._handleJumpPlayerState(player, msg);          break;
+      case 'jump_attack':   if (player) this._handleJumpAttack(player);                    break;
+      case 'jump_cheer':    if (player) this._handleJumpCheer(player);                     break;
       case 'QUIZ_SELECT_CHARACTER':
         if (player?.gameId === 'mallang-quiz-battle') await this._handleQuizSelectCharacter(player, msg);
         break;

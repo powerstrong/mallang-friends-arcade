@@ -31,6 +31,8 @@ const chatSendBtn = document.getElementById("chatSend");
 const rivalGaugeEl = document.getElementById("rivalGauge");
 const rivalMarkerMeEl = document.getElementById("rivalMarkerMe");
 const rivalMarkerRivalEl = document.getElementById("rivalMarkerRival");
+const biomeTintEl = document.getElementById("biomeTint");
+const stormOverlayEl = document.getElementById("stormOverlay");
 const gameBoot = window.GameBoot || null;
 const isRoomSession = Boolean(gameBoot && gameBoot.isMultiplayer);
 
@@ -156,9 +158,9 @@ const RANDOM_CHARACTER_OPTION = {
 // 서버 worker/src/room.js의 JUMP_CHARACTER_ABILITIES와 같은 값. 클라 솔로 모드 + UI 표시용.
 const CHARACTER_ABILITIES = {
   "mochi-rabbit":    { jumpMul: 1.06, gravityMul: 1.00, moveMul: 1.00, boostMul: 1.00, superJumpEvery: 0 },
-  "pudding-hamster": { jumpMul: 1.00, gravityMul: 1.00, moveMul: 1.18, boostMul: 1.00, superJumpEvery: 0 },
-  "peach-chick":     { jumpMul: 1.00, gravityMul: 0.85, moveMul: 1.00, boostMul: 1.00, superJumpEvery: 0 },
-  "latte-puppy":     { jumpMul: 1.00, gravityMul: 1.00, moveMul: 1.00, boostMul: 1.00, superJumpEvery: 3 },
+  "pudding-hamster": { jumpMul: 1.03, gravityMul: 1.00, moveMul: 1.22, boostMul: 1.00, superJumpEvery: 0 },
+  "peach-chick":     { jumpMul: 1.00, gravityMul: 0.90, moveMul: 1.00, boostMul: 1.00, superJumpEvery: 0 },
+  "latte-puppy":     { jumpMul: 1.00, gravityMul: 1.00, moveMul: 1.00, boostMul: 1.00, superJumpEvery: 4 },
   "mint-kitten":     { jumpMul: 1.00, gravityMul: 1.00, moveMul: 1.00, boostMul: 1.50, superJumpEvery: 0 },
 };
 
@@ -187,10 +189,11 @@ let randomMainImageAvailable = false;
   probe.src = RANDOM_CHARACTER_OPTION.mainImage;
 })();
 
-const PLATFORM_KINDS = ["leaf", "cloud", "cake"];
 const BOOST_META = {
   rocket: { label: "UP", message: "로켓 부스트" },
   star: { label: "GO", message: "별 부스트" },
+  // 2P 방해 아이템 — 서버가 멀티 세션에서만 스폰. 먹으면 상대 화면에 먹구름.
+  storm: { label: "VS", message: "먹구름" },
 };
 
 const PLATFORM_DECO_BY_MOTION = {
@@ -225,6 +228,12 @@ const settings = {
   monsterTurnIntervalMinMs: 1400,
   monsterTurnIntervalMaxMs: 2800,
   monsterLifetimeMs: 9000,
+  // 게임성 v2 — 발판 행동·후반 난이도 램프 (서버 JUMP_GAME_SETTINGS와 동일 값 유지)
+  cakeCrumbleDelayMs: 450,
+  cloudSinkStep: 30,
+  monsterSpawnIntervalMinLateMs: 3200,
+  monsterSpawnIntervalMaxLateMs: 6200,
+  monsterRampHeightM: 400,
 };
 
 const PLAYER_COLORS = ["#ef4444", "#3b82f6", "#22c55e", "#f59e0b", "#a855f7", "#ec4899", "#14b8a6", "#f97316"];
@@ -263,6 +272,9 @@ const state = {
   monsters: [],
   nextMonsterSpawnAt: 0,
   effects: [],
+  recordLine: null,
+  soloLastFrameMs: 0,
+  soloAccumulatorMs: 0,
   resultSubmitted: false,
   audio: {
     ctx: null,
@@ -515,6 +527,57 @@ function sendChat() {
   if (!state.network.ws || state.network.ws.readyState !== WebSocket.OPEN) return;
   state.network.ws.send(JSON.stringify({ type: "chat", text }));
   chatInputEl.value = "";
+}
+
+// ── 2P 상호작용: 먹구름 공격 + 응원 ───────────────────────────────────────────
+function sendJumpAttack() {
+  if (!state.network.ws || state.network.ws.readyState !== WebSocket.OPEN) return;
+  state.network.ws.send(JSON.stringify({ type: "jump_attack", kind: "storm" }));
+}
+
+let stormTimeoutId = 0;
+function applyStormOverlay(fromName) {
+  if (!stormOverlayEl) return;
+  stormOverlayEl.classList.add("is-active");
+  setStatus(fromName ? `${fromName}의 먹구름! 시야가 가려져요!` : "먹구름! 시야가 가려져요!");
+  window.clearTimeout(stormTimeoutId);
+  stormTimeoutId = window.setTimeout(() => stormOverlayEl.classList.remove("is-active"), 3200);
+}
+
+// 응원: 탈락한 플레이어/관전자가 화면을 탭하면 모두에게 하트가 보이고,
+// 5회 모일 때마다 생존자에게 미니 부스트가 전달된다.
+let lastCheerSentAtMs = 0;
+function sendJumpCheer() {
+  const now = performance.now();
+  if (now - lastCheerSentAtMs < 400) return;
+  lastCheerSentAtMs = now;
+  if (!state.network.ws || state.network.ws.readyState !== WebSocket.OPEN) return;
+  state.network.ws.send(JSON.stringify({ type: "jump_cheer" }));
+}
+
+function spawnCheerHeart() {
+  if (!arena) return;
+  const heart = document.createElement("div");
+  heart.className = "cheer-heart";
+  heart.textContent = Math.random() < 0.5 ? "💖" : "📣";
+  heart.style.left = `${12 + Math.random() * 76}%`;
+  arena.appendChild(heart);
+  window.setTimeout(() => heart.remove(), 1300);
+}
+
+function handleCheerMessage(msg) {
+  spawnCheerHeart();
+  const me = state.players[0];
+  const isBoostTick = Number.isFinite(msg.count) && msg.count % 5 === 0;
+  if (!isBoostTick) return;
+  if (!state.isSpectator && me && me.alive) {
+    me.vy = Math.min(me.vy, settings.normalJump * 0.9);
+    spawnEffect("burst", me.x + me.width / 2, me.y + me.height / 2);
+    playBoostSound();
+    setStatus("응원 파워! 몸이 가벼워졌어요!");
+  } else {
+    setStatus("응원이 모여 생존자에게 힘이 전해졌어요!");
+  }
 }
 
 function toggleChatInput(open) {
@@ -1062,7 +1125,7 @@ function renderNetworkPlatformEntry(entry, timeSeconds) {
   const { x, rotation } = samplePlatformMotion(entry, timeSeconds);
   entry.el.style.transform = formatWorldTranslate(
     x,
-    entry.worldY - state.cameraY,
+    entry.worldY + (entry.sinkOffset || 0) - state.cameraY,
     ` rotate(${rotation.toFixed(2)}deg)`
   );
 }
@@ -1104,20 +1167,27 @@ function updateNetworkTargets(snapshot) {
         return {
           el,
           id: platform.id,
+          kind: platform.kind,
           baseX: Number.isFinite(platform.baseX) ? platform.baseX : (Number.isFinite(platform.x) ? platform.x : 0),
           worldY: platform.y,
           width: platform.width,
           height: platform.height || 18,
           motion: platform.motion || null,
+          sinkOffset: 0,
+          sinkTarget: 0,
+          broken: false,
         };
       },
       (entry, platform) => {
         const el = entry.el;
         el.className = `platform platform--${platform.kind}`;
+        // 서버 full-world 재전송이 className을 덮어써도 로컬 파손 상태는 유지
+        if (entry.broken) el.classList.add("is-broken");
         el.style.width = `${platform.width}px`;
         const decoType = PLATFORM_DECO_BY_MOTION[platform.motion?.type] || "";
         el.innerHTML = decoType ? `<span class="platform-deco platform-deco--${decoType}"></span>` : "";
         entry.id = platform.id;
+        entry.kind = platform.kind;
         entry.baseX = Number.isFinite(platform.baseX) ? platform.baseX : (Number.isFinite(platform.x) ? platform.x : 0);
         entry.worldY = platform.y;
         entry.width = platform.width;
@@ -1441,19 +1511,24 @@ function ensureLocalNetworkPlayer(entry, snapshotPlayer) {
 }
 
 function syncNetworkCollisionWorld(now, motionTime) {
-  state.platforms = Array.from(state.network.platformEls.values()).map((entry) => {
+  state.platforms = [];
+  state.network.platformEls.forEach((entry) => {
+    if (entry.broken) return;
+    easePlatformSink(entry);
     const motion = samplePlatformMotion(entry, motionTime);
-    return {
+    // sinkOffset은 y에 미리 반영해 복사본에 싣는다 (handleLanding에서 이중 가산 방지)
+    state.platforms.push({
       id: entry.id,
       x: motion.x,
-      y: entry.worldY,
+      y: entry.worldY + (entry.sinkOffset || 0),
       width: entry.width || 0,
       height: entry.height || 18,
+      kind: entry.kind,
       baseX: entry.baseX,
       rotation: motion.rotation,
       motion: entry.motion,
       el: entry.el,
-    };
+    });
   });
 
   state.boosts = Array.from(state.network.boostEls.entries()).map(([id, entry]) => ({
@@ -1588,6 +1663,8 @@ function renderNetworkFrame(now) {
     effect.el.style.setProperty("--ty", `${effect.tyBase - state.cameraY}px`);
   });
 
+  renderRecordLine();
+  updateBiome();
   tickPerfMeter(now);
   state.network.renderFrameId = requestAnimationFrame(renderNetworkFrame);
 }
@@ -1697,11 +1774,20 @@ function handleNetworkMessage(msg) {
     case "chat":
       addChatMessage(msg);
       break;
-    case "scoreboard":
+    case "scoreboard": {
       state.running = false;
       stopNetworkInputLoop();
       stopNetworkRenderLoop();
+      const myResult = (msg.results || []).find((entry) => entry.slot === state.network.mySlot);
+      saveStoredBest(Math.max(myResult?.score || 0, state.players[0]?.bestHeight || 0));
       showNetworkResultsOverlay(msg.results || []);
+      break;
+    }
+    case "jump_attack":
+      if (!state.isSpectator) applyStormOverlay(msg.fromName);
+      break;
+    case "jump_cheer":
+      handleCheerMessage(msg);
       break;
     case "new_record":
       showNewRecordOverlay(msg, 'm');
@@ -1765,6 +1851,7 @@ function connectNetworkGame() {
 
   clearWorld();
   clearNetworkWorld();
+  ensureRecordLine();
   // arena 메트릭은 첫 snapshot 도착 시점에 이미 채워져 있어야 한다 (rAF에 의존하지 않음).
   applyArenaScale(true);
 
@@ -1894,6 +1981,16 @@ function getPlayerDirection(slot) {
   return clamp(getKeyboardDirection(slot) + state.playerTouchDirections[slot], -1, 1);
 }
 
+// 발판 종류 비율 — 후반으로 갈수록 1회용 케이크 비중↑, 안전한 나뭇잎 비중↓.
+// (서버 _createJumpPlatform의 pickJumpPlatformKind와 같은 값 유지)
+function pickPlatformKind(progress) {
+  const cakeShare = 0.2 + 0.15 * progress;
+  const roll = Math.random();
+  if (roll < cakeShare) return "cake";
+  if (roll < cakeShare + 0.35) return "cloud";
+  return "leaf";
+}
+
 function createPlatform(y, isBase = false, anchorPlatform = null) {
   const profile = getPlatformProfile(y);
   const width = isBase
@@ -1916,7 +2013,7 @@ function createPlatform(y, isBase = false, anchorPlatform = null) {
     );
     x = nextCenter - width / 2;
   }
-  const kind = isBase ? "base" : PLATFORM_KINDS[Math.floor(random(0, PLATFORM_KINDS.length))];
+  const kind = isBase ? "base" : pickPlatformKind(profile.progress);
   const motion = isBase
     ? { type: "static", amplitude: 0, speed: 0, phase: 0, rotateAmplitude: 0 }
     : createPlatformMotion();
@@ -1935,10 +2032,14 @@ function createPlatform(y, isBase = false, anchorPlatform = null) {
     y,
     width,
     height: 18,
+    kind,
     el,
     baseX: x,
     rotation: 0,
     motion,
+    sinkOffset: 0,
+    sinkTarget: 0,
+    broken: false,
   };
 
   if (!isBase && motion.type === "static" && Math.random() < 0.2) {
@@ -2029,7 +2130,12 @@ function updateMonsters() {
 
   if (state.players.some((p) => p.alive) && now >= state.nextMonsterSpawnAt) {
     spawnEdgeMonster();
-    state.nextMonsterSpawnAt = now + random(settings.monsterSpawnIntervalMinMs, settings.monsterSpawnIntervalMaxMs);
+    // 고도에 비례해 스폰 간격 단축 — 후반 긴장감 (서버 _tickJumpMonsters와 동일 램프)
+    const ramp = clamp(getCameraHeightM() / settings.monsterRampHeightM, 0, 1);
+    state.nextMonsterSpawnAt = now + random(
+      lerp(settings.monsterSpawnIntervalMinMs, settings.monsterSpawnIntervalMinLateMs, ramp),
+      lerp(settings.monsterSpawnIntervalMaxMs, settings.monsterSpawnIntervalMaxLateMs, ramp)
+    );
   }
 }
 
@@ -2127,6 +2233,72 @@ function spawnEffect(kind, worldX, worldY) {
   }, spec.lifeMs);
 }
 
+// ── 지난 최고 기록 라인 (localStorage — 내 기기 기준, 솔로/멀티 공용) ──────────
+const RECORD_STORAGE_KEY = "jump-climber.bestHeightM";
+
+function loadStoredBest() {
+  try {
+    const value = Number(window.localStorage.getItem(RECORD_STORAGE_KEY));
+    return Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function saveStoredBest(heightM) {
+  if (!Number.isFinite(heightM) || heightM <= 0) return;
+  try {
+    if (heightM > loadStoredBest()) {
+      window.localStorage.setItem(RECORD_STORAGE_KEY, String(Math.floor(heightM)));
+    }
+  } catch {
+    // 저장 불가(사생활 보호 모드 등)여도 게임 진행엔 지장 없음
+  }
+}
+
+function ensureRecordLine() {
+  if (state.recordLine?.el) state.recordLine.el.remove();
+  state.recordLine = null;
+  const best = loadStoredBest();
+  if (best < 5) return;
+  const el = document.createElement("div");
+  el.className = "record-line";
+  el.innerHTML = `<span class="record-line__label">지난 최고 ${best}m</span>`;
+  worldEl.appendChild(el);
+  state.recordLine = { el, worldY: settings.startLineY - best * 10, value: best, passed: false };
+}
+
+function renderRecordLine() {
+  const line = state.recordLine;
+  if (!line) return;
+  line.el.style.transform = formatWorldTranslate(0, line.worldY - state.cameraY);
+  if (line.passed || state.isSpectator) return;
+  const me = state.players[0];
+  if (me && me.bestHeight > line.value) {
+    line.passed = true;
+    line.el.classList.add("is-passed");
+    spawnEffect("burst", me.x + me.width / 2, line.worldY);
+    playBoostSound();
+    setStatus(`지난 최고 기록 ${line.value}m 돌파!`);
+  }
+}
+
+// ── 고도 바이오엄 — 카메라 기준 대략적 진행 높이(m)로 배경 톤 전환 ─────────────
+function getCameraHeightM() {
+  return Math.max(0, (settings.startLineY - 360 - state.cameraY) / 10);
+}
+
+let currentBiome = "";
+function updateBiome() {
+  const heightM = getCameraHeightM();
+  const next = heightM >= 300 ? "space" : heightM >= 150 ? "cloud" : "sky";
+  if (next === currentBiome) return;
+  currentBiome = next;
+  if (!biomeTintEl) return;
+  biomeTintEl.classList.toggle("is-cloud", next === "cloud");
+  biomeTintEl.classList.toggle("is-space", next === "space");
+}
+
 function clearWorld() {
   cancelAnimationFrame(state.rafId);
   worldEl.innerHTML = "";
@@ -2144,6 +2316,10 @@ function clearWorld() {
   // HUD도 함께 비워야 dedup 시그니처 ""와 빈 rows 입력이 모순 없이 동작 (이전 HUD 잔존 방지).
   if (hudListEl) hudListEl.innerHTML = "";
   lastHudSignature = "";
+  state.recordLine = null;
+  currentBiome = "";
+  biomeTintEl?.classList.remove("is-cloud", "is-space");
+  stormOverlayEl?.classList.remove("is-active");
 }
 
 function resetWorld() {
@@ -2197,6 +2373,7 @@ function updatePlatformMotionLocal() {
     const motion = samplePlatformMotion(platform, time);
     platform.x = motion.x;
     platform.rotation = motion.rotation;
+    easePlatformSink(platform);
   });
 }
 
@@ -2243,15 +2420,17 @@ function handleLanding(player, previousY) {
   const feetBefore = previousY + player.height;
 
   for (const platform of state.platforms) {
+    if (platform.broken) continue;
     const inset = platform.width * 0.08;
     const hitX = platform.x + inset;
     const hitW = platform.width - inset * 2;
     const horizontalHit = player.x + player.width > hitX && player.x < hitX + hitW;
-    const passedTop = feetBefore <= platform.y && feetNow >= platform.y;
+    const platformTop = platform.y + (platform.sinkOffset || 0);
+    const passedTop = feetBefore <= platformTop && feetNow >= platformTop;
 
     if (horizontalHit && passedTop) {
       const abilities = getAbilities(state.setup[player.slot].characterId);
-      player.y = platform.y - player.height;
+      player.y = platformTop - player.height;
       player.jumpCount = (player.jumpCount || 0) + 1;
       const isSuperJump =
         abilities.superJumpEvery > 0 &&
@@ -2260,17 +2439,45 @@ function handleLanding(player, previousY) {
       player.lastBounceKind = isSuperJump ? "super" : "normal";
       player.bounceTag = ((player.bounceTag || 0) + 1) & 0xff;
       const cx = player.x + player.width / 2;
-      spawnEffect("land", cx, platform.y + 6);
-      spawnEffect("jump", cx, platform.y);
+      spawnEffect("land", cx, platformTop + 6);
+      spawnEffect("jump", cx, platformTop);
       playLandSound();
       playJumpSound();
       if (isSuperJump) {
         spawnEffect("burst", cx, player.y + player.height / 2);
         triggerBoostFx(player, "super");
       }
+      notePlatformBounce(platform);
       return;
     }
   }
+}
+
+// ── 발판 행동 (케이크 1회용·구름 가라앉음) — 멀티에서도 플레이어별 로컬 판정 ──
+// 동기화 렉이 있어도 안전하도록 공유 상태를 만들지 않는다: 내 화면에서 부서진
+// 케이크는 내게만 사라지고, 친구 화면의 같은 발판은 멀쩡하다.
+function notePlatformBounce(platform) {
+  const target = isRoomSession && platform.id != null
+    ? state.network.platformEls.get(platform.id)
+    : platform;
+  if (!target || !target.kind) return;
+
+  if (target.kind === "cake" && !target.broken) {
+    target.broken = true;
+    target.el?.classList.add("is-crumbling");
+    window.setTimeout(() => {
+      target.el?.classList.remove("is-crumbling");
+      target.el?.classList.add("is-broken");
+    }, settings.cakeCrumbleDelayMs);
+  } else if (target.kind === "cloud") {
+    target.sinkTarget = (target.sinkTarget || 0) + settings.cloudSinkStep;
+  }
+}
+
+function easePlatformSink(platformLike) {
+  if (!platformLike.sinkTarget) return;
+  const current = platformLike.sinkOffset || 0;
+  platformLike.sinkOffset = current + (platformLike.sinkTarget - current) * 0.08;
 }
 
 function handleBoostPickup(player) {
@@ -2284,6 +2491,21 @@ function handleBoostPickup(player) {
     const picked = intersects(playerBox, boostBox);
 
     if (picked) {
+      if (boost.kind === "storm") {
+        // 방해 아이템: 점프 부스트 없음. 먹은 순간 상대 화면에 먹구름을 보낸다.
+        const scx = boost.x + boost.size / 2;
+        spawnEffect("pickup", scx, boost.y);
+        spawnEffect("burst", scx, boost.y + boost.size / 2);
+        playBoostSound();
+        setStatus("먹구름 발사! 친구 화면이 흐려져요!");
+        sendJumpAttack();
+        if (isRoomSession && boost.id) {
+          state.network.pickedBoostIds.add(boost.id);
+          state.network.boostEls.delete(boost.id);
+        }
+        boost.el?.remove();
+        return false;
+      }
       player.vy = settings.boostJump * abilities.boostMul;
       player.lastBounceKind = "boost";
       player.bounceTag = ((player.bounceTag || 0) + 1) & 0xff;
@@ -2304,6 +2526,19 @@ function handleBoostPickup(player) {
 
     return true;
   });
+}
+
+// cloud_imp(구름 도깨비) 옆면 접촉 = 1초 스턴(좌우 이동 불가). fluff_ghost는 기존처럼 무해.
+// 밟기(위 안착)는 두 종 모두 안전 — 위협은 '옆에서 부딪히는' 도깨비 한 종만.
+function applyMonsterStun(player) {
+  const now = performance.now();
+  if (player.stunImmuneUntilMs && now < player.stunImmuneUntilMs) return;
+  player.stunnedUntilMs = now + 1000;
+  player.stunImmuneUntilMs = now + 2400;
+  player.avatarEl?.classList.add("is-stunned");
+  window.setTimeout(() => player.avatarEl?.classList.remove("is-stunned"), 1000);
+  playTone({ type: "sawtooth", frequency: 320, endFrequency: 150, duration: 0.25, volume: 0.035 });
+  if (player.slot === 0) setStatus("구름 도깨비에 부딪혀 어질어질!");
 }
 
 // 몬스터 hitbox: 가로 22% 인셋(본체 비율), 세로 22%~60% 구간. 위 안착, 아래 머리 박힘은
@@ -2366,6 +2601,7 @@ function resolveSoloMonsterCollisions(player, previousY) {
     if (overlapY <= 0) continue;
     const overlapX = Math.min(player.x + player.width, hitX + hitW) - Math.max(player.x, hitX);
     if (overlapX <= 0) continue;
+    if (m.kind === "cloud_imp") applyMonsterStun(player);
     const playerCenter = player.x + player.width / 2;
     const monsterCenter = m.x + m.size / 2;
     if (playerCenter < monsterCenter) player.x -= overlapX;
@@ -2402,7 +2638,8 @@ function applyInput(player) {
   if (!player.alive) return;
 
   const abilities = getAbilities(state.setup[player.slot].characterId);
-  const direction = getPlayerDirection(player.slot);
+  const stunned = player.stunnedUntilMs && performance.now() < player.stunnedUntilMs;
+  const direction = stunned ? 0 : getPlayerDirection(player.slot);
   player.vx = direction * settings.moveSpeed * abilities.moveMul;
   player.x += player.vx;
   player.x = clamp(player.x, 0, settings.worldWidth - player.width);
@@ -2473,7 +2710,7 @@ function render() {
   state.platforms.forEach((platform) => {
     platform.el.style.transform = formatWorldTranslate(
       platform.x,
-      platform.y - state.cameraY,
+      platform.y + (platform.sinkOffset || 0) - state.cameraY,
       ` rotate(${(platform.rotation || 0).toFixed(2)}deg)`
     );
   });
@@ -2494,6 +2731,9 @@ function render() {
   state.effects.forEach((effect) => {
     effect.el.style.setProperty("--ty", `${effect.tyBase - state.cameraY}px`);
   });
+
+  renderRecordLine();
+  updateBiome();
 }
 
 function updateHud() {
@@ -2512,17 +2752,31 @@ function updateHud() {
   renderHudList(rows);
 }
 
-function loop() {
+// 솔로 모드도 60Hz 고정 타임스텝 — 120Hz 디스플레이에서 게임이 2배속이 되지 않도록
+// rAF 간격을 누적해 16.67ms 단위로만 물리를 진행한다 (멀티 로컬 물리와 동일 방식).
+const SOLO_STEP_MS = 1000 / 60;
+
+function loop(now) {
   if (!state.running) return;
 
-  ensurePlatformsAbove();
-  updatePlatformMotionLocal();
-  updateMonsters();
-  updatePlayers();
-  updateCamera();
+  if (!state.soloLastFrameMs) state.soloLastFrameMs = now;
+  state.soloAccumulatorMs += Math.min(Math.max(now - state.soloLastFrameMs, 0), 100);
+  state.soloLastFrameMs = now;
+
+  let steps = 0;
+  while (state.soloAccumulatorMs >= SOLO_STEP_MS && steps < 6) {
+    ensurePlatformsAbove();
+    updatePlatformMotionLocal();
+    updateMonsters();
+    updatePlayers();
+    updateCamera();
+    state.soloAccumulatorMs -= SOLO_STEP_MS;
+    steps += 1;
+  }
+
   render();
   updateHud();
-  tickPerfMeter(performance.now());
+  tickPerfMeter(now);
 
   if (state.running) {
     state.rafId = requestAnimationFrame(loop);
@@ -2602,12 +2856,15 @@ function runSoloGame() {
   state.players = [];
   state.keys.clear();
   state.resultSubmitted = false;
+  state.soloLastFrameMs = 0;
+  state.soloAccumulatorMs = 0;
   state.nextMonsterSpawnAt = performance.now() + settings.monsterFirstSpawnDelayMs;
 
   for (let slot = 0; slot < state.playerCount; slot += 1) {
     state.players.push(createPlayer(slot));
   }
 
+  ensureRecordLine();
   updateHud();
   applyArenaScale(true);
   render();
@@ -2621,6 +2878,7 @@ function endGame() {
   state.running = false;
   cancelAnimationFrame(state.rafId);
   updateHud();
+  saveStoredBest(Math.max(...state.players.map((player) => player.bestHeight), 0));
   submitRoundResult();
   showResultsOverlay();
 
@@ -2665,6 +2923,19 @@ function findFreeTouchSlot() {
 function handlePointerDown(event) {
   ensureAudioUnlocked();
   if (!state.running || state.chatFocused || resultsOverlay.classList.contains("is-active")) return;
+
+  // 탈락자/관전자의 탭 = 응원. 이동 입력 대신 생존자에게 하트가 전달된다.
+  if (isRoomSession && state.network.joined) {
+    const me = state.players[0];
+    const canCheer = state.isSpectator || (me && !me.alive);
+    if (canCheer) {
+      event.preventDefault();
+      sendJumpCheer();
+      spawnCheerHeart();
+      return;
+    }
+  }
+
   const activeSlots = new Set(state.touchAssignments.values());
   const slot = state.playerCount === 1 ? (activeSlots.has(0) ? null : 0) : findFreeTouchSlot();
   if (slot == null) return;
