@@ -33,9 +33,11 @@
 
   /* 스테이지/캐릭터는 restart data 로 전달. 최초 부트는 해금된 최고 스테이지 + 저장된 캐릭터. */
   PlayScene.prototype.init = function (data) {
+    // 협동: 서버 'start' 이후 재시작된 씬은 코업 모드로 동작(솔로 경로는 무손상 분기)
+    this.coop = !!(window.MARCoop && MARCoop.active && MARCoop.started);
     var maxStage = (window.MARProgress ? MARProgress.maxStage() : 1);
     this.stageNo = Math.max(1, Math.min(global.MAR_STAGES.length,
-      (data && data.stage) || maxStage));
+      this.coop ? MARCoop.stage : ((data && data.stage) || maxStage)));
     var unlocked = global.MARUnlockedChars ? MARUnlockedChars() : ['chick'];
     var want = (data && data.char) || (window.MARProgress ? MARProgress.character() : 'chick');
     this.charId = unlocked.indexOf(want) >= 0 ? want : 'chick';
@@ -75,6 +77,8 @@
     });
     if (!this.textures.exists('trophy')) this.load.image('trophy', './assets/trophy.png');
     if (!this.textures.exists('title-banner')) this.load.image('title-banner', './assets/title-banner.png');
+    if (!this.textures.exists('cage')) // 협동 새장 2프레임(닫힘/열림)
+      this.load.spritesheet('cage', './assets/cage.png', { frameWidth: 256, frameHeight: 256 });
     if (!this.textures.exists('barrier-fence')) this.load.image('barrier-fence', './assets/barrier-fence.png');
     if (!this.textures.exists('gate-arch')) this.load.image('gate-arch', './assets/gate-arch.png');
     if (!this.textures.exists('gate-neg')) this.load.image('gate-neg', './assets/gate-neg.png');
@@ -91,6 +95,12 @@
     this.squadY = H * SQUAD_Y_RATIO;
     this.laneMin = W * LANE_MIN_R;
     this.laneMax = W * LANE_MAX_R;
+    // 협동: 좌/우 레인 분할 — 내 부대는 내 절반만 조향(게이트 선택도 레인 중심 기준)
+    if (this.coop) {
+      if (MARCoop.seat === 'L') this.laneMax = W / 2 - 14;
+      else this.laneMin = W / 2 + 14;
+    }
+    this.laneCenter = (this.laneMin + this.laneMax) / 2;
 
     this.S = global.MAR_STAGES[this.stageNo - 1];
 
@@ -104,7 +114,8 @@
     // 숨김 어시스트(연속 전멸 보정, UI 비표시 — DESIGN.md):
     // tier1 +3 / tier2+ +6 (머릿수는 여기까지 — 시작이 사수상한을 넘으면 긴장 훼손)
     // tier3+ 는 체감형: 첫 피격 보호막 + 보스탄 속도 −10% + 장벽 잔여피해 −20%
-    this.assistTier = window.MARProgress ? MARProgress.assistTier(this.stageNo) : 0;
+    // 어시스트는 솔로 전용(협동은 파트너 구출이 안전망)
+    this.assistTier = (!this.coop && window.MARProgress) ? MARProgress.assistTier(this.stageNo) : 0;
     var bonus = this.assistTier >= 2 ? 6 : (this.assistTier >= 1 ? 3 : 0);
     // 캐릭터 능력: 민트(사수상한 10·데미지 ×1.2)는 SquadModel 이 직접 반영
     this.squad = new SquadModel(5 + bonus, 1, this.AB);
@@ -148,7 +159,15 @@
     this._bossShotAcc = 0;
     this._bossTime = 0;
 
-    this._buildStartOverlay();
+    if (this.coop) {
+      // 협동: 로비에서 서버 'start' 를 받고 재시작된 씬 — 오버레이 없이 즉시 시작.
+      // traveled 는 서버 ts 앵커라 로딩 지연이 있어도 양쪽 같은 지점에서 만난다.
+      this._setupCoop();
+      if (window.MARTelemetry) MARTelemetry.startRun(this.stageNo, this.charId, { mode: 'coop' });
+      this.state = 'run';
+    } else {
+      this._buildStartOverlay();
+    }
 
     window.__mar.scene = this;
     window.__mar.squad = this.squad;
@@ -450,9 +469,75 @@
     }
   };
 
+  // ---- 협동 로비 ------------------------------------------------------------
+  // joinCode 없으면 방 생성(호스트=L석), 있으면 합류. 둘 다 ready → 서버 'start' → 재시작.
+  PlayScene.prototype._buildCoopLobby = function (joinCode) {
+    var W = this.W, H = this.H, self = this;
+    var ui = [];
+    function T(y, text, size, color) {
+      var t = self.add.text(W / 2, y, text, {
+        fontFamily: 'sans-serif', fontSize: size + 'px', color: color || '#ffffff',
+        fontStyle: 'bold', align: 'center', lineSpacing: 6, stroke: '#1b2a3a', strokeThickness: 4
+      }).setOrigin(0.5).setDepth(41);
+      ui.push(t); return t;
+    }
+    ui.push(this.add.rectangle(W / 2, H / 2, W, H, 0x1b2a3a, 0.78).setDepth(40));
+    T(H * 0.16, '👫 2인 협동', 36);
+    var codeText = T(H * 0.30, joinCode ? '방에 들어가는 중…' : '방 만드는 중…', 28, '#ffe08a');
+    var infoText = T(H * 0.42, '', 16);
+    var seatText = T(H * 0.54, '', 20);
+    var btn = this.add.rectangle(W / 2, H * 0.68, 230, 58, 0x36c275, 0.95)
+      .setStrokeStyle(3, 0xffffff).setDepth(41).setInteractive({ useHandCursor: true });
+    var btnLabel = T(H * 0.68, '준비 완료!', 24);
+    ui.push(btn);
+    var backText = T(H * 0.84, '← 혼자 할래요', 18, '#bfd4ff');
+    backText.setInteractive({ useHandCursor: true });
+
+    function cleanup() { ui.forEach(function (o) { o.destroy(); }); }
+    backText.on('pointerdown', function () {
+      MARCoop.disconnect();
+      cleanup();
+      self._buildStartOverlay();
+    });
+    btn.on('pointerdown', function () {
+      if (window.MARSfx) MARSfx.init(); // 제스처에서 오디오 잠금 해제
+      MARCoop.sendReady();
+      btnLabel.setText('파트너 기다리는 중…');
+      btn.disableInteractive();
+    });
+
+    MARCoop.on.joined = function () {
+      codeText.setText('방 코드: ' + MARCoop.roomCode);
+      infoText.setText('친구에게 코드를 알려주세요!\n주소 뒤에  ?coop=' + MARCoop.roomCode + '  를 붙이면 합류');
+      // 호스트(L)가 현재 스테이지를 방 설정으로 올린다
+      if (MARCoop.seat === 'L') MARCoop.sendStage(self.stageNo);
+    };
+    MARCoop.on.lobby = function (m) {
+      var L = m.seats && m.seats.L, R = m.seats && m.seats.R;
+      seatText.setText(
+        '🐤 ' + (L ? L.name + (L.ready ? ' ✅' : ' …') : '(비어 있음)') + '\n' +
+        '🐰 ' + (R ? R.name + (R.ready ? ' ✅' : ' …') : '(친구 기다리는 중)'));
+    };
+    MARCoop.on.full = function () { codeText.setText('방이 가득 찼어요 😢'); };
+    MARCoop.on.error = function () { codeText.setText('연결에 실패했어요 — 다시 시도해주세요'); };
+    MARCoop.on.reset = function () { codeText.setText('연결이 끊겼어요 — 돌아가서 다시 시도'); };
+    MARCoop.on.start = function () {
+      cleanup();
+      self.scene.restart({}); // init 이 MARCoop.started 를 보고 협동 모드로 부팅
+    };
+    MARCoop.connect(joinCode || null, (this.CH ? this.CH.name : '말랑친구'));
+  };
+
   // ---- 시작 오버레이 (스테이지명 + 해금된 스테이지 선택 칩) -------------------
   PlayScene.prototype._buildStartOverlay = function () {
     var W = this.W, H = this.H, self = this;
+    // 협동 합류 링크(?coop=CODE)로 열렸으면 곧장 협동 로비로
+    var coopParam = null;
+    try { coopParam = new URLSearchParams(window.location.search).get('coop'); } catch (e) {}
+    if (coopParam && window.MARCoop && !MARCoop.active) {
+      this._buildCoopLobby(coopParam.toUpperCase());
+      return;
+    }
     var dim = this.add.rectangle(W / 2, H / 2, W, H, 0x1b2a3a, 0.45).setDepth(30);
     // 타이틀 배너(M4): 일러스트 위에 한글 타이틀을 얹는다
     var banner = null;
@@ -477,6 +562,17 @@
     this.tweens.add({ targets: t4, alpha: 0.35, duration: 550, yoyo: true, repeat: -1 });
     var ui = [dim, t1, t2, t3, t4];
     if (banner) ui.push(banner);
+    // 협동 입구
+    var coopY = H * 0.525;
+    var coopBtn = this.add.text(W / 2, coopY, '👫 친구랑 협동 플레이', {
+      fontFamily: 'sans-serif', fontSize: '18px', color: '#7ad7ff', fontStyle: 'bold',
+      stroke: '#1b2a3a', strokeThickness: 4
+    }).setOrigin(0.5).setDepth(31).setInteractive({ useHandCursor: true });
+    ui.push(coopBtn);
+    coopBtn.on('pointerdown', function () {
+      ui.forEach(function (o) { o.destroy(); });
+      self._buildCoopLobby(null);
+    });
     // ---- 캐릭터 선택(포트레이트 칩 5개 + 능력 설명) — 칩 밴드는 시작 탭 제외 ----
     var charY = H * 0.60;
     var unlockedChars = global.MARUnlockedChars ? MARUnlockedChars() : ['chick'];
@@ -537,8 +633,8 @@
     }
     this._startTap = function (pointer) {
       var py = (pointer && pointer.y != null) ? pointer.y : 0;
-      // 칩 밴드(스테이지/캐릭터)는 시작 탭에서 제외(리스너 재등록)
-      if (Math.abs(py - chipY) < 28 || Math.abs(py - charY) < 56) {
+      // 칩 밴드(스테이지/캐릭터/협동 버튼)는 시작 탭에서 제외(리스너 재등록)
+      if (Math.abs(py - chipY) < 28 || Math.abs(py - charY) < 56 || Math.abs(py - coopY) < 22) {
         self.input.once('pointerdown', self._startTap);
         return;
       }
@@ -639,7 +735,12 @@
   PlayScene.prototype._autoFire = function (dt) {
     var f = this._focusTarget();
     if (!f) return;
-    f.hp -= this.squad.dps() * dt;
+    if (this.coop && f.type === 'boss') {
+      // 협동 보스: 로컬에서 HP 를 깎지 않는다 — 서버가 클램프·적산하고 'hp' 로 내려준다
+      MARCoop.sendDps(this.squad.count(), this.squad.power, dt);
+    } else {
+      f.hp -= this.squad.dps() * dt;
+    }
     if (f.hpText) f.hpText.setText(String(Math.max(0, Math.ceil(f.hp))));
     if (f.hp <= 0 && f.type !== 'boss') this._killTrack(f, true);
     // 피격 플래시(이미지 스프라이트가 있을 때만)
@@ -780,7 +881,8 @@
   };
   PlayScene.prototype._resolveGate = function (g) {
     g.resolved = true;
-    var chooseLeft = this.leaderX < this.W / 2;
+    // 솔로: 화면 중심 / 협동: 내 레인 중심 기준 — 같은 게이트쌍을 좌석별 독립 선택
+    var chooseLeft = this.leaderX < this.laneCenter;
     var side = chooseLeft ? g.left : g.right;
     var chosenRect = chooseLeft ? g.leftRect : g.rightRect;
     var otherRect = chooseLeft ? g.rightRect : g.leftRect;
@@ -802,6 +904,7 @@
       afterAmount: this.squad.count(), afterPower: this.squad.power
     });
     if (window.MARSfx) MARSfx.play('gate');
+    if (this.coop) MARCoop.sendGate(this._gateSeq, this.squad.count(), this.squad.power);
     if (chosenRect) this.tweens.add({ targets: chosenRect, scaleX: 1.18, scaleY: 1.18, yoyo: true, duration: 150 });
     if (otherRect) this.tweens.add({ targets: otherRect, alpha: 0.2, duration: 150 });
     var labelText = side.op === 'pow' ? '무기 강화!'
@@ -828,7 +931,11 @@
     }
 
     if (this.state === 'run' || this.state === 'boss') {
-      if (this.state === 'run') this.traveled += SCROLL * dt;
+      if (this.state === 'run') {
+        // 협동: 서버 start ts 에 앵커된 공유 시계로 진행(드리프트 방지). 솔로: 로컬 적분.
+        if (this.coop) this.traveled = Math.max(0, (Date.now() - MARCoop.startTs) / 1000 * SCROLL);
+        else this.traveled += SCROLL * dt;
+      }
       this._time = time;
       this._updateTrack(dt);
       this._updateTelegraphs(dt);
@@ -843,7 +950,11 @@
       this._autoFire(dt);
       this._updateBgScroll();
       this._updateUI();
-      if (this.squad.count() <= 0) this._end(false);
+      if (this.squad.count() <= 0) {
+        if (this.coop) this._coopWipe();   // 협동: 즉사 대신 새장 — 파트너가 구출 가능
+        else this._end(false);
+      }
+      if (this.coop) this._coopTick();
     } else if (this.state === 'finish') {
       // 피니시 연출 중: 부대는 제자리 유지(연출 트윈만 진행)
       this._layoutUnits();
@@ -917,6 +1028,8 @@
             result: o.touched ? (o.grazeLost > 0 ? 'graze' : 'graze_blocked') : 'clean',
             afterAmount: this.squad.count(), afterPower: this.squad.power
           });
+          // 협동: 리스크 ×3 도 서버 인정값에 반영(없으면 보스 dps 가 과소 클램프됨)
+          if (this.coop) MARCoop.sendGate(this._gateSeq, this.squad.count(), this.squad.power);
         }
       }
 
@@ -930,7 +1043,10 @@
     var arenaY = this.squadY - 230;
     var sy = this.squadY - (b.dist - this.traveled);
     if (this.state === 'run') {
-      if (sy >= arenaY) { this.state = 'boss'; b.engaged = true; }
+      if (sy >= arenaY) {
+        this.state = 'boss'; b.engaged = true;
+        if (this.coop) MARCoop.sendBossEnter(); // 첫 유효 보고가 서버 phase 를 올린다
+      }
       b.display.y = Math.min(sy, arenaY);
       b.display.setVisible(sy > -120);
       return;
@@ -952,6 +1068,184 @@
       if (this._drainAcc >= 1) { var n = Math.floor(this._drainAcc); this._drainAcc -= n; this._hitSquad(n, 'drain'); }
     }
     if (b.hp <= 0) this._startFinish(b);
+  };
+
+  // ---- 2인 협동 (M5) -------------------------------------------------------
+  // 서버 권위: 보스 HP·phase·새장·하이파이브 (worker/src/games/machine_animal_runner.js).
+  // 여기서는 ① 서버 이벤트 → 씬 반영 ② 고스트(파트너) 표시 ③ 전멸→새장 흐름만 다룬다.
+  PlayScene.prototype._setupCoop = function () {
+    var self = this;
+    this._wiped = false;
+    this._cageFx = null;        // 내가 구출하러 갈 새장(파트너 것)
+    this._waitLabel = null;     // 내가 잡혔을 때 안내
+    this._lastCageHitSent = 0;
+    // 파트너 고스트: 반투명 미니 부대(시각 전용, 5Hz 좌표 + 게이트 이벤트로 갱신)
+    var pLaneMin = MARCoop.seat === 'L' ? this.W / 2 + 14 : this.W * LANE_MIN_R;
+    var pLaneMax = MARCoop.seat === 'L' ? this.W * LANE_MAX_R : this.W / 2 - 14;
+    this._ghost = { laneMin: pLaneMin, laneMax: pLaneMax, x: (pLaneMin + pLaneMax) / 2,
+      targetX: (pLaneMin + pLaneMax) / 2, amount: 5, tier: 0, units: [] };
+    // 레인 경계선(점선 느낌의 가는 선)
+    this.add.rectangle(this.W / 2, this.H / 2, 4, this.H, 0xffffff, 0.18).setDepth(1);
+
+    MARCoop.on.pos = function (m) {
+      var g = self._ghost;
+      g.targetX = g.laneMin + (g.laneMax - g.laneMin) * m.x;
+      g.amount = m.amount; g.tier = m.tier;
+    };
+    MARCoop.on.gate = function (m) { self._ghost.amount = m.amount; };
+    MARCoop.on.highfive = function () {
+      // 하이파이브: 동시 통과 보상 — 양쪽 모두 +15%(최소 +2). 사수상한과 무관(생존 버퍼).
+      var bonus = Math.max(2, Math.round(self.squad.count() * 0.15));
+      self.squad.add(bonus);
+      self._floatLabel('하이파이브! 🙌 +' + bonus, '#ffd24a');
+      if (window.MARSfx) MARSfx.play('evolve');
+      self._checkEvolve();
+    };
+    MARCoop.on.boss = function (m) { if (self.boss) { self.boss.hp = m.hp; self.boss.maxHp = m.max; } };
+    MARCoop.on.hp = function (m) { if (self.boss) self.boss.hp = m.hp; };
+    MARCoop.on.cage = function (m) {
+      if (m.seat === MARCoop.seat) return; // 내 새장은 _coopWipe 에서 이미 표시
+      // 파트너가 잡혔다 — 내 레인에 새장 출현(같은 비율 위치), 닿으면 구출
+      self._destroyCageFx();
+      var cx = self.laneMin + (self.laneMax - self.laneMin) * m.x;
+      var c = self.add.container(cx, self.squadY - 170).setDepth(7);
+      if (self.textures.exists('cage')) {
+        c.add(self.add.sprite(0, 0, 'cage', 0).setDisplaySize(74, 74));
+      } else {
+        c.add(self.add.circle(0, 0, 30, 0x7ad7ff, 0.35).setStrokeStyle(4, 0x7ad7ff));
+        c.add(self.add.text(0, 0, '🐤', { fontSize: '26px' }).setOrigin(0.5));
+      }
+      var ring = self.add.circle(0, 0, 44).setStrokeStyle(3, 0xffd24a, 0.9);
+      c.add(ring);
+      self.tweens.add({ targets: ring, scale: 1.25, alpha: 0.3, duration: 600, yoyo: true, repeat: -1 });
+      self._cageFx = { c: c, x: cx };
+      self._floatLabel('파트너를 구하자! 🆘', '#ffd24a');
+    };
+    MARCoop.on.revive = function (m) {
+      if (m.seat === MARCoop.seat) {
+        // 내가 구출됐다
+        self._wiped = false;
+        self.squad.amount = m.amount;
+        if (self._waitLabel) { self._waitLabel.destroy(); self._waitLabel = null; }
+        self._floatLabel('구출됐다! 🎉', '#8ef0a8');
+        if (window.MARSfx) MARSfx.play('evolve');
+      } else {
+        // 내가 구출해냈다 — 새장 열림 연출
+        if (self._cageFx && self.textures.exists('cage')) {
+          var spr = self._cageFx.c.list[0];
+          if (spr && spr.setFrame) spr.setFrame(1);
+          var fx = self._cageFx;
+          self.time.delayedCall(600, function () { if (fx.c.active) fx.c.destroy(); if (self._cageFx === fx) self._cageFx = null; });
+        } else {
+          self._destroyCageFx();
+        }
+        self._floatLabel('구출 성공! 🙌', '#8ef0a8');
+      }
+    };
+    MARCoop.on.win = function () {
+      if (self.state === 'boss' || self.state === 'run') {
+        if (self.boss) self.boss.hp = 0;
+        if (self.state === 'boss') self._startFinish(self.boss);
+        else self._end(true);
+      } else if (self.state === 'finish') { /* 진행 중 — _end(true) 예약됨 */ }
+    };
+    MARCoop.on.lose = function () {
+      if (self.state !== 'win' && self.state !== 'lose') self._end(false);
+    };
+    MARCoop.on.partnerLeft = function () {
+      self._floatLabel('파트너가 떠났어요 😢 혼자서도 화이팅!', '#ffffff');
+      self._destroyGhost();
+      self._restoreSoloLanes(); // 반쪽 레인에 갇히지 않게(게이트 선택도 화면 중심 기준 복귀)
+    };
+    MARCoop.on.reset = function () {
+      // DO 상태 소실/연결 끊김 — 협동 종료, 솔로로 복귀 안내
+      if (self.state === 'win' || self.state === 'lose') return;
+      MARCoop.disconnect();
+      self.coop = false;
+      self._floatLabel('연결이 끊겼어요 — 혼자 계속!', '#ffffff');
+      self._destroyGhost();
+      self._restoreSoloLanes();
+    };
+  };
+
+  /* 협동 중 파트너가 사라지면 레인을 전체 폭으로 복구(솔로와 동일 좌표계) */
+  PlayScene.prototype._restoreSoloLanes = function () {
+    this.laneMin = this.W * LANE_MIN_R;
+    this.laneMax = this.W * LANE_MAX_R;
+    this.laneCenter = (this.laneMin + this.laneMax) / 2;
+  };
+
+  /* 매 프레임(run/boss): 내 좌표 송신 + 고스트 보간 + 새장 접촉 판정 */
+  PlayScene.prototype._coopTick = function () {
+    var ratio = (this.leaderX - this.laneMin) / Math.max(1, this.laneMax - this.laneMin);
+    MARCoop.sendPos(ratio, this.squad.count(), this.evolveTier);
+    // 고스트 보간·레이아웃
+    var g = this._ghost;
+    if (g) {
+      g.x += (g.targetX - g.x) * 0.15;
+      this._layoutGhost();
+    }
+    // 새장 구출 접촉(쿨다운 1s — 서버가 1회만 인정하지만 스팸 자체를 줄인다)
+    if (this._cageFx && !this._wiped) {
+      if (Math.abs(this.leaderX - this._cageFx.x) < 52) {
+        var t = Date.now();
+        if (t - this._lastCageHitSent > 1000) {
+          this._lastCageHitSent = t;
+          MARCoop.sendCageHit();
+        }
+      }
+    }
+  };
+
+  /* 전멸(협동): 즉시 패배가 아니라 새장 — 서버가 양쪽 전멸이면 lose 를 내려준다 */
+  PlayScene.prototype._coopWipe = function () {
+    if (this._wiped) return;
+    this._wiped = true;
+    var ratio = (this.leaderX - this.laneMin) / Math.max(1, this.laneMax - this.laneMin);
+    MARCoop.sendWipe(ratio);
+    if (window.MARTelemetry) MARTelemetry.log('death', {
+      cause: this._lastHitCause || 'unknown', traveled: Math.round(this.traveled),
+      bossEngaged: !!(this.boss && this.boss.engaged), coopWipe: true
+    });
+    this._waitLabel = this.add.text(this.W / 2, this.H * 0.4, '🐦 새장에 갇혔다!\n파트너의 구출을 기다리는 중…', {
+      fontFamily: 'sans-serif', fontSize: '22px', color: '#ffffff', fontStyle: 'bold',
+      align: 'center', stroke: '#1b2a3a', strokeThickness: 5
+    }).setOrigin(0.5).setDepth(20);
+  };
+
+  PlayScene.prototype._layoutGhost = function () {
+    var g = this._ghost;
+    if (!g) return;
+    var want = Math.min(16, Math.max(0, Math.round(g.amount)));
+    while (g.units.length < want) {
+      var s;
+      if (this._useBackView) {
+        s = this.add.sprite(0, 0, 'unit-' + this.charId).setAlpha(0.4);
+        s.play({ key: this._unitAnimKey(), startFrame: g.units.length % 3 });
+      } else {
+        s = this.add.circle(0, 0, 10, 0xffffff, 0.35);
+      }
+      s.setDepth(4);
+      g.units.push(s);
+    }
+    while (g.units.length > want) g.units.pop().destroy();
+    var sc = (UNIT_H[Math.min(2, g.tier)] / 256) * 0.9;
+    for (var i = 0; i < g.units.length; i++) {
+      var col = i % 4, row = Math.floor(i / 4);
+      var u = g.units[i];
+      u.x = g.x + (col - 1.5) * 26;
+      u.y = this.squadY - 6 + row * 20;
+      if (u.setScale) u.setScale(sc);
+    }
+  };
+
+  PlayScene.prototype._destroyGhost = function () {
+    if (!this._ghost) return;
+    this._ghost.units.forEach(function (u) { u.destroy(); });
+    this._ghost = null;
+  };
+  PlayScene.prototype._destroyCageFx = function () {
+    if (this._cageFx) { this._cageFx.c.destroy(); this._cageFx = null; }
   };
 
   // ---- 조준탄 경고선 -------------------------------------------------------
@@ -1129,7 +1423,7 @@
     if (window.MARProgress) {
       var beforeUnlocked = global.MARUnlockedChars ? MARUnlockedChars() : [];
       if (win) MARProgress.recordClear(this.stageNo, total);
-      else MARProgress.recordFail(this.stageNo);
+      else if (!this.coop) MARProgress.recordFail(this.stageNo); // 어시스트 카운트는 솔로 전용
       if (win && global.MARUnlockedChars) {
         var afterUnlocked = MARUnlockedChars();
         for (var ni = 0; ni < afterUnlocked.length; ni++) {
@@ -1191,6 +1485,7 @@
     }
     this.time.delayedCall(350, function () {
       this.input.once('pointerdown', function () {
+        if (this.coop) MARCoop.disconnect(); // 협동 세션 종료 — 재대결은 새 방으로
         this.scene.restart({ stage: this._nextStage });
       }, this);
     }, [], this);

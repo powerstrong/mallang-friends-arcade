@@ -21,13 +21,15 @@
     return 'r' + Date.now().toString(36) + s;
   }
 
-  function startRun(stageNo, character) {
+  function startRun(stageNo, character, extra) {
     runId = rid();
     stage = stageNo || 1;
     events = [];
     sent = false;
     startedAt = Date.now();
-    log('run_start', { character: character || 'chick' });
+    var payload = { character: character || 'chick' };
+    if (extra) for (var k in extra) payload[k] = extra[k];
+    log('run_start', payload);
   }
 
   function log(ev, payload) {
