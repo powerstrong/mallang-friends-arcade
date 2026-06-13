@@ -49,7 +49,18 @@
       this.coop ? MARCoop.stage : ((data && data.stage) || maxStage)));
     var unlocked = global.MARUnlockedChars ? MARUnlockedChars() : ['chick'];
     var want = (data && data.char) || (window.MARProgress ? MARProgress.character() : 'chick');
-    this.charId = unlocked.indexOf(want) >= 0 ? want : 'chick';
+    // 시크릿(라떼·민트)은 직접 선택 불가 — 저장값이 시크릿이면 🎲 랜덤으로 영구 승계
+    for (var si = 0; si < global.MAR_CHARACTERS.length; si++) {
+      if (global.MAR_CHARACTERS[si].secret && global.MAR_CHARACTERS[si].id === want) {
+        want = 'random';
+        if (window.MARProgress) MARProgress.setCharacter('random'); // 저장소까지 마이그레이션(codex P1)
+      }
+    }
+    this.selectedChar = (want === 'random' || unlocked.indexOf(want) >= 0) ? want : 'chick';
+    // 랜덤은 매 판 다시 굴린다(시크릿 포함 풀)
+    this.charId = this.selectedChar === 'random'
+      ? (global.MARPickRandomChar ? MARPickRandomChar() : 'chick')
+      : this.selectedChar;
     this.CH = null;
     for (var i = 0; i < global.MAR_CHARACTERS.length; i++) {
       if (global.MAR_CHARACTERS[i].id === this.charId) this.CH = global.MAR_CHARACTERS[i];
@@ -175,7 +186,8 @@
       // 협동: 로비에서 서버 'start' 를 받고 재시작된 씬 — 오버레이 없이 즉시 시작.
       // traveled 는 서버 ts 앵커라 로딩 지연이 있어도 양쪽 같은 지점에서 만난다.
       this._setupCoop();
-      if (window.MARTelemetry) MARTelemetry.startRun(this.stageNo, this.charId, { mode: 'coop' });
+      if (window.MARTelemetry) MARTelemetry.startRun(this.stageNo, this.charId,
+        { mode: 'coop', selection: this.selectedChar === 'random' ? 'random' : 'direct' });
       this.state = 'run';
     } else {
       this._buildStartOverlay();
@@ -579,16 +591,21 @@
     // 능력 수치 설명은 표시하지 않는다(사용자 피드백 — 플레이로 체감)
     var charY = H * 0.60;
     var unlockedChars = global.MARUnlockedChars ? MARUnlockedChars() : ['chick'];
-    for (var ci = 0; ci < global.MAR_CHARACTERS.length; ci++) {
+    // 칩 = public 캐릭터 + 🎲 랜덤. 시크릿(라떼·민트)은 랜덤으로만 만난다(말랑프렌즈 점프 규약).
+    var chips = global.MAR_CHARACTERS
+      .filter(function (c) { return !c.secret; })
+      .map(function (c) { return { id: c.id, name: c.name, emoji: c.emoji }; });
+    chips.push({ id: 'random', name: '랜덤', emoji: '🎲' });
+    for (var ci = 0; ci < chips.length; ci++) {
       (function (ch, idx) {
-        var cx = W / 2 + (idx - 2) * 96;
-        var isUnlocked = unlockedChars.indexOf(ch.id) >= 0;
-        var isSel = ch.id === self.charId;
+        var cx = W / 2 + (idx - (chips.length - 1) / 2) * 100;
+        var isUnlocked = ch.id === 'random' || unlockedChars.indexOf(ch.id) >= 0;
+        var isSel = ch.id === self.selectedChar;
         var ring = self.add.circle(cx, charY, 40, 0xffffff, isSel ? 0.28 : 0.10)
           .setStrokeStyle(isSel ? 4 : 2, isSel ? 0x8ef0a8 : 0xffffff, isSel ? 1 : 0.45)
           .setDepth(31);
         var pr;
-        if (self.textures.exists('portrait-' + ch.id)) {
+        if (ch.id !== 'random' && self.textures.exists('portrait-' + ch.id)) {
           pr = self.add.image(cx, charY, 'portrait-' + ch.id);
           pr.setDisplaySize(64 * (pr.width / pr.height), 64).setDepth(32);
           if (!isUnlocked) pr.setTint(0x555f6e).setAlpha(0.8);
@@ -607,7 +624,7 @@
             self.scene.restart({ stage: self.stageNo, char: ch.id });
           });
         }
-      })(global.MAR_CHARACTERS[ci], ci);
+      })(chips[ci], ci);
     }
     // 스테이지 선택 칩 — 해금된 것만 탭 가능. 칩 밴드(y±28)는 시작 탭에서 제외.
     var chipY = H * 0.84;
@@ -637,9 +654,15 @@
         return;
       }
       if (window.MARSfx) MARSfx.init(); // 첫 제스처에서 오디오 잠금 해제
-      if (window.MARTelemetry) MARTelemetry.startRun(self.stageNo, self.charId);
+      // selection: 🎲로 뽑힌 판과 직접 선택 판을 구분(선택률 분석 왜곡 방지 — codex P1)
+      if (window.MARTelemetry) MARTelemetry.startRun(self.stageNo, self.charId,
+        { selection: self.selectedChar === 'random' ? 'random' : 'direct' });
       ui.forEach(function (o) { o.destroy(); });
       self.state = 'run';
+      // 🎲 랜덤이면 누가 나왔는지 공개(시크릿이면 더 신남)
+      if (self.selectedChar === 'random' && self.CH) {
+        self._floatLabel('🎲 ' + self.CH.name + ' 등장!', self.CH.secret ? '#ffd24a' : '#8ef0a8');
+      }
     };
     this.input.once('pointerdown', this._startTap);
   };

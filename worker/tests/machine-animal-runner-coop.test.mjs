@@ -83,7 +83,7 @@ test('DPS 클램프: 위조 amount/power/dt 가 스테이지 상한으로 깎인
   await mod.onMessage(ctx, wsA, { a: 'dps', amount: 99999, power: 99, dt: 10 });
   const dealt = before - ctx.state.bossHp;
   // 인정값 기준: 게이트를 안 지났으므로 amount 5 / power 1 이 상한 (codex P0 수정)
-  const maxPerReport = 5 * 1 * 7 * 1.2 * 0.3; // = 12.6
+  const maxPerReport = 5 * 1 * 7 * 1.25 * 0.3; // = 13.125 (MAX_DMG_MUL 1.25)
   assert.ok(dealt <= maxPerReport + 1e-9, `dealt=${dealt} > clamp=${maxPerReport}`);
   assert.ok(dealt > 0);
 });

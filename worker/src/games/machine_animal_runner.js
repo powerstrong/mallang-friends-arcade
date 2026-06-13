@@ -22,7 +22,7 @@
 const SCROLL = 165;                  // px/s — 클라와 동일(진행 시계 공유)
 const SHOOTER_CAP = 12;
 const DMG_PER_SHOOTER = 7;
-const MAX_DMG_MUL = 1.2;             // 민트 고양이 ×1.2 가 정당한 최대
+const MAX_DMG_MUL = 1.25;            // 민트 고양이(시크릿) ×1.25 가 정당한 최대 — 클라 characters.js 와 동기화
 const HIGHFIVE_WINDOW_MS = 1500;     // 두 부대가 같은 게이트쌍을 "같은 타이밍"에 통과
 const POS_REBROADCAST_MIN_MS = 150;  // 고스트 좌표 중계 다운샘플(≈6.7Hz 상한)
 const CAGE_REVIVE_AMOUNT = 8;
