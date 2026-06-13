@@ -66,6 +66,15 @@
         { frameWidth: 256, frameHeight: 256 });
     if (!this.textures.exists('enemy-mech')) this.load.image('enemy-mech', './assets/enemy-mech-chick.png');
     if (!this.textures.exists('boss-mech')) this.load.image('boss-mech', './assets/boss-mech.png');
+    // 기계 적 4종(스테이지별 배정) + 보스 색변형(캐릭터별)
+    ['rabbit', 'mintcat', 'latte', 'hamster'].forEach(function (id) {
+      if (!self.textures.exists('enemy-mech-' + id))
+        self.load.image('enemy-mech-' + id, './assets/enemy-mech-' + id + '.png');
+      if (!self.textures.exists('boss-mech-' + id))
+        self.load.image('boss-mech-' + id, './assets/boss-mech-' + id + '.png');
+    });
+    if (!this.textures.exists('trophy')) this.load.image('trophy', './assets/trophy.png');
+    if (!this.textures.exists('title-banner')) this.load.image('title-banner', './assets/title-banner.png');
     if (!this.textures.exists('barrier-fence')) this.load.image('barrier-fence', './assets/barrier-fence.png');
     if (!this.textures.exists('gate-arch')) this.load.image('gate-arch', './assets/gate-arch.png');
     if (!this.textures.exists('gate-neg')) this.load.image('gate-neg', './assets/gate-neg.png');
@@ -294,8 +303,11 @@
     var c = this.add.container(x, -200).setDepth(2);
     var size = kind === 'armor' ? 96 : 48;
     var spr = null;
-    if (this.textures.exists('enemy-mech')) {
-      spr = this.add.image(0, 0, 'enemy-mech').setDisplaySize(size, size);
+    // 스테이지별 기계동물 배정(M4): 떼/장갑이 다른 종 — 없으면 기계 병아리 폴백
+    var texKey = kind === 'armor' ? this.S.armorTex : this.S.mobTex;
+    if (!texKey || !this.textures.exists(texKey)) texKey = 'enemy-mech';
+    if (this.textures.exists(texKey)) {
+      spr = this.add.image(0, 0, texKey).setDisplaySize(size, size);
       if (kind === 'armor') spr.setTint(0xbfd4ff); // 장갑은 살짝 푸른 금속 톤
       c.add(spr);
     } else {
@@ -395,8 +407,10 @@
     var W = this.W;
     var c = this.add.container(W / 2, -300).setDepth(3).setVisible(false);
     var spr = null;
-    if (this.textures.exists('boss-mech')) {
-      spr = this.add.image(0, 0, 'boss-mech').setDisplaySize(200, 180);
+    // 보스 색변형(M4): 선택 캐릭터별 액센트 색 — 없으면 기본(주황)
+    var bossKey = this.textures.exists('boss-mech-' + this.charId) ? 'boss-mech-' + this.charId : 'boss-mech';
+    if (this.textures.exists(bossKey)) {
+      spr = this.add.image(0, 0, bossKey).setDisplaySize(200, 180);
       c.add(spr);
     } else {
       var body = this.add.rectangle(0, 0, 150, 130, 0x6b7384).setStrokeStyle(4, 0x3c4350);
@@ -440,7 +454,13 @@
   PlayScene.prototype._buildStartOverlay = function () {
     var W = this.W, H = this.H, self = this;
     var dim = this.add.rectangle(W / 2, H / 2, W, H, 0x1b2a3a, 0.45).setDepth(30);
-    var t1 = this.add.text(W / 2, H * 0.20, '말랑프렌즈 러너', {
+    // 타이틀 배너(M4): 일러스트 위에 한글 타이틀을 얹는다
+    var banner = null;
+    if (this.textures.exists('title-banner')) {
+      banner = this.add.image(W / 2, H * 0.135, 'title-banner').setDepth(31);
+      banner.setDisplaySize(W * 0.92, W * 0.92 * (banner.height / banner.width));
+    }
+    var t1 = this.add.text(W / 2, H * 0.225, '말랑프렌즈 러너', {
       fontFamily: 'sans-serif', fontSize: '42px', color: '#ffffff', fontStyle: 'bold',
       stroke: '#1b2a3a', strokeThickness: 6
     }).setOrigin(0.5).setDepth(31);
@@ -456,6 +476,7 @@
     }).setOrigin(0.5).setDepth(31);
     this.tweens.add({ targets: t4, alpha: 0.35, duration: 550, yoyo: true, repeat: -1 });
     var ui = [dim, t1, t2, t3, t4];
+    if (banner) ui.push(banner);
     // ---- 캐릭터 선택(포트레이트 칩 5개 + 능력 설명) — 칩 밴드는 시작 탭 제외 ----
     var charY = H * 0.60;
     var unlockedChars = global.MARUnlockedChars ? MARUnlockedChars() : ['chick'];
@@ -1130,6 +1151,12 @@
       '남은 부대원 🐤 ' + this.squad.count() + '   무기 ⚔ Lv ' + this.squad.power, {
       fontFamily: 'sans-serif', fontSize: '22px', color: '#ffe08a', fontStyle: 'bold'
     }).setOrigin(0.5).setDepth(31);
+    // 전 스테이지 클리어: 트로피 연출
+    if (win && !hasNext && this.textures.exists('trophy')) {
+      var tr = this.add.image(W / 2, H / 2 - 160, 'trophy').setDisplaySize(110, 110)
+        .setDepth(32).setScale(0.1);
+      this.tweens.add({ targets: tr, scale: 110 / tr.width, duration: 500, ease: 'Back.Out' });
+    }
     // 새 캐릭터 해금 토스트
     if (newChars.length) {
       var names = newChars.map(function (id) {

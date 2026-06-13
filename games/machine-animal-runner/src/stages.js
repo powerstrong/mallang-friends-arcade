@@ -36,6 +36,7 @@
         flowers: [0xffc4d6, 0xfff3b0, 0xffffff]
       },
       bossAt: 12000, bossHp: 900, bossShotEvery: 1.1, bossDrain: 10,
+      mobTex: 'enemy-mech', armorTex: 'enemy-mech-rabbit',
       events: [
         g(700, num('mul', 2), pow(1)),
         { at: 1500, mob: { count: 6, hp: 6 } },
@@ -60,6 +61,7 @@
         flowers: [0xffb0a0, 0xffd9a0, 0xfff0d0]
       },
       bossAt: 12200, bossHp: 1500, bossShotEvery: 1.0, bossDrain: 10,
+      mobTex: 'enemy-mech-mintcat', armorTex: 'enemy-mech-latte',
       events: [
         g(700, num('mul', 2), pow(1)),
         { at: 1500, mob: { count: 8, hp: 6 } },
@@ -88,6 +90,7 @@
         flowers: [0xfff3b0, 0xb3e6ff, 0xffffff]
       },
       bossAt: 12600, bossHp: 2000, bossShotEvery: 0.85, bossDrain: 12,
+      mobTex: 'enemy-mech-hamster', armorTex: 'enemy-mech-latte',
       events: [
         g(700, num('mul', 2), pow(1)),
         { at: 1400, mob: { count: 10, hp: 6 } },
