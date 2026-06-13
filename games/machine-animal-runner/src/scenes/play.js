@@ -20,6 +20,15 @@
   var BOSS_TELEGRAPH = 0.5;  // 조준탄 경고선 노출 시간(s) — 이 동안 착탄점이 고정된다
   var EVOLVE_AT = [15, 35]; // 진화 마일스톤(머릿수, 한 판 내 단방향)
   var RISK_H = 320;         // 리스크 레인 통로 길이(px)
+  // 캐릭터별 옵션 무기(시각/타격감 — DPS 공식은 동일, 발사 빈도는 비주얼 볼륨만 좌우)
+  var WEAPONS = {
+    straight: { rate: 0.07 },  // 평행 직진탄(기본)
+    rapid:    { rate: 0.045 }, // 빠른 연사 직진탄(얇음)
+    homing:   { rate: 0.09 },  // 유도탄(목표 수렴)
+    mortar:   { rate: 0.45 },  // 광역 대포(곡사 1발 + 착탄 링)
+    spread:   { rate: 0.08 }   // 부채꼴 직진탄
+  };
+  var BULLET_SPEED = 0.9;      // 직진탄 등속(px/ms)
   var UNIT_H = [30, 35, 40];          // 진화 단계별 유닛 표시 높이
   var BULLET_STYLE = [                 // 진화 단계별 탄환 시각
     { r: 4, color: 0xfff15a },
@@ -123,6 +132,9 @@
     this._charShield = !!this.AB.autoShield; // 햄스터: 스테이지당 1회
     this._shotSpeedMul = this.assistTier >= 3 ? 0.9 : 1;
     this._barrierResidualMul = this.assistTier >= 3 ? 0.8 : 1;
+
+    this._weaponType = (this.CH && this.CH.weapon) || 'straight';
+    this._weaponRate = (WEAPONS[this._weaponType] || WEAPONS.straight).rate;
 
     this._invulnUntil = 0;   // 네거티브 게이트/보호막 무적(time.now 기준)
     this._invulnNoDrain = false;
@@ -531,11 +543,12 @@
   // ---- 시작 오버레이 (스테이지명 + 해금된 스테이지 선택 칩) -------------------
   PlayScene.prototype._buildStartOverlay = function () {
     var W = this.W, H = this.H, self = this;
-    // 협동 합류 링크(?coop=CODE)로 열렸으면 곧장 협동 로비로
+    // 협동은 URL 로만 진입(M6 광장 통합 때 "부스에 같이 서면 자동 협동"으로 대체 예정):
+    //   ?coop=new  → 방 생성(호스트) / ?coop=CODE → 합류
     var coopParam = null;
     try { coopParam = new URLSearchParams(window.location.search).get('coop'); } catch (e) {}
     if (coopParam && window.MARCoop && !MARCoop.active) {
-      this._buildCoopLobby(coopParam.toUpperCase());
+      this._buildCoopLobby(coopParam.toLowerCase() === 'new' ? null : coopParam.toUpperCase());
       return;
     }
     var dim = this.add.rectangle(W / 2, H / 2, W, H, 0x1b2a3a, 0.45).setDepth(30);
@@ -562,25 +575,10 @@
     this.tweens.add({ targets: t4, alpha: 0.35, duration: 550, yoyo: true, repeat: -1 });
     var ui = [dim, t1, t2, t3, t4];
     if (banner) ui.push(banner);
-    // 협동 입구
-    var coopY = H * 0.525;
-    var coopBtn = this.add.text(W / 2, coopY, '👫 친구랑 협동 플레이', {
-      fontFamily: 'sans-serif', fontSize: '18px', color: '#7ad7ff', fontStyle: 'bold',
-      stroke: '#1b2a3a', strokeThickness: 4
-    }).setOrigin(0.5).setDepth(31).setInteractive({ useHandCursor: true });
-    ui.push(coopBtn);
-    coopBtn.on('pointerdown', function () {
-      ui.forEach(function (o) { o.destroy(); });
-      self._buildCoopLobby(null);
-    });
-    // ---- 캐릭터 선택(포트레이트 칩 5개 + 능력 설명) — 칩 밴드는 시작 탭 제외 ----
+    // ---- 캐릭터 선택(포트레이트 칩 5개) — 칩 밴드는 시작 탭 제외 ----
+    // 능력 수치 설명은 표시하지 않는다(사용자 피드백 — 플레이로 체감)
     var charY = H * 0.60;
     var unlockedChars = global.MARUnlockedChars ? MARUnlockedChars() : ['chick'];
-    var abilityText = this.add.text(W / 2, charY + 64,
-      this.CH.abilityName + ' — ' + this.CH.abilityDesc, {
-      fontFamily: 'sans-serif', fontSize: '17px', color: '#bfe3ff', fontStyle: 'bold'
-    }).setOrigin(0.5).setDepth(31);
-    ui.push(abilityText);
     for (var ci = 0; ci < global.MAR_CHARACTERS.length; ci++) {
       (function (ch, idx) {
         var cx = W / 2 + (idx - 2) * 96;
@@ -633,8 +631,8 @@
     }
     this._startTap = function (pointer) {
       var py = (pointer && pointer.y != null) ? pointer.y : 0;
-      // 칩 밴드(스테이지/캐릭터/협동 버튼)는 시작 탭에서 제외(리스너 재등록)
-      if (Math.abs(py - chipY) < 28 || Math.abs(py - charY) < 56 || Math.abs(py - coopY) < 22) {
+      // 칩 밴드(스테이지/캐릭터)는 시작 탭에서 제외(리스너 재등록)
+      if (Math.abs(py - chipY) < 28 || Math.abs(py - charY) < 56) {
         self.input.once('pointerdown', self._startTap);
         return;
       }
@@ -708,14 +706,19 @@
     var offs = MARFormation(want);
     var cap = this.squad.activeShooters();
     var sc = this._unitScale();
+    var minDy = 0;
     for (var i = 0; i < want; i++) {
       var u = this.units[i];
       u.x = this.leaderX + offs[i].dx;
       u.y = this.squadY + offs[i].dy;
+      if (offs[i].dy < minDy) minDy = offs[i].dy;
       if (!u.scaleTweening) u.setScale(sc);
       // 사수 상한 내 유닛은 진하게(화력 기여), 잉여는 살짝 흐리게(체력 흡수) — 가독 보조
       u.setAlpha(i < cap ? 1 : 0.78);
     }
+    // 전방 판정선: 포메이션 맨 앞줄 — 접촉/픽업은 화면 맨 아래(squadY)가 아니라
+    // 앞 유닛부터 일어나야 자연스럽다(사용자 피드백)
+    this._frontY = this.squadY + minDy - 14;
   };
 
   // ---- 자동 사격 -----------------------------------------------------------
@@ -755,9 +758,9 @@
         });
       }
     }
-    // 총알 비주얼
+    // 총알 비주얼(무기별 발사 빈도)
     this._fireAcc += dt;
-    if (this._fireAcc >= 0.07) {
+    if (this._fireAcc >= this._weaponRate) {
       this._fireAcc = 0;
       this._spawnBullets(f);
     }
@@ -770,26 +773,74 @@
     }
     b.setPosition(x, y).setFillStyle(color).setVisible(true).setActive(true);
     b.setRadius(r);
+    b.setScale(1); // mortar 등 스케일 트윈 재사용 잔여 방지
     return b;
   };
   PlayScene.prototype._freeBullet = function (b) {
+    this.tweens.killTweensOf(b); // mortar 처럼 트윈 여러 개가 걸린 채 반환돼도 잔여 이동 방지
     b.setVisible(false).setActive(false);
     this._bulletPool.push(b);
   };
+  /* 무기별 발사 비주얼. 데미지는 _autoFire 의 DPS 공식이 전담 — 여기는 표현만.
+   * straight/rapid/spread: 기본은 "앞으로 나가는" 평행 직진탄(사용자 피드백 — 유도는 옵션).
+   * homing: 목표 수렴(민트). mortar: 곡사 포탄 + 착탄 링(라떼). */
   PlayScene.prototype._spawnBullets = function (target) {
     var ty = this.squadY - (target.dist - this.traveled);
     if (target.type === 'boss') ty = target.display.y;
     var st = BULLET_STYLE[this.evolveTier];
     var n = this.squad.activeShooters(); // 사수 상한까지만 시각 반영
     var self = this;
-    for (var i = 0; i < n; i++) {
-      var u = this.units[i] || { x: this.leaderX, y: this.squadY };
-      var b = this._getBullet(u.x, u.y - 8, st.r, st.color);
+    var w = this._weaponType;
+
+    if (w === 'mortar') {
+      // 사수 수에 비례해 커지는 포탄 1발 — 곡사(가로 등속 + 세로 easeIn) 후 착탄 링
+      var r = Math.min(14, 6 + n * 0.6);
+      var ix = target.display.x + Phaser.Math.Between(-12, 12);
+      var sh = this._getBullet(this.leaderX, this.squadY - 26, r, st.color);
+      this.tweens.add({ targets: sh, x: ix, duration: 400, ease: 'Linear' });
+      this.tweens.add({ targets: sh, scale: 1.5, duration: 200, yoyo: true });
       this.tweens.add({
-        targets: b, y: ty, x: target.display.x + Phaser.Math.Between(-14, 14),
-        duration: 130,
-        onComplete: function () { self._freeBullet(this.targets[0]); }
+        targets: sh, y: ty, duration: 400, ease: 'Quad.easeIn',
+        onComplete: function () {
+          self._freeBullet(sh);
+          var ring = self.add.circle(ix, ty, 12).setStrokeStyle(4, st.color, 0.9).setDepth(4);
+          self.tweens.add({
+            targets: ring, scale: 2.6, alpha: 0, duration: 240,
+            onComplete: function () { this.destroy(); }, callbackScope: ring
+          });
+        }
       });
+      return;
+    }
+
+    // 모바일 부하 가드(codex P1): 동시 가시 탄 예산 + rapid 는 짝/홀 사수 교대 격발
+    var liveBullets = this.bulletLayer.length - this._bulletPool.length;
+    if (liveBullets > 110) return;
+    var stepStart = 0, step = 1;
+    if (w === 'rapid' && n > 6) {
+      this._volleyParity = 1 - (this._volleyParity || 0);
+      stepStart = this._volleyParity; step = 2;
+    }
+    for (var i = stepStart; i < n; i += step) {
+      var u = this.units[i] || { x: this.leaderX, y: this.squadY };
+      if (w === 'homing') {
+        var hb = this._getBullet(u.x, u.y - 8, st.r, st.color);
+        this.tweens.add({
+          targets: hb, y: ty, x: target.display.x + Phaser.Math.Between(-14, 14),
+          duration: 130,
+          onComplete: function () { self._freeBullet(this.targets[0]); }
+        });
+      } else {
+        // 평행 직진탄: 유닛 x 에서 위로 등속(spread 는 부채꼴 드리프트)
+        var drift = w === 'spread' ? ((i % 5) - 2) * 16 : 0;
+        var br = w === 'rapid' ? Math.max(2, st.r - 1) : st.r;
+        var b = this._getBullet(u.x, u.y - 8, br, st.color);
+        var dur = Math.max(60, ((u.y - 8) - ty) / BULLET_SPEED);
+        this.tweens.add({
+          targets: b, y: ty, x: u.x + drift, duration: dur, ease: 'Linear',
+          onComplete: function () { self._freeBullet(this.targets[0]); }
+        });
+      }
     }
   };
 
@@ -982,7 +1033,7 @@
       var giant = this.time.now < this._giantUntil;
       if (o.type === 'gate' && !o.resolved && sy >= this.squadY) {
         this._resolveGate(o);
-      } else if (o.type === 'item' && sy >= this.squadY) {
+      } else if (o.type === 'item' && sy >= (this._frontY || this.squadY)) {
         if (Math.abs(this.leaderX - o.x) < 75) {
           this._giantUntil = this.time.now + 3000;
           this._floatLabel('거대 말랑이! 💪', '#ff7da0');
@@ -990,11 +1041,11 @@
           this.cameras.main.flash(140, 255, 200, 220);
         }
         o.dead = true; o.display.destroy();
-      } else if (o.type === 'enemy' && sy >= this.squadY) {
+      } else if (o.type === 'enemy' && sy >= (this._frontY || this.squadY)) {
         // 거대화 중엔 무피해 분쇄
         if (!giant) this._hitSquad(o.kind === 'armor' ? ARMOR_CONTACT : MOB_CONTACT, o.kind);
         this._killTrack(o, giant);
-      } else if (o.type === 'barrier' && sy >= this.squadY) {
+      } else if (o.type === 'barrier' && sy >= (this._frontY || this.squadY)) {
         if (giant) {
           this._killTrack(o, true); // 거대화: 잔여 HP 무관 분쇄
         } else {

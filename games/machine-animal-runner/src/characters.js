@@ -14,26 +14,31 @@
     {
       id: 'chick', name: '피치 병아리', emoji: '🐤',
       abilityName: '군집', abilityDesc: '+N 게이트 효과 +20%',
+      weapon: 'straight', // 기본 직진탄 — 미사일은 기본적으로 앞으로 나간다(사용자 피드백)
       ability: { addGateMul: 1.2 }
     },
     {
       id: 'rabbit', name: '토끼', emoji: '🐰',
       abilityName: '날쌤', abilityDesc: '조향 +25% · 보스탄 회피 ↑',
+      weapon: 'rapid',    // 빠른 연사 직진탄(얇고 잦음)
       ability: { steerMul: 1.25, shotHitboxMul: 0.85, aura: true }
     },
     {
       id: 'mintcat', name: '민트 고양이', emoji: '🐱',
       abilityName: '치명', abilityDesc: '데미지 ×1.2 · 사수 10명',
+      weapon: 'homing',   // 유도탄(수렴) — 질 정체성과 어울림
       ability: { dmgMul: 1.2, shooterCap: 10 }
     },
     {
       id: 'latte', name: '라떼', emoji: '🐶',
       abilityName: '든든', abilityDesc: '받는 피해 −25%',
+      weapon: 'mortar',   // 광역 대포 — 곡사 포탄 + 착탄 링
       ability: { damageTakenMul: 0.75 }
     },
     {
       id: 'hamster', name: '햄스터', emoji: '🐹',
       abilityName: '보호막', abilityDesc: '스테이지당 1회 피해 무효 + 1.5초 무적',
+      weapon: 'spread',   // 부채꼴 직진탄
       ability: { autoShield: true, shieldInvulnSec: 1.5 }
     }
   ];
