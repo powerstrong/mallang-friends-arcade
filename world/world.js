@@ -129,7 +129,8 @@
   function getBoothImage(gameId) {
     const file = gameId === 'jump-climber' ? 'booth_jump.png'
                : gameId === 'mallang-quiz-battle' ? 'booth_quiz.png'
-               : gameId === 'sseuk-sseuk' ? 'booth_sseuk.png' : null;
+               : gameId === 'sseuk-sseuk' ? 'booth_sseuk.png'
+               : gameId === 'machine-animal-runner' ? 'booth_runner.png' : null;
     if (!file) return null;
     let entry = boothImages[gameId];
     if (entry) return entry;
@@ -1431,9 +1432,10 @@
 
   // Per-game booth theme — accent colour + a playful icon.
   const ZONE_THEME = {
-    'jump-climber':        { color: '#ff9f4d', dark: '#d9791c', icon: '🧗' },
-    'mallang-quiz-battle': { color: '#7db4ff', dark: '#4d83d9', icon: '🧠' },
-    'sseuk-sseuk':         { color: '#10b981', dark: '#047857', icon: '✏️' },
+    'jump-climber':           { color: '#ff9f4d', dark: '#d9791c', icon: '🧗' },
+    'mallang-quiz-battle':    { color: '#7db4ff', dark: '#4d83d9', icon: '🧠' },
+    'sseuk-sseuk':            { color: '#10b981', dark: '#047857', icon: '✏️' },
+    'machine-animal-runner':  { color: '#4fa3ff', dark: '#2f7fd9', icon: '🐤' },
   };
   function zoneTheme(z) {
     return ZONE_THEME[z.gameId] || ZONE_THEME[z.id] ||

@@ -12,7 +12,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const HOLD = 3000;
 const JUMP = getZone('jump-climber');
-const QUIZ = getZone('mallang-quiz-battle');
+const SSEUK = getZone('sseuk-sseuk');
 
 function fresh(id, overrides = {}) {
   return { id, status: PLAYER_STATUS.ROAM, currentZoneId: null, candidateSince: null, ...overrides };
@@ -64,17 +64,17 @@ test('leaving the zone immediately demotes any non-proposed status', () => {
 test('switching zones resets the candidate timer', () => {
   const switched = applyZonePresence(
     { id: 'a', status: PLAYER_STATUS.INTENT_READY, currentZoneId: 'jump-climber', candidateSince: 1000 },
-    QUIZ, 5000, HOLD
+    SSEUK, 5000, HOLD
   );
   assert.equal(switched.status, PLAYER_STATUS.CANDIDATE);
-  assert.equal(switched.currentZoneId, 'mallang-quiz-battle');
+  assert.equal(switched.currentZoneId, 'sseuk-sseuk');
   assert.equal(switched.candidateSince, 5000);
 });
 
 test('proposed status is not affected by movement updates', () => {
   const proposed = { id: 'a', status: PLAYER_STATUS.PROPOSED, currentZoneId: 'jump-climber', candidateSince: 1000 };
   assert.deepEqual(applyZonePresence(proposed, null, 9999, HOLD), proposed);
-  assert.deepEqual(applyZonePresence(proposed, QUIZ, 9999, HOLD), proposed);
+  assert.deepEqual(applyZonePresence(proposed, SSEUK, 9999, HOLD), proposed);
 });
 
 test('in_game status is not affected by movement updates', () => {
@@ -133,7 +133,7 @@ test('findZoneAt returns the matching zone or null', () => {
 });
 
 test('every zone has a registered gameId path', () => {
-  const known = new Set(['jump-climber', 'mallang-quiz-battle', 'sseuk-sseuk']);
+  const known = new Set(['jump-climber', 'sseuk-sseuk', 'machine-animal-runner']);
   for (const zone of GAME_ZONES) {
     assert.ok(known.has(zone.gameId), `unknown gameId: ${zone.gameId}`);
     assert.ok(zone.minPlayers >= 1);

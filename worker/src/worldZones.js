@@ -4,7 +4,6 @@
  * not the original brief (jump=8 was wrong; jump only seats 2).
  *
  *   jump-climber        : 1..2  (worker/src/room.js JUMP_SESSION_LIMITS.players)
- *   mallang-quiz-battle : 2..6  (registry recommendedPlayers)
  *   sseuk-sseuk         : 2..6  (registry recommendedPlayers)
  *
  * holdMs is the dwell time before a candidate becomes intent_ready.
@@ -16,9 +15,11 @@
 // 렌더하므로, 부스 추가 시 클라 좌표를 따로 맞출 필요가 없다.
 // (단, 전용 부스 일러스트가 필요하면 world/assets/booth_<id>.png 추가 + world.js 매핑 보강.)
 const BOOTH_CATALOG = [
-  { gameId: 'jump-climber',        title: '말랑프렌즈 점프',     minPlayers: 1, maxPlayers: 2 },
-  { gameId: 'mallang-quiz-battle', title: '말랑프렌즈 퀴즈배틀', minPlayers: 2, maxPlayers: 6 },
-  { gameId: 'sseuk-sseuk',         title: '말랑프렌즈 쓱쓱',     minPlayers: 2, maxPlayers: 6 },
+  { gameId: 'jump-climber',          title: '말랑프렌즈 점프',     minPlayers: 1, maxPlayers: 2 },
+  { gameId: 'sseuk-sseuk',           title: '말랑프렌즈 쓱쓱',     minPlayers: 2, maxPlayers: 6 },
+  // 러너 부스는 "둘이 같이 서면 자동 협동" 전용 입구다(M6). 솔로는 메인 카드에서 진입하고,
+  // 광장 부스는 2인 협동만 발사한다(min=max=2) → 진입 URL ?from=world&code= 로 페어링.
+  { gameId: 'machine-animal-runner', title: '말랑프렌즈 러너',     minPlayers: 2, maxPlayers: 2 },
 ];
 
 // Portrait(960x960) 광장 자동 레이아웃. 상단에 3열 그리드로 배치해 스폰 지점

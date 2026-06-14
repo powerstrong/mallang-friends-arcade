@@ -18,7 +18,7 @@ import { PLAYER_STATUS } from '../src/matcher.js';
 import { getZone } from '../src/worldZones.js';
 
 const JUMP = getZone('jump-climber');     // min=1, max=2
-const QUIZ = getZone('mallang-quiz-battle'); // min=2, max=6
+const SSEUK = getZone('sseuk-sseuk'); // min=2, max=6
 
 function makeWs(initialAttach = null) {
   let attachment = initialAttach;
@@ -143,11 +143,11 @@ test('first-wins: two simultaneous clicks — only one launches, late click is s
 
 test('MIN_PLAYERS recheck: click after a member dropped — unstarting broadcast + error', async () => {
   const { ch, state } = makeChannel();
-  // Use QUIZ (min=2) so dropping B to CANDIDATE actually breaks the floor.
+  // Use SSEUK (min=2) so dropping B to CANDIDATE actually breaks the floor.
   const { proposal, members } = seedReady(ch, state, [
     { id: 'a', name: 'Alice' },
     { id: 'b', name: 'Bob' },
-  ], QUIZ);
+  ], SSEUK);
   // After the modal was advertised, B's status drifts to CANDIDATE (e.g. joystick
   // jitter pushed them past the edge). lastMemberIds still contains them, but
   // the seated-recheck loop will reject (only A is INTENT_READY, min=2).

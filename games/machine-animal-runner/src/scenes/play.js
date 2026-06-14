@@ -495,7 +495,9 @@
 
   // ---- 협동 로비 ------------------------------------------------------------
   // joinCode 없으면 방 생성(호스트=L석), 있으면 합류. 둘 다 ready → 서버 'start' → 재시작.
-  PlayScene.prototype._buildCoopLobby = function (joinCode) {
+  // fromWorld=true: 광장 부스가 두 명을 같은 방으로 발사한 경우 — 코드 공유 안내를 숨기고
+  //   "친구와 매칭됐어요!" 로 바꾼다(코드를 직접 알릴 필요가 없다).
+  PlayScene.prototype._buildCoopLobby = function (joinCode, fromWorld) {
     var W = this.W, H = this.H, self = this;
     var ui = [];
     function T(y, text, size, color) {
@@ -531,8 +533,13 @@
     });
 
     MARCoop.on.joined = function () {
-      codeText.setText('방 코드: ' + MARCoop.roomCode);
-      infoText.setText('친구에게 코드를 알려주세요!\n주소 뒤에  ?coop=' + MARCoop.roomCode + '  를 붙이면 합류');
+      if (fromWorld) {
+        codeText.setText('친구와 매칭됐어요! 🎉');
+        infoText.setText('준비를 누르면 함께 출발해요');
+      } else {
+        codeText.setText('방 코드: ' + MARCoop.roomCode);
+        infoText.setText('친구에게 코드를 알려주세요!\n주소 뒤에  ?coop=' + MARCoop.roomCode + '  를 붙이면 합류');
+      }
       // 호스트(L)가 현재 스테이지를 방 설정으로 올린다
       if (MARCoop.seat === 'L') MARCoop.sendStage(self.stageNo);
     };
@@ -555,12 +562,21 @@
   // ---- 시작 오버레이 (스테이지명 + 해금된 스테이지 선택 칩) -------------------
   PlayScene.prototype._buildStartOverlay = function () {
     var W = this.W, H = this.H, self = this;
-    // 협동은 URL 로만 진입(M6 광장 통합 때 "부스에 같이 서면 자동 협동"으로 대체 예정):
-    //   ?coop=new  → 방 생성(호스트) / ?coop=CODE → 합류
-    var coopParam = null;
-    try { coopParam = new URLSearchParams(window.location.search).get('coop'); } catch (e) {}
+    // 협동 진입 경로 두 가지:
+    //   1) 광장 부스(M6): ?from=world&code=<wm-…>  — 둘이 같이 서면 서버가 같은 방 코드로
+    //      두 명을 동시에 발사한다. 코드는 wm-uuid(대소문자 보존) → 자동 페어링, 공유 UI 불필요.
+    //   2) 직접 URL: ?coop=new(방 생성) / ?coop=CODE(합류) — 4자리 코드는 대문자로 정규화.
+    var sp = null;
+    try { sp = new URLSearchParams(window.location.search); } catch (e) {}
+    var coopParam = sp ? sp.get('coop') : null;
+    var fromWorld = sp && sp.get('from') === 'world';
+    var worldCode = sp ? sp.get('code') : null;
     if (coopParam && window.MARCoop && !MARCoop.active) {
       this._buildCoopLobby(coopParam.toLowerCase() === 'new' ? null : coopParam.toUpperCase());
+      return;
+    }
+    if (fromWorld && worldCode && window.MARCoop && !MARCoop.active) {
+      this._buildCoopLobby(worldCode, true); // wm 코드 그대로(대소문자 보존), 공유 UI 숨김
       return;
     }
     var dim = this.add.rectangle(W / 2, H / 2, W, H, 0x1b2a3a, 0.45).setDepth(30);
