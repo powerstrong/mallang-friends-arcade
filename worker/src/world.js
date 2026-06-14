@@ -879,6 +879,9 @@ export class WorldChannel {
         characterId: gameCharacterId || '',
         from: 'world',
         worldId: this.loungeId || 'lounge-1',
+        // 발사 인원수 — 1~2인 게임(러너)이 솔로 발사 vs 협동 발사를 구분하는 데 쓴다.
+        // 다른 게임은 무시. seatedIds 기준이라 실제 합류 인원과 일치.
+        players: String(proposal.players.length),
       });
       const url = `${gamePath}?${params.toString()}`;
 

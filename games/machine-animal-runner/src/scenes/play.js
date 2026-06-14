@@ -562,23 +562,28 @@
   // ---- 시작 오버레이 (스테이지명 + 해금된 스테이지 선택 칩) -------------------
   PlayScene.prototype._buildStartOverlay = function () {
     var W = this.W, H = this.H, self = this;
-    // 협동 진입 경로 두 가지:
-    //   1) 광장 부스(M6): ?from=world&code=<wm-…>  — 둘이 같이 서면 서버가 같은 방 코드로
-    //      두 명을 동시에 발사한다. 코드는 wm-uuid(대소문자 보존) → 자동 페어링, 공유 UI 불필요.
+    // 협동/솔로 진입 경로:
+    //   1) 광장 부스(jump식 1~2인): ?from=world&code=&players=N.
+    //      players>=2 → 협동 로비(서버가 같은 wm 코드로 두 명 동시 발사 → 자동 페어링).
+    //      players<=1 → 부스에 혼자 선 경우. 서버는 발사하되 클라는 협동에 합류하지 않고
+    //                   그냥 솔로로 플레이(아래 일반 시작 오버레이로 진행).
+    //      코드는 wm-uuid(대소문자 보존).
     //   2) 직접 URL: ?coop=new(방 생성) / ?coop=CODE(합류) — 4자리 코드는 대문자로 정규화.
     var sp = null;
     try { sp = new URLSearchParams(window.location.search); } catch (e) {}
     var coopParam = sp ? sp.get('coop') : null;
     var fromWorld = sp && sp.get('from') === 'world';
     var worldCode = sp ? sp.get('code') : null;
+    var worldPlayers = sp ? parseInt(sp.get('players'), 10) : 0;
     if (coopParam && window.MARCoop && !MARCoop.active) {
       this._buildCoopLobby(coopParam.toLowerCase() === 'new' ? null : coopParam.toUpperCase());
       return;
     }
-    if (fromWorld && worldCode && window.MARCoop && !MARCoop.active) {
+    if (fromWorld && worldCode && worldPlayers >= 2 && window.MARCoop && !MARCoop.active) {
       this._buildCoopLobby(worldCode, true); // wm 코드 그대로(대소문자 보존), 공유 UI 숨김
       return;
     }
+    // from=world && players<=1 → 솔로로 진행(아래 일반 시작 오버레이)
     var dim = this.add.rectangle(W / 2, H / 2, W, H, 0x1b2a3a, 0.45).setDepth(30);
     // 타이틀 배너(M4): 일러스트 위에 한글 타이틀을 얹는다
     var banner = null;

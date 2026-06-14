@@ -17,9 +17,9 @@
 const BOOTH_CATALOG = [
   { gameId: 'jump-climber',          title: '말랑프렌즈 점프',     minPlayers: 1, maxPlayers: 2 },
   { gameId: 'sseuk-sseuk',           title: '말랑프렌즈 쓱쓱',     minPlayers: 2, maxPlayers: 6 },
-  // 러너 부스는 "둘이 같이 서면 자동 협동" 전용 입구다(M6). 솔로는 메인 카드에서 진입하고,
-  // 광장 부스는 2인 협동만 발사한다(min=max=2) → 진입 URL ?from=world&code= 로 페어링.
-  { gameId: 'machine-animal-runner', title: '말랑프렌즈 러너',     minPlayers: 2, maxPlayers: 2 },
+  // 러너 부스(jump식 1~2인): 혼자 서면 솔로 발사, 둘이면 협동. 진입 URL 은
+  // ?from=world&code=&players=N — 클라가 players<=1 이면 솔로, >=2 면 협동 로비로 라우팅.
+  { gameId: 'machine-animal-runner', title: '말랑프렌즈 러너',     minPlayers: 1, maxPlayers: 2 },
 ];
 
 // Portrait(960x960) 광장 자동 레이아웃. 상단에 3열 그리드로 배치해 스폰 지점
