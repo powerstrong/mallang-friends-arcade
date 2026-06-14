@@ -13,6 +13,11 @@
   var LANE_MIN_R = 0.16, LANE_MAX_R = 0.84;
   var SCROLL = 165;        // px/s
   var SHOOT_RANGE = 380;   // 부대선 위로 이 거리까지 사격
+  // 좌우 정렬 판정(사용자 피드백): 총알은 부대 x 에서 앞으로 직진하므로, "사격 컬럼" 안의 적만
+  // 피격되고, 접촉 범위 밖 적은 옆으로 흘려보내 회피된다(조준·회피 = 스티어링 실력).
+  var FIRE_HALF_W = 96;    // 사격 컬럼 반폭 — leaderX±이 안의 적만 DPS 피격(장벽은 전폭 예외)
+  var CONTACT_HALF_W = 74; // 접촉 반폭 — 이 밖의 적은 부대를 그냥 지나친다(피해 없음)
+  var PASS_CLEAR_Y = 90;   // 회피된 적이 부대선 아래로 이만큼 더 가면 조용히 정리
   var MAX_RENDER_UNITS = 60;
   var MOB_CONTACT = 2, ARMOR_CONTACT = 14;
   var BOSS_DRAIN = 10;     // 접근 드레인(부대/초) — 조준탄 추가로 14→10 완화
@@ -71,30 +76,37 @@
   PlayScene.prototype.preload = function () {
     // 캐릭터 5종: 후방뷰 3프레임 + 골드(최종 진화) + 포트레이트(선택 UI).
     var self = this;
+    // 초반 로딩 최적화: 예전엔 캐릭터·적·보스를 5종 전부 preload 했다(보스 PNG만 1.9MB×5≈10MB).
+    // 한 판엔 캐릭터 1·적 1~2·보스 1만 필요 → 이번 판에 쓰는 것만 로드한다. 캐릭터를 바꾸면
+    // scene.restart 로 preload 가 다시 돌아 그때 새 캐릭터 자산을 채운다(증분·캐시).
+    var cid = this.charId;
+    // 포트레이트는 5종 모두 작아서(선택 UI용) 그대로 로드.
     global.MAR_CHARACTERS.forEach(function (ch) {
-      if (!self.textures.exists('unit-' + ch.id))
-        self.load.spritesheet('unit-' + ch.id, './assets/unit-' + ch.id + '-back.png',
-          { frameWidth: 256, frameHeight: 256 });
-      if (!self.textures.exists('unit-' + ch.id + '-gold'))
-        self.load.spritesheet('unit-' + ch.id + '-gold', './assets/unit-' + ch.id + '-gold-back.png',
-          { frameWidth: 256, frameHeight: 256 });
       if (!self.textures.exists('portrait-' + ch.id))
         self.load.image('portrait-' + ch.id, './assets/portrait-' + ch.id + '.png');
     });
+    // 유닛 시트/골드: 이번 판 캐릭터만.
+    if (!this.textures.exists('unit-' + cid))
+      this.load.spritesheet('unit-' + cid, './assets/unit-' + cid + '-back.png',
+        { frameWidth: 256, frameHeight: 256 });
+    if (!this.textures.exists('unit-' + cid + '-gold'))
+      this.load.spritesheet('unit-' + cid + '-gold', './assets/unit-' + cid + '-gold-back.png',
+        { frameWidth: 256, frameHeight: 256 });
     if (!this.textures.exists('item-giant')) this.load.image('item-giant', './assets/item-giant.png');
     // 폴백: 후방뷰가 없으면 협동대모험 측면 시트 임시 사용.
     if (!this.textures.exists('chick'))
       this.load.spritesheet('chick', '/games/coop-adventure/assets/chick-run.png',
         { frameWidth: 256, frameHeight: 256 });
+    // 적: 범용 폴백(enemy-mech) + 이번 스테이지가 쓰는 변형만.
     if (!this.textures.exists('enemy-mech')) this.load.image('enemy-mech', './assets/enemy-mech-chick.png');
-    if (!this.textures.exists('boss-mech')) this.load.image('boss-mech', './assets/boss-mech.png');
-    // 기계 적 4종(스테이지별 배정) + 보스 색변형(캐릭터별)
-    ['rabbit', 'mintcat', 'latte', 'hamster'].forEach(function (id) {
-      if (!self.textures.exists('enemy-mech-' + id))
-        self.load.image('enemy-mech-' + id, './assets/enemy-mech-' + id + '.png');
-      if (!self.textures.exists('boss-mech-' + id))
-        self.load.image('boss-mech-' + id, './assets/boss-mech-' + id + '.png');
+    var stage = global.MAR_STAGES[this.stageNo - 1] || global.MAR_STAGES[0];
+    [stage.mobTex, stage.armorTex].forEach(function (tex) {
+      if (tex && /^enemy-mech-/.test(tex) && tex !== 'enemy-mech' && !self.textures.exists(tex))
+        self.load.image(tex, './assets/' + tex + '.png');
     });
+    // 보스: 이번 판 캐릭터 색변형 1개만(기계 곰 PNG 약 1.9MB — 이게 예전 로딩의 주범).
+    var bossKey = ['rabbit', 'mintcat', 'latte', 'hamster'].indexOf(cid) >= 0 ? 'boss-mech-' + cid : 'boss-mech';
+    if (!this.textures.exists(bossKey)) this.load.image(bossKey, './assets/' + bossKey + '.png');
     if (!this.textures.exists('trophy')) this.load.image('trophy', './assets/trophy.png');
     if (!this.textures.exists('title-banner')) this.load.image('title-banner', './assets/title-banner.png');
     if (!this.textures.exists('cage')) // 협동 새장 2프레임(닫힘/열림)
@@ -775,6 +787,10 @@
       if (o.type !== 'enemy' && o.type !== 'barrier') continue;
       var sy = this.squadY - (o.dist - this.traveled);
       if (sy < this.squadY - SHOOT_RANGE || sy > this.squadY) continue;
+      // 떼(mob)만 사격 컬럼 안에 들어와야 피격된다(좌우로 흩어진 졸개 — 조준해서 쏴야 함).
+      // 장갑(armor)·장벽(barrier)은 "반드시 격파" 화력 체크라 전폭 대상(회피 불가, 수 vs 질 앵커).
+      if (o.type === 'enemy' && o.kind === 'mob' &&
+          Math.abs((o.display ? o.display.x : o.x) - this.leaderX) > FIRE_HALF_W) continue;
       if (sy > bestY) { bestY = sy; best = o; }
     }
     return best;
@@ -812,7 +828,9 @@
   PlayScene.prototype._getBullet = function (x, y, r, color) {
     var b = this._bulletPool.pop();
     if (!b) {
-      b = this.add.circle(0, 0, 4, 0xffffff);
+      // 어두운 테두리 — 노란 병아리/골드 유닛 위에서도 탄이 묻히지 않게(사용자 피드백).
+      // 풀 재사용 시에도 테두리는 유지된다(생성 시 1회 지정).
+      b = this.add.circle(0, 0, 4, 0xffffff).setStrokeStyle(2, 0x16202e, 0.95);
       this.bulletLayer.add(b);
     }
     b.setPosition(x, y).setFillStyle(color).setVisible(true).setActive(true);
@@ -1086,9 +1104,14 @@
         }
         o.dead = true; o.display.destroy();
       } else if (o.type === 'enemy' && sy >= (this._frontY || this.squadY)) {
-        // 거대화 중엔 무피해 분쇄
-        if (!giant) this._hitSquad(o.kind === 'armor' ? ARMOR_CONTACT : MOB_CONTACT, o.kind);
-        this._killTrack(o, giant);
+        // 떼(mob)는 좌우 정렬됐을 때만 충돌 — 빗나가면 옆으로 흘려보내고(회피 성공, 피해 없음)
+        // 부대선 아래로 내려가면 정리한다. 장갑(armor)은 전폭 충돌(회피 불가, 화력으로 격파).
+        if (giant || o.kind !== 'mob' || Math.abs(o.display.x - this.leaderX) < CONTACT_HALF_W) {
+          if (!giant) this._hitSquad(o.kind === 'armor' ? ARMOR_CONTACT : MOB_CONTACT, o.kind);
+          this._killTrack(o, giant);
+        } else if (sy > this.squadY + PASS_CLEAR_Y) {
+          o.dead = true; o.display.destroy();
+        }
       } else if (o.type === 'barrier' && sy >= (this._frontY || this.squadY)) {
         if (giant) {
           this._killTrack(o, true); // 거대화: 잔여 HP 무관 분쇄
