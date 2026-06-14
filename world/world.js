@@ -152,6 +152,7 @@
   const LAB_BOOTH = { x: 571, y: 200, w: 165, h: 200 };
   const LAB_THEME = { color: '#b08cff', dark: '#6f4fd6', icon: '🧪' };
   let inLabBooth = false; // me 가 실험실 부스 rect 안에 있는지(진입/이탈 전이 추적)
+  let labDismissed = false; // ✕ 로 패널을 닫음 — 같은 자리에선 재오픈 안 함(나갔다 들어오면 해제)
   let labModal = null;    // 지연 생성되는 실험실 패널 DOM
 
   // ── DOM references ──────────────────────────────────────────────────────────
@@ -881,6 +882,11 @@
       minPlayers: numOr(d.minPlayers, 1),
       maxPlayers: numOr(d.maxPlayers, 99),
     });
+    // 실험실 매칭 풀(lab:*) 대기 인원이 바뀌면 패널의 '같이하기 (대기 N)' 갱신.
+    if (typeof d.zoneId === 'string' && d.zoneId.startsWith('lab:')
+        && labModal && !labModal.classList.contains('hidden')) {
+      renderLabList();
+    }
   }
 
   // Build a map worldId -> portrait URL so the modal members list can show
@@ -903,6 +909,8 @@
       minPlayers: numOr(d.minPlayers, 1),
       maxPlayers: numOr(d.maxPlayers, 99),
     };
+    // 실험실 '같이하기' 로 들어온 매칭이면 실험실 패널을 닫고 매칭 모달에 넘긴다.
+    closeLabPanel();
     openMatchModal();
   }
 
@@ -1592,13 +1600,18 @@
   function syncLabPanel() {
     if (!me) return;
     const inside = pointInRect(me.x, me.y, LAB_BOOTH);
-    if (inside && !inLabBooth) {
-      inLabBooth = true;
-      if (!activeProposal) openLabPanel();
-    } else if (!inside && inLabBooth) {
-      inLabBooth = false;
-      closeLabPanel();
+    if (!inside) {
+      // 부스를 벗어남 — 상태 초기화(다음 진입 때 다시 열림).
+      if (inLabBooth) { inLabBooth = false; labDismissed = false; closeLabPanel(); }
+      return;
     }
+    inLabBooth = true;
+    // 매칭 모달이 떠 있으면(같이하기 대기/제안) 실험실 패널은 양보한다.
+    if (activeProposal) { closeLabPanel(); return; }
+    // ✕ 로 닫아둔 동안은 재오픈하지 않는다.
+    if (labDismissed) return;
+    // 최초 진입 또는 매칭 취소 후 복귀 — 패널이 닫혀 있으면 연다.
+    if (!labModal || labModal.classList.contains('hidden')) openLabPanel();
   }
 
   function ensureLabModal() {
@@ -1619,7 +1632,10 @@
       </div>`;
     const host = document.getElementById('app') || document.body;
     host.appendChild(modal);
-    modal.querySelector('.lab-close').addEventListener('click', closeLabPanel);
+    modal.querySelector('.lab-close').addEventListener('click', () => {
+      labDismissed = true; // 같은 자리에선 재오픈 안 함 — 나갔다 와야 다시 열림.
+      closeLabPanel();
+    });
     labModal = modal;
     return labModal;
   }
@@ -1639,25 +1655,34 @@
     for (const g of games) {
       const li = document.createElement('li');
       li.className = 'lab-item';
-      li.tabIndex = 0;
-      li.setAttribute('role', 'button');
       const accent = /^#[0-9a-fA-F]{6}$/.test(g.accentColor || '') ? g.accentColor : '#b08cff';
       const players = g.supportedPlayers || g.recommendedPlayers || '';
+      // labMatch 게임은 '같이하기'(광장 자동 페어링) 버튼을 추가로 보여준다.
+      const waiting = g.labMatch ? (zoneStates.get('lab:' + g.id)?.count || 0) : 0;
+      const coopLabel = waiting > 0 ? `👥 같이하기 (대기 ${waiting})` : '👥 같이하기';
       li.innerHTML = `
         <span class="lab-icon" style="background:${hexA(accent, 0.18)};color:${accent}">${escapeHtml(g.icon || '🎮')}</span>
         <span class="lab-info">
           <span class="lab-title">${escapeHtml(g.title)}<span class="lab-badge">실험중</span></span>
           <span class="lab-desc">${escapeHtml(g.description || '')}</span>
           ${players ? `<span class="lab-meta">👥 ${escapeHtml(players)}</span>` : ''}
-        </span>
-        <span class="lab-go" aria-hidden="true">▶</span>`;
-      const go = () => gotoGameFromLab(g.path);
-      li.addEventListener('click', go);
-      li.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); }
-      });
+          <span class="lab-actions">
+            <button type="button" class="lab-btn lab-btn--solo">${g.labMatch ? '혼자 하기' : '플레이 ▶'}</button>
+            ${g.labMatch ? `<button type="button" class="lab-btn lab-btn--coop">${escapeHtml(coopLabel)}</button>` : ''}
+          </span>
+        </span>`;
+      li.querySelector('.lab-btn--solo').addEventListener('click', () => gotoGameFromLab(g.path));
+      const coopBtn = li.querySelector('.lab-btn--coop');
+      if (coopBtn) coopBtn.addEventListener('click', () => queueLabCoop(g.id));
       list.appendChild(li);
     }
+  }
+
+  // '같이하기' — 서버 lab 큐에 진입. 이후 match_proposal 이 오면 매칭 모달이
+  // 열리며(handleMatchProposal 이 실험실 패널을 닫음) 기존 발사 흐름을 그대로 탄다.
+  function queueLabCoop(gameId) {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    send({ t: 'lab_queue', d: { gameId } });
   }
 
   function openLabPanel() {

@@ -58,8 +58,35 @@ export const GAME_ZONES = BOOTH_CATALOG.map((b, i) => ({
 
 const ZONES_BY_ID = new Map(GAME_ZONES.map((z) => [z.id, z]));
 
+// ── 실험실(🧪) 자동 페어링 풀 — 논리 zone (물리 부스 아님) ──────────────────────
+// 실험실 패널의 '같이하기' 버튼이 lab_queue 로 진입시키는 게임별 매칭 풀.
+// 부스처럼 위치(rect)·dwell(holdMs) 이 없고, 클라가 명시적으로 큐에 들어온다
+// (world.js _handleLabQueue). 발사는 기존 월드 매칭 파이프라인을 그대로 재사용하므로
+// 여기 gameId 는 반드시 room.js GAME_PATHS + world.js GAME_URLS 에 등록돼 있어야 한다.
+//   현재 충족: machine-animal-runner (GameRoom 권위 협동방).
+//   계단(mallang-stairs)은 MallangRelay 릴레이 게임이라 이 파이프라인을 못 타므로 제외.
+const LAB_ZONE_PREFIX = 'lab:';
+const LAB_MATCH_CATALOG = [
+  { gameId: 'machine-animal-runner', title: '말랑프렌즈 러너', minPlayers: 2, maxPlayers: 2 },
+];
+const LAB_ZONES_BY_ID = new Map(LAB_MATCH_CATALOG.map((b) => {
+  const id = LAB_ZONE_PREFIX + b.gameId;
+  return [id, {
+    id, gameId: b.gameId, title: b.title, rect: null,
+    minPlayers: b.minPlayers, maxPlayers: b.maxPlayers, holdMs: 0,
+  }];
+}));
+
+export function isLabZoneId(zoneId) {
+  return typeof zoneId === 'string' && zoneId.startsWith(LAB_ZONE_PREFIX);
+}
+
+export function getLabZoneForGame(gameId) {
+  return LAB_ZONES_BY_ID.get(LAB_ZONE_PREFIX + gameId) || null;
+}
+
 export function getZone(zoneId) {
-  return ZONES_BY_ID.get(zoneId) || null;
+  return ZONES_BY_ID.get(zoneId) || LAB_ZONES_BY_ID.get(zoneId) || null;
 }
 
 export function pointInRect(x, y, rect) {

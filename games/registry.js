@@ -8,6 +8,8 @@
  *   reviewState: NOT_SUBMITTED | IN_REVIEW | CHANGES_REQUESTED | APPROVED
  *   stage:       'LAB' (선택) — 광장 '실험실(🧪)' 부스 안 목록에 노출. 정식 부스
  *                (worldZones BOOTH_CATALOG)와 무관한 3번째 노출 티어다.
+ *   labMatch:    true (선택) — 실험실 카드에 '같이하기'(광장 자동 페어링) 버튼 노출.
+ *                서버 worldZones LAB_MATCH_CATALOG + room.js GAME_PATHS 에도 등록 필요.
  *
  * 노출 3티어:
  *   1) 정식 부스  — worldZones BOOTH_CATALOG 에 등재 (광장 정면). 검증된 게임.
@@ -88,16 +90,17 @@ window.GAME_REGISTRY = [
   {
     id: 'machine-animal-runner',
     title: '말랑프렌즈 러너',
-    description: '병아리 부대를 이끌고 게이트를 골라 기계군단을 막는 크라우드 러너! (?coop= 로 친구와 2인 협동도 가능) 🐤',
+    description: '병아리 부대를 이끌고 게이트를 골라 기계군단을 막는 크라우드 러너! 혼자서, 또는 실험실에서 친구와 2인 협동 🐤',
     type: 'SOLO',
-    recommendedPlayers: '1명',
-    supportedPlayers: '1명',
-    playMode: '솔로',
+    recommendedPlayers: '1~2명',
+    supportedPlayers: '1~2명',
+    playMode: '솔로 · 실험실 2인 협동',
     durationSeconds: 0,
     status: 'PLAYABLE',
     visibility: 'PUBLIC',
     reviewState: 'APPROVED',
     stage: 'LAB',
+    labMatch: true,
     author: 'powerstrong',
     icon: '🐤',
     accentColor: '#4fa3ff',

@@ -7,7 +7,7 @@
  * The world state lives only in DO memory. Nothing here writes to D1.
  */
 
-import { GAME_ZONES, getZone, findZoneAt } from './worldZones.js';
+import { GAME_ZONES, getZone, findZoneAt, isLabZoneId, getLabZoneForGame } from './worldZones.js';
 import { CHARACTERS, isValidCharacterId, randomCharacterId } from './characters.js';
 import { applyZonePresence, compareReadyForSeat, PLAYER_STATUS } from './matcher.js';
 import { toGameCharacterId } from './characters.js';
@@ -229,6 +229,8 @@ export class WorldChannel {
           return await this._handleMatchStart(ws, attach, d);
         case 'match_leave':
           return await this._handleMatchLeave(ws, attach, d);
+        case 'lab_queue':
+          return await this._handleLabQueue(ws, attach, d);
         case 'pong':
           ws.serializeAttachment({ ...attach, lastHeartbeat: Date.now() });
           return;
@@ -412,6 +414,18 @@ export class WorldChannel {
     if (dist > MAX_JUMP_PX) {
       // Send a correction so the cheat-attempting client snaps back.
       this._send(ws, { t: 'tick', d: { players: [{ id: attach.sessionId, x: px, y: py, dir, moving: false }], at: now } });
+      return;
+    }
+
+    // 실험실 큐(논리 zone 'lab:*')에 들어가 있으면 물리 위치로 강등하지 않는다.
+    // findZoneAt 은 물리 부스만 알기에 lab 큐 플레이어를 매번 ROAM 으로 떨어뜨릴 것.
+    // 위치/방향만 갱신하고 broadcast(매칭 모달이 떠 있어 보통 이동은 없지만 방어).
+    if (isLabZoneId(attach.currentZoneId)) {
+      ws.serializeAttachment({ ...attach, x: cx, y: cy, dir, moving, lastMoveAt: now });
+      this._broadcast({
+        t: 'tick',
+        d: { players: [{ id: attach.sessionId, x: cx, y: cy, dir, moving }], at: now },
+      }, ws);
       return;
     }
 
@@ -757,6 +771,41 @@ export class WorldChannel {
     );
     this._broadcastZoneState(prevZoneId);
     await this._syncProposalForZone(prevZoneId, now);
+    await this._scheduleZoneAlarm();
+  }
+
+  /* 실험실 패널 '같이하기' — 게임별 논리 매칭 풀(zone 'lab:<gameId>')에 즉시
+   * INTENT_READY 로 진입시킨다. 부스 dwell 없이 바로 ready 이며, 이후는 기존
+   * 매칭 파이프라인(_syncProposalForZone → match_proposal → 시작 → _launchProposal)
+   * 을 그대로 재사용한다. 큐 이탈은 기존 match_leave 가 처리(currentZoneId 기반).
+   */
+  async _handleLabQueue(ws, attach, d) {
+    if (!attach.sessionId) return;
+    const gameId = typeof d?.gameId === 'string' ? d.gameId : null;
+    const zone = gameId ? getLabZoneForGame(gameId) : null;
+    if (!zone) return this._sendError(ws, 'BAD_REQUEST', '실험실 매칭을 지원하지 않는 게임입니다.');
+    if (!GAME_URLS[gameId]) return this._sendError(ws, 'BAD_REQUEST', '실행할 수 없는 게임입니다.');
+
+    const now = Date.now();
+    const prevZoneId = attach.currentZoneId ?? null;
+    if (prevZoneId === zone.id) return; // 이미 같은 큐 — 무시(중복 클릭).
+
+    ws.serializeAttachment({
+      ...attach,
+      status: PLAYER_STATUS.INTENT_READY,
+      currentZoneId: zone.id,
+      candidateSince: now,
+    });
+
+    // 이전에 다른 부스/큐에 있었으면 그쪽도 갱신.
+    if (prevZoneId) {
+      this._broadcastZoneState(prevZoneId);
+      await this._syncProposalForZone(prevZoneId, now);
+    }
+    // 새 lab 큐 상태 반영 — 1명이어도 _syncProposalForZone 이 proposal 을 만들고
+    // 본인에게 match_proposal 을 보내 대기 모달이 즉시 열린다(최소 인원 안내 포함).
+    this._broadcastZoneState(zone.id);
+    await this._syncProposalForZone(zone.id, now);
     await this._scheduleZoneAlarm();
   }
 
