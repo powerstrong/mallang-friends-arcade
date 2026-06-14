@@ -141,7 +141,11 @@
     if (this.input0) this.input0.targetX = 0.5; // restart 시 중앙 출발 보장
 
     this._buildBackground();
+    this._buildGroundDetail();   // 깊이 음영·차선 점선·잔디 패치
+    this._buildScenery();        // 갓길 풍경(나무·덤불·바위)
+    this._buildAmbient();        // 흩날리는 꽃잎 파티클
     this._buildAnims();
+    this._dustAcc = 0;
 
     // 숨김 어시스트(연속 전멸 보정, UI 비표시 — DESIGN.md):
     // tier1 +3 / tier2+ +6 (머릿수는 여기까지 — 시작이 사수상한을 넘으면 긴장 훼손)
@@ -264,15 +268,161 @@
     this._updateBgScroll();
   };
   PlayScene.prototype._updateBgScroll = function () {
-    var H = this.H;
-    function wrap(list, gap, off) {
+    var H = this.H, off = this.traveled;
+    function wrapN(list, perRow, gap) {
+      if (!list) return;
       for (var i = 0; i < list.length; i++) {
-        var base = Math.floor(i / 2) * gap;
+        var base = Math.floor(i / perRow) * gap;
         list[i].y = ((base + off) % (H + gap)) - gap;
       }
     }
-    wrap(this.scrollDeco, this._decoGap, this.traveled % this._decoGap);
-    wrap(this.flowers, this._flowerGap, this.traveled % this._flowerGap);
+    wrapN(this.scrollDeco, 2, this._decoGap);
+    wrapN(this.flowers, 2, this._flowerGap);
+    wrapN(this.laneDashes, 1, this._dashGap);
+    wrapN(this.roadBands, 1, this._bandGap);
+    wrapN(this.grassPatches, 2, this._patchGap);
+    wrapN(this.scenery, 1, this._sceneryGap);
+  };
+
+  // ---- 지면 디테일 (깊이 음영·길 디테일: 절차적, 새 에셋 불필요) ---------------
+  PlayScene.prototype._buildGroundDetail = function () {
+    var W = this.W, H = this.H, P = this.S.palette;
+    var roadW = this._roadW, railL = W / 2 - roadW / 2, railR = W / 2 + roadW / 2;
+    // 상단 거리감 음영(멀수록 어둡게) — 위 22% 알파 → 아래 0
+    var top = this.add.graphics().setDepth(-8.7);
+    top.fillGradientStyle(0x06122a, 0x06122a, 0x06122a, 0x06122a, 0.24, 0.24, 0, 0);
+    top.fillRect(0, 0, W, H);
+    // 길 양옆 부드러운 가장자리 그림자
+    var edge = this.add.graphics().setDepth(-8.6);
+    edge.fillGradientStyle(0x000000, 0x000000, 0x000000, 0x000000, 0.18, 0, 0.18, 0);
+    edge.fillRect(railL, 0, 32, H);
+    edge.fillGradientStyle(0x000000, 0x000000, 0x000000, 0x000000, 0, 0.18, 0, 0.18);
+    edge.fillRect(railR - 32, 0, 32, H);
+    // 중앙 차선 점선(스크롤) — 전진 속도감
+    this.laneDashes = [];
+    var dGap = 92, dn = Math.ceil(H / dGap) + 2;
+    for (var i = 0; i < dn; i++)
+      this.laneDashes.push(this.add.rectangle(W / 2, 0, 7, 40, 0xffffff, 0.45).setDepth(-8.5));
+    this._dashGap = dGap;
+    // 길 위 옅은 가로 음영 밴드(스크롤)
+    this.roadBands = [];
+    var bGap = 156, bn = Math.ceil(H / bGap) + 2;
+    for (var k = 0; k < bn; k++)
+      this.roadBands.push(this.add.rectangle(W / 2, 0, roadW, 72, 0x000000, 0.05).setDepth(-8.55));
+    this._bandGap = bGap;
+    // 잔디 패치(스크롤) — 짙은 얼룩으로 단색 탈피
+    this.grassPatches = [];
+    var gc = Phaser.Display.Color.IntegerToColor(P.grass).darken(14).color;
+    for (var j = 0; j < 12; j++) {
+      var leftSide = j % 2 === 0;
+      var gx = leftSide
+        ? railL * (0.12 + 0.7 * ((j * 7919) % 100) / 100)
+        : railR + (W - railR) * (0.18 + 0.7 * ((j * 6271) % 100) / 100);
+      this.grassPatches.push(
+        this.add.ellipse(gx, 0, 42 + (j % 3) * 18, 26 + (j % 2) * 12, gc, 0.55).setDepth(-9.4));
+    }
+    this._patchGap = Math.ceil(H / 6);
+  };
+
+  // ---- 갓길 풍경 (나무·덤불·바위 — 절차적 도형, 스크롤 + 흔들림) ---------------
+  PlayScene.prototype._buildScenery = function () {
+    var W = this.W, H = this.H;
+    var roadW = this._roadW, railL = W / 2 - roadW / 2, railR = W / 2 + roadW / 2;
+    this.scenery = [];
+    var kinds = ['tree', 'bush', 'tree', 'rock', 'bush', 'tree'];
+    var sGap = 124, sn = Math.ceil(H / sGap) + 2;
+    for (var i = 0; i < sn; i++) {
+      var leftSide = i % 2 === 0;
+      var sx = leftSide
+        ? railL * (0.16 + 0.5 * ((i * 7919) % 100) / 100)
+        : railR + (W - railR) * (0.30 + 0.5 * ((i * 104729) % 100) / 100);
+      this.scenery.push(this._makeProp(sx, kinds[i % kinds.length], i));
+    }
+    this._sceneryGap = sGap;
+  };
+  PlayScene.prototype._makeProp = function (x, kind, seed) {
+    var P = this.S.palette;
+    var c = this.add.container(x, 0).setDepth(-7);
+    c.add(this.add.ellipse(0, 12, 38, 15, 0x000000, 0.16)); // 바닥 그림자
+    if (kind === 'rock') {
+      c.add(this.add.ellipse(0, -2, 28, 22, 0x9aa3ad));
+      c.add(this.add.ellipse(-5, -7, 13, 9, 0xc6cdd4, 0.85));
+    } else if (kind === 'bush') {
+      var bc = Phaser.Display.Color.IntegerToColor(P.grass).darken(30).color;
+      c.add(this.add.circle(-9, 0, 13, bc));
+      c.add(this.add.circle(9, 0, 13, bc));
+      c.add(this.add.circle(0, -6, 16, bc));
+      c.add(this.add.circle(-3, -9, 6, 0xffffff, 0.18));
+    } else { // tree
+      c.add(this.add.rectangle(0, 6, 9, 24, 0x7a5836));
+      c.add(this.add.circle(0, -18, 28, 0x4e8f57));
+      c.add(this.add.circle(-11, -12, 16, 0x5fa566));
+      c.add(this.add.circle(-7, -24, 9, 0xffffff, 0.16));
+    }
+    var sway = 1.5 + (seed % 3) * 0.6;
+    this.tweens.add({
+      targets: c, angle: { from: -sway, to: sway },
+      duration: 1400 + (seed % 5) * 180, yoyo: true, repeat: -1, ease: 'Sine.easeInOut'
+    });
+    return c;
+  };
+
+  // ---- 앰비언트 (흩날리는 꽃잎 — 전경 파티클) ---------------------------------
+  PlayScene.prototype._buildAmbient = function () {
+    var W = this.W, H = this.H, cols = this.S.palette.flowers;
+    this.petals = [];
+    for (var i = 0; i < 14; i++) {
+      var p = this.add.circle(Math.random() * W, Math.random() * H, 3 + Math.random() * 3,
+        cols[i % cols.length], 0.6).setDepth(7);
+      p._vx = (Math.random() - 0.5) * 18;
+      p._vy = 26 + Math.random() * 36;
+      p._ph = Math.random() * 6.28;
+      this.petals.push(p);
+    }
+  };
+  PlayScene.prototype._updateAmbient = function (dt, t) {
+    if (!this.petals) return;
+    var W = this.W, H = this.H;
+    for (var i = 0; i < this.petals.length; i++) {
+      var p = this.petals[i];
+      p.y += p._vy * dt;
+      p.x += (Math.sin(t / 600 + p._ph) * 0.6) + p._vx * dt;
+      p.rotation += dt * 2;
+      if (p.y > H + 8) { p.y = -8; p.x = Math.random() * W; }
+      if (p.x < -8) p.x = W + 8; else if (p.x > W + 8) p.x = -8;
+    }
+  };
+
+  // ---- 전투 연출 헬퍼 (총구 화염·먼지·피격 스파크) ----------------------------
+  PlayScene.prototype._muzzleFlash = function () {
+    if (!this.units || !this.units.length) return;
+    var n = Math.min(this.squad.activeShooters(), this.units.length);
+    for (var i = 0; i < n; i += 2) {
+      var u = this.units[i]; if (!u) continue;
+      var fl = this.add.circle(u.x, u.y - 11, 7, 0xfff6c8, 0.9).setDepth(4);
+      this.tweens.add({
+        targets: fl, scale: 0.2, alpha: 0, duration: 90,
+        onComplete: function () { this.destroy(); }, callbackScope: fl
+      });
+    }
+  };
+  PlayScene.prototype._runDust = function () {
+    var d = this.add.ellipse(this.leaderX + (Math.random() - 0.5) * 44, this.squadY + 18,
+      14, 7, 0xffffff, 0.32).setDepth(3);
+    this.tweens.add({
+      targets: d, y: d.y + 12, alpha: 0, scaleX: 1.9, duration: 360,
+      onComplete: function () { this.destroy(); }, callbackScope: d
+    });
+  };
+  PlayScene.prototype._impactSpark = function (x, y, color) {
+    for (var i = 0; i < 3; i++) {
+      var s = this.add.circle(x, y, 2.5, color || 0xffe08a, 0.95).setDepth(4);
+      var a = Math.random() * 6.28, sp = 18 + Math.random() * 30;
+      this.tweens.add({
+        targets: s, x: x + Math.cos(a) * sp, y: y + Math.sin(a) * sp, alpha: 0, duration: 200,
+        onComplete: function () { this.destroy(); }, callbackScope: s
+      });
+    }
   };
 
   // ---- 트랙 빌드 -----------------------------------------------------------
@@ -479,28 +629,59 @@
   // ---- UI ------------------------------------------------------------------
   PlayScene.prototype._buildUI = function () {
     var W = this.W;
-    this.uiAmount = this.add.text(14, 12, '', {
-      fontFamily: 'sans-serif', fontSize: '26px', color: '#1b2a3a', fontStyle: 'bold'
-    }).setDepth(20);
-    this.uiPower = this.add.text(W - 14, 12, '', {
-      fontFamily: 'sans-serif', fontSize: '22px', color: '#b3471a', fontStyle: 'bold'
+    // HUD 칩(둥근 반투명 패널) — 카운트/파워를 얹어 프로토타입 느낌 탈피
+    var pg = this.add.graphics().setDepth(19);
+    pg.fillStyle(0xffffff, 0.84); pg.fillRoundedRect(10, 8, 120, 38, 19);
+    pg.fillStyle(0xfff0e4, 0.84); pg.fillRoundedRect(W - 130, 8, 120, 38, 19);
+    this.uiAmount = this.add.text(26, 15, '', {
+      fontFamily: 'sans-serif', fontSize: '25px', color: '#1b2a3a', fontStyle: 'bold'
+    }).setOrigin(0, 0).setDepth(20);
+    this.uiPower = this.add.text(W - 24, 17, '', {
+      fontFamily: 'sans-serif', fontSize: '21px', color: '#b3471a', fontStyle: 'bold'
     }).setOrigin(1, 0).setDepth(20);
-    // 진행 바
-    this.add.rectangle(W / 2, 54, W * 0.6, 10, 0x000000, 0.18).setDepth(19);
-    this.progFill = this.add.rectangle(W * 0.2, 54, 0, 10, 0x36c275).setOrigin(0, 0.5).setDepth(20);
-    this._progW = W * 0.6;
-    // 보스 HP 바(숨김)
-    this.bossBarBg = this.add.rectangle(W / 2, 84, W * 0.7, 16, 0x000000, 0.25).setDepth(19).setVisible(false);
-    this.bossBar = this.add.rectangle(W * 0.15, 84, 0, 16, 0xff5a3c).setOrigin(0, 0.5).setDepth(20).setVisible(false);
-    this._bossBarW = W * 0.7;
+    this._lastCount = null; this._lastPower = null;
+    // 진행 바(둥근 트랙 + 밝은 채움)
+    var bx = W * 0.2, bw = W * 0.6, by = 58, bh = 12;
+    var track = this.add.graphics().setDepth(19);
+    track.fillStyle(0x12203a, 0.30); track.fillRoundedRect(bx, by - bh / 2, bw, bh, bh / 2);
+    this.progFill = this.add.rectangle(bx + 2, by, 0, bh - 4, 0x44d17a).setOrigin(0, 0.5).setDepth(20);
+    this._progW = bw - 4;
+    // 보스 HP 바(숨김) — 둥근 트랙 + 라벨
+    this.bossBarBg = this.add.graphics().setDepth(19).setVisible(false);
+    this.bossBarBg.fillStyle(0x12203a, 0.45); this.bossBarBg.fillRoundedRect(W * 0.15, 80, W * 0.7, 18, 9);
+    this.bossBar = this.add.rectangle(W * 0.15 + 2, 89, 0, 12, 0xff5a3c).setOrigin(0, 0.5).setDepth(20).setVisible(false);
+    this._bossBarW = W * 0.7 - 4;
+    this.bossBarLabel = this.add.text(W / 2, 89, '👹 BOSS', {
+      fontFamily: 'sans-serif', fontSize: '12px', color: '#ffffff', fontStyle: 'bold',
+      stroke: '#7a1f12', strokeThickness: 3
+    }).setOrigin(0.5).setDepth(21).setVisible(false);
   };
   PlayScene.prototype._updateUI = function () {
-    this.uiAmount.setText('🐤 ' + this.squad.count());
+    var cnt = this.squad.count();
+    if (cnt !== this._lastCount) {
+      var up = this._lastCount != null && cnt > this._lastCount;
+      var dn = this._lastCount != null && cnt < this._lastCount;
+      this._lastCount = cnt;
+      this.tweens.killTweensOf(this.uiAmount);
+      this.uiAmount.setScale(1.3);
+      this.tweens.add({ targets: this.uiAmount, scale: 1, duration: 220, ease: 'Back.easeOut' });
+      if (up || dn) {
+        this.uiAmount.setColor(up ? '#1f9d4d' : '#c0392b');
+        this.time.delayedCall(200, function () { if (this.uiAmount) this.uiAmount.setColor('#1b2a3a'); }, [], this);
+      }
+    }
+    this.uiAmount.setText('🐤 ' + cnt);
+    if (this.squad.power !== this._lastPower) {
+      this._lastPower = this.squad.power;
+      this.tweens.killTweensOf(this.uiPower);
+      this.uiPower.setScale(1.3);
+      this.tweens.add({ targets: this.uiPower, scale: 1, duration: 220, ease: 'Back.easeOut' });
+    }
     this.uiPower.setText('⚔ Lv ' + this.squad.power);
     var p = Phaser.Math.Clamp(this.traveled / this.bossAt, 0, 1);
     this.progFill.width = this._progW * p;
     if (this.state === 'boss' && !this.boss.dead) {
-      this.bossBarBg.setVisible(true); this.bossBar.setVisible(true);
+      this.bossBarBg.setVisible(true); this.bossBar.setVisible(true); this.bossBarLabel.setVisible(true);
       this.bossBar.width = this._bossBarW * Phaser.Math.Clamp(this.boss.hp / this.boss.maxHp, 0, 1);
     }
   };
@@ -811,6 +992,9 @@
       f._flash = (f._flash || 0) + dt;
       if (f._flash >= 0.22) {
         f._flash = 0;
+        var ix = f.display.x;
+        var iy = f.type === 'boss' ? f.display.y + 30 : (this.squadY - (f.dist - this.traveled));
+        this._impactSpark(ix, iy, BULLET_STYLE[this.evolveTier].color);
         var spr = f.spr;
         spr.setTintFill(0xffffff);
         this.time.delayedCall(50, function () {
@@ -878,6 +1062,7 @@
     // 모바일 부하 가드(codex P1): 동시 가시 탄 예산 + rapid 는 짝/홀 사수 교대 격발
     var liveBullets = this.bulletLayer.length - this._bulletPool.length;
     if (liveBullets > 110) return;
+    this._muzzleFlash(); // 총구 화염
     var stepStart = 0, step = 1;
     if (w === 'rapid' && n > 6) {
       this._volleyParity = 1 - (this._volleyParity || 0);
@@ -933,6 +1118,9 @@
     o.dead = true;
     var x = o.display.x, y = o.display.y;
     this._breakFx(x, y, o.type === 'boss');
+    // 묵직한 격파엔 화면 흔들림(졸개는 제외 — 너무 잦으면 멀미)
+    if (o.type === 'boss') this.cameras.main.shake(240, 0.012);
+    else if (o.type === 'barrier' || o.kind === 'armor') this.cameras.main.shake(110, 0.006);
     o.display.destroy();
   };
   PlayScene.prototype._hitSquad = function (n, cause) {
@@ -1032,6 +1220,7 @@
   PlayScene.prototype.update = function (time, delta) {
     var dt = Math.min(0.05, delta / 1000);
     if (this.input0 && this.input0.update) this.input0.update(dt);
+    this._updateAmbient(dt, time); // 꽃잎은 준비 화면에서도 흩날린다
     if (this.state === 'ready') return;
 
     // 스티어링 (피니시 연출 중엔 부대 고정 — 드래그해도 안 움직인다)
@@ -1048,6 +1237,9 @@
         // 협동: 서버 start ts 에 앵커된 공유 시계로 진행(드리프트 방지). 솔로: 로컬 적분.
         if (this.coop) this.traveled = Math.max(0, (Date.now() - MARCoop.startTs) / 1000 * SCROLL);
         else this.traveled += SCROLL * dt;
+        // 달리기 먼지(이동 중에만)
+        this._dustAcc += dt;
+        if (this._dustAcc >= 0.12) { this._dustAcc = 0; this._runDust(); }
       }
       this._time = time;
       this._updateTrack(dt);
