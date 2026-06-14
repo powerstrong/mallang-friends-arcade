@@ -1,4 +1,4 @@
-const CACHE = 'tenten-v36';
+const CACHE = 'tenten-v37';
 
 const PRECACHE = [
   '/',

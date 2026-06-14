@@ -6,6 +6,15 @@
  *   status:      PLAYABLE | DRAFT | REVIEW | HIDDEN | ARCHIVED
  *   visibility:  PUBLIC | DIRECT_ONLY | HIDDEN
  *   reviewState: NOT_SUBMITTED | IN_REVIEW | CHANGES_REQUESTED | APPROVED
+ *   stage:       'LAB' (선택) — 광장 '실험실(🧪)' 부스 안 목록에 노출. 정식 부스
+ *                (worldZones BOOTH_CATALOG)와 무관한 3번째 노출 티어다.
+ *
+ * 노출 3티어:
+ *   1) 정식 부스  — worldZones BOOTH_CATALOG 에 등재 (광장 정면). 검증된 게임.
+ *   2) 실험실     — stage:'LAB' (광장 실험실 부스 안 카드). 다듬는 중인 실험작.
+ *      클라(world/world.js)가 GAME_REGISTRY 에서 stage:'LAB' 을 필터해 렌더 →
+ *      카드 탭 시 path + '?from=lab' 로 직접 진입(매칭 없음, 솔로).
+ *   3) 숨김       — 위 둘 다 아님. 직접 URL(/games/<id>/index.html)로만 접근.
  *
  * 광장/메인 노출 조건: status==='PLAYABLE' && visibility==='PUBLIC' && reviewState==='APPROVED'
  * 신규 기여 게임 기본값: status:'DRAFT', visibility:'DIRECT_ONLY', reviewState:'NOT_SUBMITTED'
@@ -79,15 +88,16 @@ window.GAME_REGISTRY = [
   {
     id: 'machine-animal-runner',
     title: '말랑프렌즈 러너',
-    description: '병아리 부대를 이끌고 게이트를 골라 기계군단을 막는 크라우드 러너! 혼자서, 또는 광장에서 친구와 2인 협동 🐤',
+    description: '병아리 부대를 이끌고 게이트를 골라 기계군단을 막는 크라우드 러너! (?coop= 로 친구와 2인 협동도 가능) 🐤',
     type: 'SOLO',
-    recommendedPlayers: '1~2명',
-    supportedPlayers: '1~2명',
-    playMode: '솔로 · 광장 2인 협동',
+    recommendedPlayers: '1명',
+    supportedPlayers: '1명',
+    playMode: '솔로',
     durationSeconds: 0,
     status: 'PLAYABLE',
     visibility: 'PUBLIC',
     reviewState: 'APPROVED',
+    stage: 'LAB',
     author: 'powerstrong',
     icon: '🐤',
     accentColor: '#4fa3ff',
@@ -96,5 +106,27 @@ window.GAME_REGISTRY = [
     resultScale: 1,
     resultDecimals: 0,
     path: '/games/machine-animal-runner/index.html',
+  },
+  {
+    id: 'mallang-stairs',
+    title: '말랑 계단 레이스',
+    description: '왼쪽·오른쪽만 눌러 무한의 계단을 오르는 2버튼 반응 액션! 빠른 판단·콤보·피버, 친구와 같은 룰로 경쟁 🪜',
+    type: 'REALTIME_RELAY',
+    recommendedPlayers: '1~6명',
+    supportedPlayers: '1~6명',
+    playMode: '솔로 · 온라인 실시간 경쟁',
+    durationSeconds: 45,
+    status: 'DRAFT',
+    visibility: 'DIRECT_ONLY',
+    reviewState: 'NOT_SUBMITTED',
+    stage: 'LAB',
+    author: 'powerstrong',
+    icon: '🪜',
+    accentColor: '#ff7ea8',
+    resultLabel: '최고 계단',
+    resultUnit: '층',
+    resultScale: 1,
+    resultDecimals: 0,
+    path: '/games/mallang-stairs/index.html',
   },
 ];

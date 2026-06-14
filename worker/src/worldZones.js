@@ -17,9 +17,12 @@
 const BOOTH_CATALOG = [
   { gameId: 'jump-climber',          title: '말랑프렌즈 점프',     minPlayers: 1, maxPlayers: 2 },
   { gameId: 'sseuk-sseuk',           title: '말랑프렌즈 쓱쓱',     minPlayers: 2, maxPlayers: 6 },
-  // 러너 부스(jump식 1~2인): 혼자 서면 솔로 발사, 둘이면 협동. 진입 URL 은
-  // ?from=world&code=&players=N — 클라가 players<=1 이면 솔로, >=2 면 협동 로비로 라우팅.
-  { gameId: 'machine-animal-runner', title: '말랑프렌즈 러너',     minPlayers: 1, maxPlayers: 2 },
+  // 'machine-animal-runner' 는 광장 정면 부스에서 내려 '실험실'(🧪)로 이동했다.
+  //   → registry.js 의 stage:'LAB' 로 노출, world/world.js 의 클라 전용 실험실
+  //     부스가 목록을 렌더한다(매칭 없음, ?from=lab 솔로 진입). 협동은 ?coop= 직접 URL.
+  // ⚠️ 부스가 3개 이상이 되면 상단 3열 그리드의 index 2(우측 상단) 슬롯을
+  //    실험실 부스(world/world.js LAB_BOOTH, 좌표 x:571,y:200)가 점유 중이므로
+  //    위치가 겹친다. 그때는 LAB_BOOTH 좌표를 옮길 것.
 ];
 
 // Portrait(960x960) 광장 자동 레이아웃. 상단에 3열 그리드로 배치해 스폰 지점

@@ -141,6 +141,19 @@
     return entry;
   }
 
+  // ── Lab booth (client-only) ───────────────────────────────────────────────
+  // 실험실은 매칭이 필요 없는 "메뉴" 부스다. 서버 GAME_ZONES 에 넣으면 매치
+  // 제안 로직이 돌아 깨지므로 클라 전용으로 렌더/판정한다. 들어서면 매칭 대신
+  // GAME_REGISTRY 의 stage:'LAB' 게임 목록 패널을 열고, 카드 탭 시 해당 게임으로
+  // ?from=lab 직접 이동(솔로).
+  //   좌표: worldZones BOOTH_LAYOUT 의 상단 3열 그리드 index 2(우측 상단) 슬롯
+  //   (boothRect(2) = x:571,y:200,w:165,h:200). 서버 부스가 2개라 비어 있는 칸.
+  //   ⚠️ 서버 부스가 3개 이상이 되면 이 슬롯과 겹치므로 좌표를 옮길 것.
+  const LAB_BOOTH = { x: 571, y: 200, w: 165, h: 200 };
+  const LAB_THEME = { color: '#b08cff', dark: '#6f4fd6', icon: '🧪' };
+  let inLabBooth = false; // me 가 실험실 부스 rect 안에 있는지(진입/이탈 전이 추적)
+  let labModal = null;    // 지연 생성되는 실험실 패널 DOM
+
   // ── DOM references ──────────────────────────────────────────────────────────
   const joinPanel = document.getElementById('join-panel');
   const worldPanel = document.getElementById('world-panel');
@@ -574,6 +587,8 @@
     myZoneProgress = null;
     zoneStates = new Map();
     zonesCatalog = [];
+    inLabBooth = false;
+    closeLabPanel();
     if (activeProposal) closeMatchModal();
     if (chatLogBody) chatLogBody.innerHTML = '';
 
@@ -1354,6 +1369,7 @@
       step(dt);
       draw();
       syncMatchPanel();
+      syncLabPanel();
       rafHandle = requestAnimationFrame(loop);
     };
     rafHandle = requestAnimationFrame(loop);
@@ -1419,6 +1435,7 @@
     }
 
     drawZones();
+    drawLabBooth();
 
     // Draw peers behind me so my avatar sits on top when overlapping.
     for (const p of peers.values()) drawAvatar(p, /* isYou */ false);
@@ -1450,6 +1467,221 @@
       const near = !!(me && !inHere && nearRect(me.x, me.y, r, 52));
       drawBooth(z, r, st, inHere, near);
     }
+  }
+
+  // 실험실 부스 — drawBooth 와 같은 시각 규약(마커→근접 강조→inHere 글로우)을
+  // 따르되 보라색 비커 테마로 게임 부스와 구분한다. 매칭/카운트다운은 없다.
+  function drawLabBooth() {
+    const r = LAB_BOOTH;
+    const t = LAB_THEME;
+    const inHere = !!(me && pointInRect(me.x, me.y, r));
+    const near = !!(me && !inHere && nearRect(me.x, me.y, r, 52));
+    const tier = getDisplayTier();
+    const cx = r.x + r.w / 2;
+    const cy = r.y + r.h / 2;
+    const rmin = Math.min(r.w, r.h);
+    const markerR = Math.max(toCanvasPx(13), Math.min(44, rmin * 0.22));
+    ctx.save();
+
+    if (inHere) {
+      ctx.save();
+      ctx.strokeStyle = t.color;
+      for (let i = 0; i < 3; i++) {
+        ctx.globalAlpha = 0.38 - i * 0.08;
+        ctx.lineWidth = 2;
+        roundRect(r.x - 3 - i * 3, r.y - 3 - i * 3, r.w + 6 + i * 6, r.h + 6 + i * 6, 16 + i * 3);
+        ctx.stroke();
+      }
+      ctx.restore();
+      // 큰 비커 아이콘 중앙.
+      ctx.font = `${Math.floor(markerR * 1.7)}px -apple-system, system-ui, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(t.icon, cx, cy);
+    } else {
+      ctx.fillStyle = hexA(t.color, near ? 0.32 : 0.18);
+      ctx.beginPath();
+      ctx.arc(cx, cy, markerR, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = hexA(t.color, near ? 0.95 : 0.7);
+      ctx.lineWidth = near ? 3 : 2;
+      ctx.beginPath();
+      ctx.arc(cx, cy, markerR, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.font = `${Math.floor(markerR * 1.1)}px -apple-system, system-ui, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(t.icon, cx, cy + 1);
+      if (near) {
+        ctx.save();
+        ctx.strokeStyle = t.color;
+        ctx.globalAlpha = 0.4;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(cx, cy, markerR + 6, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    const showText = tier !== 'ultra-small' || inHere || near;
+    if (showText) {
+      const laneMaxW = r.w - 8;
+      const title = '실험실';
+      const titleSize = widthCappedSize(title, adaptiveSize(15, 12), 'bold', laneMaxW);
+      const subText = '🧪 실험중인 게임';
+      const showSub = tier !== 'ultra-small' || near || inHere;
+      const subSize = showSub ? widthCappedSize(subText, adaptiveSize(11, 10), 'normal', laneMaxW) : 0;
+      const gapMarker = Math.max(6, titleSize * 0.4);
+      const gapLine = Math.max(3, subSize * 0.3);
+      let titleY = inHere ? r.y + r.h + 12 + titleSize : cy + markerR + gapMarker + titleSize;
+      let subY = titleY + gapLine + subSize;
+      if (!inHere) {
+        const maxBottom = r.y + r.h - 6;
+        const bottom = showSub ? subY : titleY;
+        if (bottom > maxBottom) { const o = bottom - maxBottom; titleY -= o; subY -= o; }
+      }
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'alphabetic';
+      ctx.lineJoin = 'round';
+      ctx.font = `bold ${titleSize}px ${FONT_FAMILY}`;
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = 'rgba(20,30,16,0.9)';
+      ctx.strokeText(title, cx, titleY);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(title, cx, titleY);
+      if (showSub) {
+        ctx.font = `${subSize}px ${FONT_FAMILY}`;
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = 'rgba(20,30,16,0.85)';
+        ctx.strokeText(subText, cx, subY);
+        ctx.fillStyle = '#e8e0ff';
+        ctx.fillText(subText, cx, subY);
+      }
+    }
+    ctx.restore();
+
+    if (near) {
+      const text = '들어가서 실험실 열기';
+      ctx.save();
+      ctx.font = adaptiveFont(11, 10, 'bold');
+      const w = ctx.measureText(text).width + toCanvasPx(12);
+      const h = toCanvasPx(18);
+      const y = inHere ? (r.y - 66) : (cy - markerR - toCanvasPx(16));
+      ctx.fillStyle = t.dark;
+      roundRect(cx - w / 2, y - h / 2, w, h, h / 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(cx - 5, y + h / 2); ctx.lineTo(cx, y + h / 2 + 5); ctx.lineTo(cx + 5, y + h / 2);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(text, cx, y);
+      ctx.restore();
+    }
+  }
+
+  // ── Lab panel (실험실 게임 목록) ─────────────────────────────────────────────
+  // 부스 안에 들어선 순간(transition) 패널을 열고, 걸어 나가면 닫는다. 닫기(✕)는
+  // DOM 만 숨기며 inLabBooth 플래그는 syncLabPanel 이 소유한다(닫은 뒤 그 자리에
+  // 서 있어도 재오픈되지 않고, 나갔다 다시 들어와야 열린다).
+  function syncLabPanel() {
+    if (!me) return;
+    const inside = pointInRect(me.x, me.y, LAB_BOOTH);
+    if (inside && !inLabBooth) {
+      inLabBooth = true;
+      if (!activeProposal) openLabPanel();
+    } else if (!inside && inLabBooth) {
+      inLabBooth = false;
+      closeLabPanel();
+    }
+  }
+
+  function ensureLabModal() {
+    if (labModal) return labModal;
+    const modal = document.createElement('div');
+    modal.id = 'lab-modal';
+    modal.className = 'modal lab-modal hidden';
+    modal.setAttribute('aria-hidden', 'true');
+    modal.setAttribute('role', 'dialog');
+    modal.innerHTML = `
+      <div class="modal-card lab-card">
+        <div class="lab-head">
+          <h2>🧪 실험실</h2>
+          <button type="button" class="lab-close" aria-label="닫기">✕</button>
+        </div>
+        <p class="modal-sub">아직 다듬는 중인 실험작이에요. 가볍게 즐겨보고 의견 주세요!</p>
+        <ul class="lab-list"></ul>
+      </div>`;
+    const host = document.getElementById('app') || document.body;
+    host.appendChild(modal);
+    modal.querySelector('.lab-close').addEventListener('click', closeLabPanel);
+    labModal = modal;
+    return labModal;
+  }
+
+  function renderLabList() {
+    const list = labModal.querySelector('.lab-list');
+    list.innerHTML = '';
+    const games = (Array.isArray(window.GAME_REGISTRY) ? window.GAME_REGISTRY : [])
+      .filter((g) => g && g.stage === 'LAB' && typeof g.path === 'string');
+    if (!games.length) {
+      const li = document.createElement('li');
+      li.className = 'lab-empty';
+      li.textContent = '아직 실험 중인 게임이 없어요.';
+      list.appendChild(li);
+      return;
+    }
+    for (const g of games) {
+      const li = document.createElement('li');
+      li.className = 'lab-item';
+      li.tabIndex = 0;
+      li.setAttribute('role', 'button');
+      const accent = /^#[0-9a-fA-F]{6}$/.test(g.accentColor || '') ? g.accentColor : '#b08cff';
+      const players = g.supportedPlayers || g.recommendedPlayers || '';
+      li.innerHTML = `
+        <span class="lab-icon" style="background:${hexA(accent, 0.18)};color:${accent}">${escapeHtml(g.icon || '🎮')}</span>
+        <span class="lab-info">
+          <span class="lab-title">${escapeHtml(g.title)}<span class="lab-badge">실험중</span></span>
+          <span class="lab-desc">${escapeHtml(g.description || '')}</span>
+          ${players ? `<span class="lab-meta">👥 ${escapeHtml(players)}</span>` : ''}
+        </span>
+        <span class="lab-go" aria-hidden="true">▶</span>`;
+      const go = () => gotoGameFromLab(g.path);
+      li.addEventListener('click', go);
+      li.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); }
+      });
+      list.appendChild(li);
+    }
+  }
+
+  function openLabPanel() {
+    ensureLabModal();
+    renderLabList();
+    labModal.classList.remove('hidden');
+    labModal.setAttribute('aria-hidden', 'false');
+  }
+
+  function closeLabPanel() {
+    if (!labModal) return;
+    labModal.classList.add('hidden');
+    labModal.setAttribute('aria-hidden', 'true');
+  }
+
+  // 실험실 카드 → 게임으로 직접 이동(매칭 없음, 솔로). 동일 오리진 /games/ 경로만
+  // 허용. handleGoToGame 과 같은 teardown(heartbeat/raf/ws) 후 이동.
+  function gotoGameFromLab(path) {
+    if (typeof path !== 'string' || !path.startsWith('/games/')) return;
+    stopHeartbeat();
+    if (rafHandle) { cancelAnimationFrame(rafHandle); rafHandle = null; }
+    if (ws) { try { ws.close(); } catch { /* ignore */ } }
+    const sep = path.includes('?') ? '&' : '?';
+    window.location.href = path + sep + 'from=lab';
   }
 
   // 부스 표시 정책 (사용자 피드백):

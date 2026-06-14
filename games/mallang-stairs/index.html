@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>말랑 계단 레이스</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <!-- ===== 셋업 화면 ===== -->
+      <section id="setupScreen" class="screen is-active">
+        <div class="setup-inner">
+          <h1 class="title">
+            <span class="title__main">말랑 계단 레이스</span>
+            <span class="title__sub">왼쪽·오른쪽만 눌러 계단을 정복!</span>
+          </h1>
+
+          <div class="char-stage">
+            <img id="setupCharImg" class="char-stage__img" src="" alt="" draggable="false" />
+            <div class="char-stage__name" id="setupCharName">모찌 토끼</div>
+            <div class="char-stage__role" id="setupCharRole"></div>
+            <p class="char-stage__ability" id="setupCharAbility"></p>
+          </div>
+
+          <div class="char-pick" id="charPick" role="listbox" aria-label="캐릭터 선택"></div>
+
+          <p class="setup-hint">🎲 <strong>랜덤</strong>은 숨겨진 친구도 추첨돼요!</p>
+
+          <div class="setup-actions">
+            <button id="startSolo" type="button" class="btn btn--primary">혼자 도전</button>
+            <button id="startMulti" type="button" class="btn btn--ghost">친구와 경쟁</button>
+          </div>
+          <p class="setup-note" id="multiNote"></p>
+        </div>
+      </section>
+
+      <!-- ===== 플레이 화면 ===== -->
+      <section id="playScreen" class="screen">
+        <header class="hud">
+          <div class="hud__row">
+            <div class="hud__stat hud__stat--step">
+              <span class="hud__label">계단</span>
+              <strong id="hudStep">0</strong>
+            </div>
+            <div class="hud__stat hud__stat--score">
+              <span class="hud__label">점수</span>
+              <strong id="hudScore">0</strong>
+            </div>
+            <div class="hud__stat hud__stat--combo">
+              <span class="hud__label">콤보</span>
+              <strong id="hudCombo">0</strong>
+            </div>
+          </div>
+          <div class="gauge gauge--time">
+            <div class="gauge__fill" id="timeFill"></div>
+            <span class="gauge__tag">TIME</span>
+          </div>
+          <div class="gauge gauge--fever">
+            <div class="gauge__fill" id="feverFill"></div>
+            <span class="gauge__tag">FEVER</span>
+          </div>
+          <div class="rival" id="rivalWrap" aria-hidden="true"></div>
+        </header>
+
+        <div id="stage" class="stage">
+          <div id="stairLayer" class="stair-layer"></div>
+          <div id="player" class="player"><img id="playerImg" src="" alt="" draggable="false" /></div>
+
+          <div class="touch-zones" aria-hidden="true">
+            <div class="touch-zones__side touch-zones__side--left"><span>◀</span></div>
+            <div class="touch-zones__side touch-zones__side--right"><span>▶</span></div>
+          </div>
+
+          <div id="feverFx" class="fever-fx" aria-hidden="true"></div>
+          <div id="floatLayer" class="float-layer" aria-hidden="true"></div>
+
+          <div id="countdown" class="countdown is-hidden"><span id="countNum">3</span></div>
+
+          <div id="charIntro" class="char-intro is-hidden" aria-hidden="true">
+            <div class="char-intro__burst"></div>
+            <img id="introImg" class="char-intro__img" src="" alt="" draggable="false" />
+            <div class="char-intro__tag" id="introTag">랜덤 등장!</div>
+            <h2 id="introName" class="char-intro__name"></h2>
+            <p id="introAbility" class="char-intro__ability"></p>
+          </div>
+        </div>
+
+        <!-- ===== 결과 ===== -->
+        <div id="resultOverlay" class="result-overlay is-hidden">
+          <div class="result-card">
+            <h2 class="result-card__title" id="resultTitle">결과</h2>
+            <img id="resultCharImg" class="result-card__char" src="" alt="" draggable="false" />
+            <div class="result-grid">
+              <div class="result-grid__cell"><span>최고 계단</span><strong id="resStep">0</strong></div>
+              <div class="result-grid__cell"><span>점수</span><strong id="resScore">0</strong></div>
+              <div class="result-grid__cell"><span>최대 콤보</span><strong id="resCombo">0</strong></div>
+              <div class="result-grid__cell"><span>Perfect</span><strong id="resPerfect">0</strong></div>
+            </div>
+            <div class="result-card__char-name" id="resCharName"></div>
+            <p class="result-card__ability" id="resCharAbility"></p>
+            <div id="resultRank" class="result-rank is-hidden"></div>
+            <div class="result-card__actions">
+              <button id="retryBtn" type="button" class="btn btn--primary">한 판 더</button>
+              <button id="exitBtn" type="button" class="btn btn--ghost">광장으로</button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script src="/games/registry.js"></script>
+    <script src="/shared/bootstrap.js"></script>
+    <script src="/shared/relay.js"></script>
+    <script src="./characters.js"></script>
+    <script src="./stairs-engine.js"></script>
+    <script src="./multiplayer.js"></script>
+    <script src="./game.js"></script>
+  </body>
+</html>

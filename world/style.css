@@ -815,6 +815,84 @@ h1 {
 .btn-ghost   { background: var(--panel-2); color: var(--text); }
 .modal-actions button:disabled { opacity: 0.5; cursor: not-allowed; }
 
+/* ── 실험실(🧪) 패널 — 실험중 게임 목록 (world.js 가 동적으로 생성) ── */
+.lab-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.lab-head h2 { margin: 0; font-size: 1.3rem; }
+.lab-close {
+  flex: 0 0 auto;
+  width: 32px; height: 32px;
+  border: none;
+  border-radius: 8px;
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: 1rem;
+  cursor: pointer;
+}
+.lab-close:hover { background: var(--accent-2); color: #1a1410; }
+.lab-list {
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.lab-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--panel-2);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: border-color 0.15s ease, transform 0.1s ease;
+}
+.lab-item:hover, .lab-item:focus { border-color: var(--accent-2); outline: none; }
+.lab-item:active { transform: scale(0.98); }
+.lab-icon {
+  flex: 0 0 auto;
+  width: 44px; height: 44px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+}
+.lab-info { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1; }
+.lab-title {
+  font-weight: 700;
+  font-size: 0.98rem;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.lab-badge {
+  flex: 0 0 auto;
+  font-size: 0.64rem;
+  font-weight: 700;
+  color: #1a1410;
+  background: var(--accent);
+  border-radius: 999px;
+  padding: 2px 7px;
+}
+.lab-desc {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.lab-meta { font-size: 0.72rem; color: var(--accent-2); }
+.lab-go { flex: 0 0 auto; color: var(--text-dim); font-size: 0.9rem; }
+.lab-empty { color: var(--text-dim); text-align: center; padding: 18px 0; }
+
 .modal-countdown {
   margin: 0;
   text-align: center;
