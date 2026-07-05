@@ -156,12 +156,14 @@ const RANDOM_CHARACTER_OPTION = {
 };
 
 // 서버 worker/src/room.js의 JUMP_CHARACTER_ABILITIES와 같은 값. 클라 솔로 모드 + UI 표시용.
+// gravityMul은 하강(vy>0)에만 적용 — 점프 높이는 jumpMul만 좌우한다.
+// 병아리 jumpMul 1.025 = 점프 높이 +5% (높이는 속도 제곱에 비례).
 const CHARACTER_ABILITIES = {
-  "mochi-rabbit":    { jumpMul: 1.06, gravityMul: 1.00, moveMul: 1.00, boostMul: 1.00, superJumpEvery: 0 },
-  "pudding-hamster": { jumpMul: 1.03, gravityMul: 1.00, moveMul: 1.22, boostMul: 1.00, superJumpEvery: 0 },
-  "peach-chick":     { jumpMul: 1.00, gravityMul: 0.90, moveMul: 1.00, boostMul: 1.00, superJumpEvery: 0 },
-  "latte-puppy":     { jumpMul: 1.00, gravityMul: 1.00, moveMul: 1.00, boostMul: 1.00, superJumpEvery: 4 },
-  "mint-kitten":     { jumpMul: 1.00, gravityMul: 1.00, moveMul: 1.00, boostMul: 1.50, superJumpEvery: 0 },
+  "mochi-rabbit":    { jumpMul: 1.06,  gravityMul: 1.00, moveMul: 1.00, boostMul: 1.00, superJumpEvery: 0 },
+  "pudding-hamster": { jumpMul: 1.03,  gravityMul: 1.00, moveMul: 1.22, boostMul: 1.00, superJumpEvery: 0 },
+  "peach-chick":     { jumpMul: 1.025, gravityMul: 0.80, moveMul: 1.00, boostMul: 1.00, superJumpEvery: 0 },
+  "latte-puppy":     { jumpMul: 1.00,  gravityMul: 1.00, moveMul: 1.00, boostMul: 1.00, superJumpEvery: 4 },
+  "mint-kitten":     { jumpMul: 1.00,  gravityMul: 1.00, moveMul: 1.00, boostMul: 1.40, superJumpEvery: 0 },
 };
 
 const DEFAULT_ABILITIES = CHARACTER_ABILITIES["mochi-rabbit"];
@@ -3177,7 +3179,8 @@ function updatePlayers() {
 
     applyInput(player);
     const previousY = player.y;
-    player.vy += settings.gravity * abilities.gravityMul;
+    // gravityMul(병아리 사뿐 하강)은 내려갈 때만 — 상승은 기본 중력이라 점프 높이 불변
+    player.vy += settings.gravity * (player.vy > 0 ? abilities.gravityMul : 1);
     player.y += player.vy;
 
     handleLanding(player, previousY);
