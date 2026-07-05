@@ -631,13 +631,17 @@ function maybeSpawnChick(mainPlatform) {
   };
   state.platforms.push(platform);
 
+  spawnChickAt(x + width / 2 - CHICK_SIZE / 2, y - CHICK_SIZE);
+}
+
+function spawnChickAt(x, y) {
   const chickEl = document.createElement("div");
   chickEl.className = "chick chick--waiting";
   chickEl.innerHTML = '<span class="chick-bubble is-hidden"></span>';
   worldEl.appendChild(chickEl);
   state.chicks.push({
-    x: x + width / 2 - CHICK_SIZE / 2,
-    y: y - CHICK_SIZE,
+    x,
+    y,
     size: CHICK_SIZE,
     el: chickEl,
     bubbleEl: chickEl.firstElementChild,
@@ -648,6 +652,29 @@ function maybeSpawnChick(mainPlatform) {
     departAt: 0,
     bobPhase: Math.random() * Math.PI * 2,
   });
+}
+
+// 방 세션용 병아리 — 맵은 서버가 만들지만 병아리는 내 화면 로컬 전용이다
+// (구조·동행·독립·카운트 전부 로컬 판정, 친구 화면과 동기화하지 않는다).
+// 서버 맵에는 옆길 발판이 없으므로 정지 발판 위에 바로 앉힌다.
+function maybeSpawnNetworkChick() {
+  if (state.isSpectator) return;
+  let best = null;
+  let bestMeters = Infinity;
+  state.network.platformEls.forEach((entry) => {
+    if (entry.kind === "base" || entry.kind === "cake") return;
+    if (entry.motion && entry.motion.type !== "static") return;
+    const meters = (settings.startLineY - entry.worldY) / 10;
+    if (meters < state.nextChickAtM || meters >= bestMeters) return;
+    bestMeters = meters;
+    best = entry;
+  });
+  if (!best) return;
+  state.nextChickAtM = bestMeters + random(CHICK_INTERVAL_M_MIN, CHICK_INTERVAL_M_MAX);
+  spawnChickAt(
+    best.baseX + (best.width || 0) / 2 - CHICK_SIZE / 2,
+    best.worldY - CHICK_SIZE
+  );
 }
 
 function showChickBubble(chick, text) {
@@ -1966,6 +1993,8 @@ function updateLocalNetworkPhysics(dt, now, motionTime) {
   while (state.network.localPhysicsRemainderMs >= 16.67) {
     syncNetworkCollisionWorld(now, motionTime);
     updatePlayers();
+    maybeSpawnNetworkChick();
+    updateChicks();
     updateCamera();
     state.network.localPhysicsRemainderMs -= 16.67;
   }
@@ -2011,6 +2040,11 @@ function renderNetworkFrame(now) {
     const x = lerp(entry.prevX, entry.worldX, t);
     const y = lerp(entry.prevY, entry.worldY, t);
     entry.el.style.transform = formatWorldTranslate(x, y - state.cameraY);
+  });
+
+  // 병아리는 로컬 전용 오브젝트 — 네트워크 프레임에서도 직접 렌더한다
+  state.chicks.forEach((chick) => {
+    chick.el.style.transform = formatWorldTranslate(chick.x, chick.y - state.cameraY);
   });
 
   let localPlayerEntry = null;
