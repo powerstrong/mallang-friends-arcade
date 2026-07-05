@@ -413,13 +413,14 @@ export class GameRoom {
       const roomCode = (await this.state.storage.get('roomCode')) || null;
       const sessions = this._getGameSessions(gameId);
 
-      for (const { id, name, score } of players) {
+      for (const { id, name, score, characterId } of players) {
         try {
           const { isNewRecord, previousBest, rank } = await submitScore(this.env.DB, {
             playerName: name,
             gameId,
             score,
             roomCode,
+            characterId: characterId || null,
           });
 
           if (!isNewRecord) continue;
@@ -1046,7 +1047,7 @@ export class GameRoom {
 
     await this.state.storage.put('scores', scores);
     await this.state.storage.put('phase', 'results');
-    this._submitScoresToLeaderboard('jump-climber', Object.entries(scores).map(([id, s]) => ({ id, name: s.name, score: s.score })));
+    this._submitScoresToLeaderboard('jump-climber', Object.entries(scores).map(([id, s]) => ({ id, name: s.name, score: s.score, characterId: s.characterId })));
 
     const ranked = this._buildRankedScores(scores);
     this._broadcastGame({
@@ -2017,7 +2018,7 @@ export class GameRoom {
       .map((p, i) => ({ rank: i + 1, id: p.id, name: p.name, characterId: p.characterId, colorIndex: p.colorIndex, score: p.score }));
     const awards = this._computeSseukAwards(rankings);
     this._broadcastGame({ type: 'SS_GAME_END', rankings, awards }, 'sseuk-sseuk');
-    this._submitScoresToLeaderboard('sseuk-sseuk', rankings.map(r => ({ id: r.id, name: r.name, score: r.score })));
+    this._submitScoresToLeaderboard('sseuk-sseuk', rankings.map(r => ({ id: r.id, name: r.name, score: r.score, characterId: r.characterId })));
     const scores = {};
     this.sseukGame.players.forEach(p => { scores[p.id] = { name: p.name, score: p.score, colorIndex: p.colorIndex }; });
     await this.state.storage.put('scores', scores);

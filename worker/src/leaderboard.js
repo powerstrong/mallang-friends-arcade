@@ -9,7 +9,7 @@ export function getWeekKey(date = new Date()) {
   return `${target.getUTCFullYear()}-W${String(week).padStart(2, '0')}`;
 }
 
-export async function submitScore(db, { playerName, gameId, score, roomCode }) {
+export async function submitScore(db, { playerName, gameId, score, roomCode, characterId }) {
   const weekKey = getWeekKey();
   const normalizedScore = Math.trunc(Number(score));
 
@@ -26,9 +26,9 @@ export async function submitScore(db, { playerName, gameId, score, roomCode }) {
   const previousBest = existing?.best_score == null ? null : Number(existing.best_score);
 
   await db.prepare(`
-    INSERT INTO scores (player_name, game_id, score, week_key, room_code)
-    VALUES (?, ?, ?, ?, ?)
-  `).bind(playerName, gameId, normalizedScore, weekKey, roomCode || null).run();
+    INSERT INTO scores (player_name, game_id, score, week_key, room_code, character_id)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).bind(playerName, gameId, normalizedScore, weekKey, roomCode || null, characterId || null).run();
 
   const rankRow = await db.prepare(`
     SELECT COUNT(*) + 1 AS player_rank
@@ -50,9 +50,21 @@ export async function submitScore(db, { playerName, gameId, score, roomCode }) {
 
 export async function getWeeklyLeaderboard(db, gameId) {
   const weekKey = getWeekKey();
+  // character_id = 그 주 최고 기록을 낸 판의 캐릭터 (동점이면 최신 판 기준)
   const { results } = await db.prepare(`
-    SELECT player_name, MAX(score) AS best_score, COUNT(*) AS games_played
-    FROM scores
+    SELECT
+      player_name,
+      MAX(score) AS best_score,
+      COUNT(*) AS games_played,
+      (
+        SELECT s2.character_id FROM scores s2
+        WHERE s2.player_name = s1.player_name
+          AND s2.game_id = s1.game_id
+          AND s2.week_key = s1.week_key
+        ORDER BY s2.score DESC, s2.id DESC
+        LIMIT 1
+      ) AS character_id
+    FROM scores s1
     WHERE game_id = ? AND week_key = ?
     GROUP BY player_name
     ORDER BY best_score DESC, player_name ASC

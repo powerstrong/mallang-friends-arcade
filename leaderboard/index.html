@@ -152,6 +152,7 @@
     tbody tr:nth-child(3) td:first-child { color: var(--bronze); }
 
     .player-name { font-weight: 700; }
+    .char-badge  { font-size: 1.05rem; cursor: default; }
 
     .score-cell { font-weight: 800; color: var(--primary); }
     .score-unit { font-size: 0.75rem; opacity: 0.65; margin-left: 2px; }
@@ -238,6 +239,15 @@
       'mallang-quiz-battle': '점',
     };
 
+    // 최고 기록을 낸 판의 캐릭터 (worker characters.js 의 게임 캐릭터 ID 기준)
+    const CHARACTER_BADGES = {
+      'mochi-rabbit':    { emoji: '🐰', label: '토끼' },
+      'pudding-hamster': { emoji: '🐹', label: '햄스터' },
+      'peach-chick':     { emoji: '🐤', label: '병아리' },
+      'latte-puppy':     { emoji: '🐶', label: '라떼강아지' },
+      'mint-kitten':     { emoji: '🐱', label: '고양이' },
+    };
+
     let currentGame = 'jump-climber';
     let refreshTimer = null;
     const API_BASE = (window.WORKER_URL || '').replace(/\/+$/, '');
@@ -293,10 +303,14 @@
         tbody.innerHTML = '';
 
         entries.forEach((row, i) => {
+          const badge = CHARACTER_BADGES[row.character_id];
+          const badgeHtml = badge
+            ? `<span class="char-badge" title="${badge.label}">${badge.emoji}</span> `
+            : '';
           const tr = document.createElement('tr');
           tr.innerHTML = `
             <td>${i + 1}</td>
-            <td class="player-name">${escHtml(row.player_name)}</td>
+            <td class="player-name">${badgeHtml}${escHtml(row.player_name)}</td>
             <td><span class="score-cell">${row.best_score}</span><span class="score-unit">${unit}</span></td>
             <td>${row.games_played}판</td>
           `;

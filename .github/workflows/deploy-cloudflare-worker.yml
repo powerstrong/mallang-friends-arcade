@@ -39,6 +39,8 @@ jobs:
           npx wrangler d1 execute web-game-lab-scores --remote --file=migrations/0001_create_scores.sql
           npx wrangler d1 execute web-game-lab-scores --remote --file=migrations/0002_create_world_logs.sql
           npx wrangler d1 execute web-game-lab-scores --remote --file=migrations/0003_create_runner_telemetry.sql
+          # 0004는 ALTER ADD COLUMN 이라 idempotent 하지 않음 — 이미 적용된 경우의 재실행 실패만 허용
+          npx wrangler d1 execute web-game-lab-scores --remote --file=migrations/0004_add_character_to_scores.sql || echo "0004 already applied"
 
       - name: Deploy to Cloudflare
         env:
