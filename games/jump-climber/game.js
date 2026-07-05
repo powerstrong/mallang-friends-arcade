@@ -204,6 +204,7 @@ const settings = {
   moveSpeed: 4.8,
   normalJump: -11.8,
   boostJump: -16.8,
+  springJump: -15.6,
   platformGap: 96,
   platformWidthMin: 84,
   platformWidthMax: 150,
@@ -398,6 +399,16 @@ function playBoostSound() {
   window.setTimeout(() => {
     playTone({ type: "triangle", frequency: 760, endFrequency: 520, duration: 0.14, volume: 0.028 });
   }, 36);
+}
+
+function playSpringSound() {
+  // 달 트램펄린 "보잉~" — 낮은음에서 빠르게 치솟는 글리스
+  playTone({ type: "sine", frequency: 240, endFrequency: 880, duration: 0.22, volume: 0.045 });
+}
+
+function playPoofSound() {
+  // 깜빡 구름 "퐁" — 부드럽게 가라앉는 톤
+  playTone({ type: "triangle", frequency: 500, endFrequency: 180, duration: 0.18, volume: 0.035 });
 }
 
 function playZoneSound() {
@@ -2118,8 +2129,17 @@ function createPlatform(y, isBase = false, anchorPlatform = null) {
     ? { type: "static", amplitude: 0, speed: 0, phase: 0, rotateAmplitude: 0 }
     : createPlatformMotion();
 
+  // 존별 기믹 플랫폼 (정지 플랫폼에만): 노을존 깜빡 구름(밟으면 1회 후 사라짐),
+  // 우주존 달 트램펄린(더 높이 퐁). 솔로 전용 경로 — 2P 맵은 서버가 생성한다.
+  const metersUp = (settings.startLineY - y) / 10;
+  let gimmick = null;
+  if (!isBase && motion.type === "static") {
+    if (metersUp >= SPACE_ZONE_FROM && Math.random() < 0.18) gimmick = "spring";
+    else if (metersUp >= ZONES[1].from && Math.random() < 0.2) gimmick = "crumble";
+  }
+
   const el = document.createElement("div");
-  el.className = `platform platform--${kind}`;
+  el.className = gimmick ? `platform platform--${gimmick}` : `platform platform--${kind}`;
   el.style.width = `${width}px`;
   const decoType = PLATFORM_DECO_BY_MOTION[motion.type] || "";
   if (decoType) {
@@ -2136,12 +2156,14 @@ function createPlatform(y, isBase = false, anchorPlatform = null) {
     baseX: x,
     rotation: 0,
     motion,
+    gimmick,
   };
 
-  // 우주존에서는 부스트가 조금 더 후하게 나온다 — 존마다 플레이 감각 차별화
-  const inSpaceZone = (settings.startLineY - y) / 10 >= SPACE_ZONE_FROM;
+  // 우주존에서는 부스트가 조금 더 후하게 나온다 — 존마다 플레이 감각 차별화.
+  // 기믹 플랫폼 위에는 부스트를 얹지 않는다 (연출 중첩 방지).
+  const inSpaceZone = metersUp >= SPACE_ZONE_FROM;
   const boostChance = inSpaceZone ? 0.28 : 0.2;
-  if (!isBase && motion.type === "static" && Math.random() < boostChance) {
+  if (!isBase && !gimmick && motion.type === "static" && Math.random() < boostChance) {
     spawnBoost(platform);
   }
 
@@ -2458,21 +2480,46 @@ function handleLanding(player, previousY) {
       const isSuperJump =
         abilities.superJumpEvery > 0 &&
         player.jumpCount % abilities.superJumpEvery === 0;
-      player.vy = isSuperJump ? settings.boostJump : settings.normalJump * abilities.jumpMul;
-      player.lastBounceKind = isSuperJump ? "super" : "normal";
+      const isSpring = platform.gimmick === "spring" && !isSuperJump;
+      player.vy = isSuperJump
+        ? settings.boostJump
+        : isSpring
+          ? settings.springJump * abilities.jumpMul
+          : settings.normalJump * abilities.jumpMul;
+      player.lastBounceKind = isSuperJump ? "super" : isSpring ? "boost" : "normal";
       player.bounceTag = ((player.bounceTag || 0) + 1) & 0xff;
       const cx = player.x + player.width / 2;
       spawnEffect("land", cx, platform.y + 6);
       spawnEffect("jump", cx, platform.y);
       playLandSound();
-      playJumpSound();
+      if (isSpring) {
+        spawnEffect("burst", cx, player.y + player.height / 2);
+        playSpringSound();
+        triggerBoostFx(player, "boost");
+      } else {
+        playJumpSound();
+      }
       if (isSuperJump) {
         spawnEffect("burst", cx, player.y + player.height / 2);
         triggerBoostFx(player, "super");
       }
+      if (platform.gimmick === "crumble") {
+        crumblePlatform(platform);
+      }
       return;
     }
   }
+}
+
+// 깜빡 구름 — 한 번 밟히면 배열에서 즉시 제거(재착지 불가)하고 퐁 하고 사라진다.
+// 이동은 inline transform이라 페이드는 opacity만 건드린다 (transform 충돌 방지).
+function crumblePlatform(platform) {
+  const index = state.platforms.indexOf(platform);
+  if (index !== -1) state.platforms.splice(index, 1);
+  platform.el.classList.add("is-poofing");
+  spawnEffect("land", platform.x + platform.width / 2, platform.y);
+  playPoofSound();
+  window.setTimeout(() => platform.el.remove(), 420);
 }
 
 function handleBoostPickup(player) {

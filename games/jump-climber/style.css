@@ -548,6 +548,26 @@ button {
   content: none;
 }
 
+/* 존별 기믹 플랫폼 — 표정/디테일이 읽히도록 기본(18px)보다 크게 그린다.
+   착지선은 여전히 요소 상단(platform.y)이라 물리에는 영향 없음. */
+.platform--crumble {
+  height: 26px;
+  background-image: url("./assets/platform_cloud_sleepy.png");
+  box-shadow: none;
+}
+
+.platform--spring {
+  height: 42px;
+  background-image: url("./assets/platform_moon_spring.png");
+  box-shadow: none;
+}
+
+.platform.is-poofing {
+  opacity: 0;
+  transition: opacity 380ms ease;
+  pointer-events: none;
+}
+
 .platform--leaf {
   background-image: url("./assets/platform_leaf.png");
 }
