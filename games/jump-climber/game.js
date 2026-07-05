@@ -233,6 +233,8 @@ const settings = {
   cakeCrumbleDelayMs: 450,
   platformRespawnMs: 2000,
   cloudSinkStep: 30,
+  cloudRecoverDelayMs: 1500,
+  cloudRiseStep: 0.4,
   monsterSpawnIntervalMinLateMs: 3200,
   monsterSpawnIntervalMaxLateMs: 6200,
   monsterRampHeightM: 400,
@@ -2936,13 +2938,24 @@ function notePlatformBounce(platform) {
     }, settings.cakeCrumbleDelayMs + settings.platformRespawnMs);
   } else if (target.kind === "cloud") {
     target.sinkTarget = (target.sinkTarget || 0) + settings.cloudSinkStep;
+    // 마지막 밟힘 후 cloudRecoverDelayMs 지나면 천천히 원위치로 떠오른다
+    target.sinkRecoverAtMs = performance.now() + settings.cloudRecoverDelayMs;
   }
 }
 
 function easePlatformSink(platformLike) {
-  if (!platformLike.sinkTarget) return;
+  if (
+    platformLike.sinkTarget > 0 &&
+    platformLike.sinkRecoverAtMs != null &&
+    performance.now() >= platformLike.sinkRecoverAtMs
+  ) {
+    platformLike.sinkTarget = Math.max(0, platformLike.sinkTarget - settings.cloudRiseStep);
+  }
+  if (!platformLike.sinkTarget && !platformLike.sinkOffset) return;
   const current = platformLike.sinkOffset || 0;
-  platformLike.sinkOffset = current + (platformLike.sinkTarget - current) * 0.08;
+  const next = current + (platformLike.sinkTarget - current) * 0.08;
+  // 복구 완료 근처에서는 0으로 스냅해 다음 프레임부터 early-return 되게 한다
+  platformLike.sinkOffset = !platformLike.sinkTarget && Math.abs(next) < 0.1 ? 0 : next;
 }
 
 function handleBoostPickup(player) {
