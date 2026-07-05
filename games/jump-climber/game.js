@@ -227,6 +227,19 @@ const settings = {
   monsterLifetimeMs: 9000,
 };
 
+// ── 높이 존 & 마일스톤 ──────────────────────────────────────
+// climbed(m) 기준. 존 인덱스는 한 번 올라가면 유지(모노토닉) — 낙하할 때마다
+// 배경이 되돌아오며 깜빡이는 것을 막는다. 마일스톤은 존 경계(150/350)와
+// 겹치지 않게 골라 배너가 이중으로 뜨지 않도록 한다.
+const ZONES = [
+  { id: "sky", from: 0, banner: null },
+  { id: "sunset", from: 150, banner: "🌇 노을 하늘 도착!" },
+  { id: "space", from: 350, banner: "🌌 별빛 우주 도착!" },
+];
+const SPACE_ZONE_FROM = ZONES[2].from;
+const MILESTONES = [50, 100, 200, 300, 500, 750, 1000, 1500, 2000, 3000];
+const PERSONAL_BEST_KEY = "mallang-jump.personalBest";
+
 const PLAYER_COLORS = ["#ef4444", "#3b82f6", "#22c55e", "#f59e0b", "#a855f7", "#ec4899", "#14b8a6", "#f97316"];
 const NETWORK_TICK_MS = 33;
 const NETWORK_PING_INTERVAL_MS = 2000;
@@ -264,6 +277,11 @@ const state = {
   nextMonsterSpawnAt: 0,
   effects: [],
   resultSubmitted: false,
+  progress: {
+    zoneIndex: 0,
+    milestoneIdx: 0,
+    recordShown: false,
+  },
   audio: {
     ctx: null,
     unlocked: false,
@@ -380,6 +398,167 @@ function playBoostSound() {
   window.setTimeout(() => {
     playTone({ type: "triangle", frequency: 760, endFrequency: 520, duration: 0.14, volume: 0.028 });
   }, 36);
+}
+
+function playZoneSound() {
+  playTone({ type: "triangle", frequency: 523, endFrequency: 784, duration: 0.18, volume: 0.04 });
+  window.setTimeout(() => {
+    playTone({ type: "triangle", frequency: 784, endFrequency: 1046, duration: 0.22, volume: 0.038 });
+  }, 130);
+}
+
+function playMilestoneSound() {
+  playTone({ type: "sine", frequency: 880, endFrequency: 1174, duration: 0.14, volume: 0.035 });
+}
+
+function playRecordSound() {
+  [523, 659, 784, 1046].forEach((frequency, index) => {
+    window.setTimeout(() => {
+      playTone({ type: "triangle", frequency, duration: 0.15, volume: 0.04 });
+    }, index * 110);
+  });
+}
+
+// ── 높이 존 · 마일스톤 · 개인 최고 기록 ─────────────────────
+const zoneSunsetEl = document.getElementById("zoneSunset");
+const zoneSpaceEl = document.getElementById("zoneSpace");
+const skyBannerEl = document.getElementById("skyBanner");
+const setupBestEl = document.getElementById("setupBest");
+const resultRecordEl = document.getElementById("resultRecord");
+
+function loadPersonalBest() {
+  try {
+    const value = Number(window.localStorage.getItem(PERSONAL_BEST_KEY));
+    return Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
+  } catch (error) {
+    return 0;
+  }
+}
+
+let personalBest = loadPersonalBest();
+
+function savePersonalBest(value) {
+  personalBest = value;
+  try {
+    window.localStorage.setItem(PERSONAL_BEST_KEY, String(value));
+  } catch (error) {
+    /* 사생활 보호 모드 등에서 저장 불가 — 세션 내 기록만 유지 */
+  }
+  refreshSetupBest();
+}
+
+function refreshSetupBest() {
+  if (!setupBestEl) return;
+  setupBestEl.classList.toggle("is-hidden", personalBest <= 0);
+  if (personalBest > 0) {
+    setupBestEl.textContent = `🏆 내 최고 기록 ${personalBest}m — 오늘은 넘어볼까요?`;
+  }
+}
+
+// 배너 큐 — 존 진입과 마일스톤이 같은 순간 겹치면 순서대로 보여준다.
+const bannerQueue = [];
+let bannerTimerId = 0;
+
+function showSkyBanner(text) {
+  if (!skyBannerEl || !text) return;
+  bannerQueue.push(text);
+  if (!bannerTimerId) presentNextBanner();
+}
+
+function presentNextBanner() {
+  const text = bannerQueue.shift();
+  if (!text) {
+    bannerTimerId = 0;
+    skyBannerEl.classList.add("is-hidden");
+    return;
+  }
+  skyBannerEl.textContent = text;
+  skyBannerEl.classList.remove("is-hidden");
+  // 연속 표시 시 pop 애니메이션 재시작
+  skyBannerEl.style.animation = "none";
+  void skyBannerEl.offsetWidth;
+  skyBannerEl.style.animation = "";
+  bannerTimerId = window.setTimeout(presentNextBanner, 1700);
+}
+
+function resetSkyBanner() {
+  bannerQueue.length = 0;
+  if (bannerTimerId) {
+    window.clearTimeout(bannerTimerId);
+    bannerTimerId = 0;
+  }
+  if (skyBannerEl) skyBannerEl.classList.add("is-hidden");
+}
+
+function zoneIndexForHeight(heightM) {
+  for (let i = ZONES.length - 1; i >= 0; i -= 1) {
+    if (heightM >= ZONES[i].from) return i;
+  }
+  return 0;
+}
+
+function applyZoneVisual(zoneIndex) {
+  if (zoneSunsetEl) zoneSunsetEl.classList.toggle("is-visible", zoneIndex >= 1);
+  if (zoneSpaceEl) zoneSpaceEl.classList.toggle("is-visible", zoneIndex >= 2);
+}
+
+function resetRunProgress() {
+  state.progress.zoneIndex = 0;
+  state.progress.milestoneIdx = 0;
+  state.progress.recordShown = false;
+  applyZoneVisual(0);
+  resetSkyBanner();
+}
+
+function updateRunProgress(heightM) {
+  if (!Number.isFinite(heightM) || heightM <= 0) return;
+
+  const zoneIndex = zoneIndexForHeight(heightM);
+  if (zoneIndex > state.progress.zoneIndex) {
+    state.progress.zoneIndex = zoneIndex;
+    applyZoneVisual(zoneIndex);
+    showSkyBanner(ZONES[zoneIndex].banner);
+    playZoneSound();
+  }
+
+  while (
+    state.progress.milestoneIdx < MILESTONES.length &&
+    heightM >= MILESTONES[state.progress.milestoneIdx]
+  ) {
+    const milestone = MILESTONES[state.progress.milestoneIdx];
+    state.progress.milestoneIdx += 1;
+    showSkyBanner(`⛳ ${milestone}m 돌파!`);
+    playMilestoneSound();
+  }
+
+  if (!state.progress.recordShown && personalBest > 0 && heightM > personalBest) {
+    state.progress.recordShown = true;
+    showSkyBanner(`🎉 신기록 달성! (이전 ${personalBest}m)`);
+    playRecordSound();
+  }
+}
+
+// 결과 화면에 신기록/최고 기록 표시 + 저장. myScore = 이번 판 내 기록(m).
+function applyRecordToResults(myScore) {
+  if (!resultRecordEl) return;
+
+  const score = Number.isFinite(myScore) ? Math.max(0, Math.round(myScore)) : 0;
+  if (score <= 0) {
+    resultRecordEl.classList.add("is-hidden");
+    return;
+  }
+
+  const previous = personalBest;
+  const isNew = score > previous;
+  if (isNew) savePersonalBest(score);
+
+  resultRecordEl.classList.remove("is-hidden");
+  resultRecordEl.classList.toggle("is-new", isNew);
+  resultRecordEl.textContent = isNew
+    ? previous > 0
+      ? `🎉 신기록! ${previous}m → ${score}m`
+      : `🎉 첫 기록 ${score}m 달성!`
+    : `🏆 내 최고 기록 ${personalBest}m (이번 판 ${score}m)`;
 }
 
 function slotLabel(slot) {
@@ -782,6 +961,9 @@ function showResultsOverlay() {
     resultScoreEls[slot].textContent = `${player ? player.bestHeight : 0}m`;
   }
 
+  const me = state.players.find((entry) => entry.slot === 0);
+  applyRecordToResults(me ? me.bestHeight : Math.max(0, ...state.players.map((p) => p.bestHeight)));
+
   applyResultButtonLabels();
   resultsOverlay.classList.add("is-active");
 }
@@ -801,6 +983,9 @@ function showNetworkResultsOverlay(results) {
     resultNameEls[slot].textContent = `${slotLabel(slot)} · ${entry.name}`;
     resultScoreEls[slot].textContent = `${entry.score}m`;
   }
+
+  const myEntry = results.find((entry) => entry.slot === state.network.mySlot);
+  applyRecordToResults(myEntry ? myEntry.score : 0);
 
   applyResultButtonLabels();
   resultsOverlay.classList.add("is-active");
@@ -1509,6 +1694,18 @@ function renderNetworkFrame(now) {
     : getBufferedNetworkElapsedMs(now) / 1000;
   const localPlayer = updateLocalNetworkPhysics(dt, now, motionTime);
 
+  if (localPlayer && Number.isFinite(localPlayer.bestHeight)) {
+    updateRunProgress(localPlayer.bestHeight);
+  } else if (state.isSpectator) {
+    // 관전자는 제일 높이 올라간 플레이어 기준으로 존 배경을 따라간다.
+    let topHeight = 0;
+    state.network.playerEls.forEach((entry) => {
+      const h = entry.latest?.bestHeight;
+      if (Number.isFinite(h) && h > topHeight) topHeight = h;
+    });
+    updateRunProgress(topHeight);
+  }
+
   state.network.platformEls.forEach((entry) => {
     renderNetworkPlatformEntry(entry, motionTime);
   });
@@ -1941,7 +2138,10 @@ function createPlatform(y, isBase = false, anchorPlatform = null) {
     motion,
   };
 
-  if (!isBase && motion.type === "static" && Math.random() < 0.2) {
+  // 우주존에서는 부스트가 조금 더 후하게 나온다 — 존마다 플레이 감각 차별화
+  const inSpaceZone = (settings.startLineY - y) / 10 >= SPACE_ZONE_FROM;
+  const boostChance = inSpaceZone ? 0.28 : 0.2;
+  if (!isBase && motion.type === "static" && Math.random() < boostChance) {
     spawnBoost(platform);
   }
 
@@ -1949,7 +2149,9 @@ function createPlatform(y, isBase = false, anchorPlatform = null) {
 }
 
 function spawnBoost(platform) {
-  const kind = Math.random() < 0.5 ? "rocket" : "star";
+  // 우주존에서는 별 부스트 비중이 높아진다 (연출용 — 효과는 동일)
+  const starChance = (settings.startLineY - platform.y) / 10 >= SPACE_ZONE_FROM ? 0.75 : 0.5;
+  const kind = Math.random() < starChance ? "star" : "rocket";
   const el = document.createElement("div");
   el.className = `boost boost--${kind}`;
   el.textContent = BOOST_META[kind].label;
@@ -2520,6 +2722,7 @@ function loop() {
   updateMonsters();
   updatePlayers();
   updateCamera();
+  updateRunProgress(Math.max(0, ...state.players.map((player) => player.bestHeight)));
   render();
   updateHud();
   tickPerfMeter(performance.now());
@@ -2580,6 +2783,7 @@ function startGame() {
   });
 
   hideResultsOverlay();
+  resetRunProgress();
   showScreen("play");
   requestAnimationFrame(() => applyArenaScale(true));
   showChatOverlay();
@@ -2808,6 +3012,7 @@ initPerfMeter();
 bindSetupEvents();
 bindKeyboardEvents();
 bindChatEvents();
+refreshSetupBest();
 window.addEventListener("resize", () => applyArenaScale(true));
 // HUD/topbar 높이 변화 등 window resize 없이 .arena 크기가 바뀌는 경우도 캐시 무효화.
 if (typeof ResizeObserver !== "undefined" && arena) {

@@ -212,6 +212,16 @@ button {
   margin: 14px 0 16px;
 }
 
+.setup-best {
+  margin: -8px 0 14px;
+  font-weight: 800;
+  color: #7c6ab8;
+}
+
+.setup-best.is-hidden {
+  display: none;
+}
+
 .player-configs {
   display: grid;
   gap: 14px;
@@ -438,6 +448,69 @@ button {
 .arena::before,
 .arena::after {
   content: none;
+}
+
+/* 높이 존 배경 레이어 — 기본 하늘 위로 노을/우주가 서서히 크로스페이드.
+   world 요소보다 앞(DOM상 이전)에 있어 플랫폼·캐릭터 뒤에 깔린다. */
+.zone-layer {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity 2400ms ease;
+  pointer-events: none;
+  background-position: center top;
+  background-repeat: no-repeat;
+  background-size: cover;
+}
+
+.zone-layer--sunset {
+  background-image: url("./assets/bg_sunset_vertical.png");
+}
+
+.zone-layer--space {
+  background-image: url("./assets/bg_space_vertical.png");
+}
+
+.zone-layer.is-visible {
+  opacity: 1;
+}
+
+/* 존 진입/마일스톤 배너 — 화면 상단 중앙에서 팝 */
+.sky-banner {
+  position: absolute;
+  top: 16%;
+  left: 50%;
+  z-index: 24;
+  padding: 10px 22px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 10px 26px rgba(90, 80, 160, 0.24);
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: #5b4a86;
+  white-space: nowrap;
+  pointer-events: none;
+  transform: translateX(-50%);
+  animation: sky-banner-pop 320ms cubic-bezier(0.24, 1.4, 0.44, 1) both;
+}
+
+.sky-banner.is-hidden {
+  display: none;
+}
+
+@keyframes sky-banner-pop {
+  0% {
+    transform: translateX(-50%) scale(0.5);
+    opacity: 0;
+  }
+  70% {
+    transform: translateX(-50%) scale(1.08);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(-50%) scale(1);
+    opacity: 1;
+  }
 }
 
 .world {
@@ -708,6 +781,38 @@ button {
   margin: 14px 0 16px;
   color: var(--muted);
   line-height: 1.45;
+}
+
+.results-record {
+  margin: 12px 0 0;
+  padding: 8px 14px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #fff3c9, #ffe1ef);
+  font-weight: 800;
+  color: #a05a2c;
+}
+
+.results-record.is-new {
+  animation: record-pop 420ms cubic-bezier(0.24, 1.4, 0.44, 1) both;
+}
+
+.results-record.is-hidden {
+  display: none;
+}
+
+@keyframes record-pop {
+  0% {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+  70% {
+    transform: scale(1.06);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 
 .results-actions {

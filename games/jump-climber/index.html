@@ -21,6 +21,7 @@
           <p id="setupHint" class="setup-hint">
             화면 좌우를 눌러 움직여요. <strong>🎲 랜덤</strong>은 숨겨진 친구도 추첨!
           </p>
+          <p id="setupBest" class="setup-best is-hidden"></p>
 
           <article class="player-config" data-player-slot="0">
             <div class="player-config__top">
@@ -60,7 +61,12 @@
 
         <section class="panel play-panel">
           <div id="arena" class="arena" aria-label="점프 게임 맵">
+            <!-- 높이 존 배경: 하늘(기본) 위에 노을/우주 레이어가 크로스페이드된다 -->
+            <div id="zoneSunset" class="zone-layer zone-layer--sunset" aria-hidden="true"></div>
+            <div id="zoneSpace" class="zone-layer zone-layer--space" aria-hidden="true"></div>
             <div id="world" class="world"></div>
+
+            <div id="skyBanner" class="sky-banner is-hidden" aria-hidden="true"></div>
 
             <div class="touch-hint" aria-hidden="true">
               <span>왼쪽 터치</span>
@@ -114,6 +120,7 @@
                     <strong id="resultScore2">0m</strong>
                   </div>
                 </div>
+                <div id="resultRecord" class="results-record is-hidden"></div>
                 <div id="resultLead" class="results-lead">한 번 더 도전!</div>
                 <div class="results-actions">
                   <button id="restartFromResults" type="button" class="primary-action">한 판 더</button>
