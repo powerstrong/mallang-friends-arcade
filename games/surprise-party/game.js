@@ -227,6 +227,70 @@
     el.classList.add('is-active');
   }
 
+  /* ── 블링블링 파티클 ───────────────────────── */
+  var SPARKLE_EMO = ['✨', '⭐', '💖', '🎀', '🫧', '🌟', '💜', '🍬'];
+  var BURST_EMO = ['🎉', '✨', '💖', '⭐', '🎊'];
+
+  // 화면 위로 두둥실 떠오르는 반짝이 — 음수 delay 로 처음부터 하늘에 흩어져 있게.
+  function makeSparkleField(host, count) {
+    var field = document.createElement('div');
+    field.className = 'sparkle-field';
+    for (var i = 0; i < count; i++) {
+      var s = document.createElement('span');
+      s.className = 'sparkle';
+      s.textContent = SPARKLE_EMO[i % SPARKLE_EMO.length];
+      s.style.left = (Math.random() * 96) + '%';
+      s.style.fontSize = (10 + Math.random() * 14) + 'px';
+      s.style.setProperty('--sway', (Math.random() * 44 - 22).toFixed(0) + 'px');
+      s.style.setProperty('--op', (0.3 + Math.random() * 0.45).toFixed(2));
+      s.style.animationDuration = (6 + Math.random() * 7).toFixed(1) + 's';
+      s.style.animationDelay = (-Math.random() * 13).toFixed(1) + 's';
+      field.appendChild(s);
+    }
+    host.appendChild(field);
+    return field;
+  }
+  makeSparkleField(ui.lobby, 14);
+
+  // 라운드 성공 순간 화면 중앙에서 팡 터지는 이모지 컨페티.
+  function burstConfetti(host, count) {
+    for (var i = 0; i < count; i++) {
+      var b = document.createElement('span');
+      b.className = 'confetti-bit';
+      b.textContent = BURST_EMO[(Math.random() * BURST_EMO.length) | 0];
+      b.style.left = (42 + Math.random() * 16) + '%';
+      b.style.top = (38 + Math.random() * 12) + '%';
+      b.style.fontSize = (16 + Math.random() * 14) + 'px';
+      b.style.setProperty('--tx', (Math.random() * 280 - 140).toFixed(0) + 'px');
+      b.style.setProperty('--ty', (-40 - Math.random() * 160).toFixed(0) + 'px');
+      b.style.setProperty('--rot', (Math.random() * 520 - 260).toFixed(0) + 'deg');
+      b.style.setProperty('--dur', (0.55 + Math.random() * 0.4).toFixed(2) + 's');
+      host.appendChild(b);
+      (function (node) { setTimeout(function () { node.remove(); }, 1100); })(b);
+    }
+  }
+
+  // 결과 화면 컨페티 비 — 한 번만 깔고 화면이 살아있는 동안 반복 낙하.
+  var rainDone = false;
+  function makeConfettiRain(host, count) {
+    if (rainDone) return;
+    rainDone = true;
+    var field = document.createElement('div');
+    field.className = 'sparkle-field';
+    for (var i = 0; i < count; i++) {
+      var d = document.createElement('span');
+      d.className = 'confetti-drop';
+      d.textContent = BURST_EMO[i % BURST_EMO.length];
+      d.style.left = (Math.random() * 96) + '%';
+      d.style.fontSize = (12 + Math.random() * 14) + 'px';
+      d.style.setProperty('--rot', (Math.random() * 720 - 360).toFixed(0) + 'deg');
+      d.style.setProperty('--dur', (2.4 + Math.random() * 1.8).toFixed(1) + 's');
+      d.style.setProperty('--delay', (Math.random() * 2.6).toFixed(1) + 's');
+      field.appendChild(d);
+    }
+    host.appendChild(field);
+  }
+
   /* ── 시작 흐름 ─────────────────────────────── */
   ui.btnStart.addEventListener('click', function () {
     if (ui.btnStart.disabled) return;
@@ -252,14 +316,22 @@
     renderRivals();
     var n = 3;
     ui.countOverlay.hidden = false;
-    ui.countOverlay.textContent = String(n);
+    tickCount(String(n));
     var iv = setInterval(function () {
       n -= 1;
-      if (n > 0) { ui.countOverlay.textContent = String(n); return; }
+      if (n > 0) { tickCount(String(n)); return; }
       clearInterval(iv);
       ui.countOverlay.hidden = true;
       nextRound();
     }, 600);
+  }
+
+  // 카운트다운 숫자마다 팝 애니메이션 재시동 (reflow 로 animation 리셋)
+  function tickCount(text) {
+    ui.countOverlay.textContent = text;
+    ui.countOverlay.classList.remove('is-tick');
+    void ui.countOverlay.offsetWidth;
+    ui.countOverlay.classList.add('is-tick');
   }
 
   /* ── HUD ──────────────────────────────────── */
@@ -381,6 +453,7 @@
     ui.resultFlash.textContent = success ? '⭕' : '❌';
     ui.resultFlash.classList.toggle('is-fail', !success);
     ui.resultFlash.hidden = false;
+    if (success) burstConfetti(ui.play, 10);
     sendSnap(true);
     setTimeout(function () {
       ui.resultFlash.hidden = true;
@@ -435,6 +508,9 @@
     ui.resultTitle.textContent = entries.length > 1
       ? (myRank === 1 ? '🏆 1등!' : myRank + '등!')
       : '기록 달성!';
+    // 축하 연출 — 컨페티 비는 모두에게, 1등(또는 솔로 기록)은 버스트도 팡!
+    makeConfettiRain(ui.over, 18);
+    if (myRank === 1) burstConfetti(ui.over, 14);
     ui.finalRound.textContent = 'R' + myFinal.round;
     ui.finalDetail.textContent = '점수 ' + myFinal.score + ' · 최고 콤보 ' + myFinal.bestCombo;
 
@@ -463,5 +539,7 @@
     get finished() { return finished; },
     beginCountdown: beginCountdown,
     showResult: showResult,
+    burstConfetti: burstConfetti,
+    makeConfettiRain: makeConfettiRain,
   };
 })();

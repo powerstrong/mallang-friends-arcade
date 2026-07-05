@@ -29,20 +29,71 @@ html, body {
 }
 
 /* ── 화면 전환 ─────────────────────────────── */
-.screen { display: none; flex: 1; flex-direction: column; padding: 20px 18px; overflow-y: auto; }
-.screen.is-active { display: flex; }
-.screen--play { padding: 0; overflow: hidden; }
+.screen { display: none; flex: 1; flex-direction: column; padding: 20px 18px; overflow-y: auto; position: relative; }
+.screen.is-active { display: flex; animation: screen-in 0.35s ease-out; }
+.screen--play { padding: 0; overflow: hidden; animation: none; }
+@keyframes screen-in { from { opacity: 0; transform: translateY(10px); } }
 
 /* ── 로비 ─────────────────────────────────── */
 .game-title { font-size: 30px; text-align: center; margin-top: 10px; letter-spacing: -0.5px; }
+.title-gift { display: inline-block; transform-origin: 50% 88%; animation: gift-bounce 1.7s ease-in-out infinite; }
+@keyframes gift-bounce {
+  0%, 100% { transform: translateY(0) rotate(-5deg); }
+  30% { transform: translateY(-7px) rotate(6deg) scale(1.1); }
+  55% { transform: translateY(0) rotate(-3deg); }
+  72% { transform: translateY(-3px) rotate(4deg); }
+}
+.title-text {
+  background: linear-gradient(90deg, #ff7ea8, #b07ce8, #5cb8ff, #ffa06e, #ff7ea8);
+  background-size: 300% 100%;
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  animation: title-shimmer 5s linear infinite;
+}
+@keyframes title-shimmer { to { background-position: 300% 0; } }
 .game-desc { text-align: center; font-size: 14px; line-height: 1.55; margin: 8px 0 16px; color: #8a7692; }
+
+.hero-banner {
+  display: block; width: 100%; max-height: 158px; object-fit: cover;
+  border-radius: 18px; margin: -4px 0 14px; box-shadow: 0 6px 18px #e8b7d445;
+}
+.hero-banner[hidden] { display: none; }
+
+/* 떠다니는 반짝이 파티클 (로비·결과) — JS 가 .sparkle 을 채운다 */
+.sparkle-field { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 0; }
+.sparkle {
+  position: absolute; bottom: -34px; opacity: 0; line-height: 1;
+  animation: sparkle-rise linear infinite; will-change: transform, opacity;
+}
+@keyframes sparkle-rise {
+  0% { transform: translateY(0) translateX(0) rotate(0deg) scale(0.6); opacity: 0; }
+  12% { opacity: var(--op, 0.6); }
+  50% { transform: translateY(-46vh) translateX(var(--sway, 14px)) rotate(130deg) scale(1); }
+  88% { opacity: var(--op, 0.6); }
+  100% { transform: translateY(-94vh) translateX(calc(var(--sway, 14px) * -1)) rotate(280deg) scale(0.7); opacity: 0; }
+}
 
 .room-code-box {
   background: #ffffffcc; border-radius: 18px; padding: 14px; text-align: center;
   box-shadow: 0 4px 14px #e8b7d425; margin-bottom: 14px;
+  position: relative; overflow: hidden;
 }
+/* 이따금 지나가는 사선 광택 */
+.room-code-box::after {
+  content: ''; position: absolute; top: 0; bottom: 0; width: 48px; left: -70px;
+  transform: skewX(-18deg); pointer-events: none;
+  background: linear-gradient(90deg, transparent, #ffffffb8, transparent);
+  animation: shine-sweep 3.4s ease-in-out infinite;
+}
+@keyframes shine-sweep { 0%, 58% { left: -70px; } 88%, 100% { left: 120%; } }
 .room-code-label { font-size: 12px; color: #a08cae; }
-.room-code { font-size: 34px; font-weight: 800; letter-spacing: 6px; margin: 6px 0; color: #7c5cbf; }
+.room-code {
+  font-size: 34px; font-weight: 800; letter-spacing: 6px; margin: 6px 0; color: #7c5cbf;
+  animation: code-glow 2.4s ease-in-out infinite;
+}
+@keyframes code-glow {
+  0%, 100% { text-shadow: 0 0 0 transparent; }
+  50% { text-shadow: 0 0 16px #b07ce870, 0 2px 0 #eadcff; }
+}
 .room-code-hint { font-size: 11px; color: #b5a3c0; }
 
 /* 초대 링크 복사 + 받은 코드 입력 — 코드 공유/합류 동선 */
@@ -73,13 +124,21 @@ html, body {
   background: #ffffffcc center/cover no-repeat; cursor: pointer; padding: 0;
   transition: transform 0.15s, border-color 0.15s;
 }
-.char-option.is-selected { border-color: #ff7ea8; transform: scale(1.12); }
+.char-option.is-selected { border-color: #ff7ea8; transform: scale(1.12); animation: jelly-pick 0.5s; }
+@keyframes jelly-pick {
+  0% { transform: scale(1.12); }
+  30% { transform: scale(1.26, 0.94); }
+  55% { transform: scale(1.0, 1.22); }
+  75% { transform: scale(1.18, 1.04); }
+  100% { transform: scale(1.12); }
+}
 
 .players-box { background: #ffffffb0; border-radius: 18px; padding: 12px 14px; margin-bottom: 16px; }
 .players-label { font-size: 12px; color: #a08cae; margin-bottom: 6px; }
 .player-list { list-style: none; display: flex; flex-wrap: wrap; gap: 8px; }
 .player-list li {
   background: #fde7f1; border-radius: 999px; padding: 5px 12px; font-size: 13px; font-weight: 600;
+  animation: pop-in 0.32s cubic-bezier(0.2, 1.6, 0.4, 1);
 }
 .ongoing-hint { font-size: 12px; color: #d78e5c; margin-top: 8px; }
 
@@ -90,7 +149,22 @@ html, body {
 }
 .btn:active { transform: scale(0.96); }
 .btn:disabled { opacity: 0.45; cursor: default; }
-.btn--primary { background: linear-gradient(135deg, #ff9ec0, #ff7ea8); color: #fff; box-shadow: 0 5px 14px #ff7ea855; }
+.btn--primary {
+  background: linear-gradient(135deg, #ff9ec0, #ff7ea8); color: #fff; box-shadow: 0 5px 14px #ff7ea855;
+  position: relative; overflow: hidden; animation: btn-pulse 1.8s ease-in-out infinite;
+}
+.btn--primary:disabled { animation: none; }
+@keyframes btn-pulse {
+  0%, 100% { box-shadow: 0 5px 14px #ff7ea855; }
+  50% { box-shadow: 0 5px 22px #ff7ea89e, 0 0 0 6px #ff9ec01f; }
+}
+.btn--primary::after {
+  content: ''; position: absolute; top: 0; bottom: 0; width: 40px; left: -60px;
+  transform: skewX(-20deg); pointer-events: none;
+  background: linear-gradient(90deg, transparent, #ffffff70, transparent);
+  animation: shine-sweep 2.6s ease-in-out infinite;
+}
+.btn--primary:disabled::after { display: none; }
 .btn--secondary { background: #fff; color: #8a7692; border: 2px solid #e9d7ef; }
 
 /* ── 플레이 HUD ───────────────────────────── */
@@ -161,6 +235,8 @@ html, body {
   font-size: 96px; font-weight: 900; color: #7c5cbf; background: #fff8fcd8; z-index: 7;
 }
 .count-overlay[hidden] { display: none; }
+.count-overlay.is-tick { animation: count-pop 0.55s cubic-bezier(0.2, 1.6, 0.4, 1); }
+@keyframes count-pop { from { transform: scale(1.5); opacity: 0.2; } to { transform: scale(1); opacity: 1; } }
 
 .dead-overlay {
   position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center;
@@ -257,14 +333,41 @@ html, body {
 .mg-balloon.is-popped { animation: none; opacity: 0.5; }
 @keyframes float { from { margin-top: 0; } to { margin-top: -14px; } }
 
+/* ── 컨페티 (라운드 성공 버스트 · 결과 화면 비) — JS 가 생성/제거 ── */
+.confetti-bit {
+  position: absolute; pointer-events: none; z-index: 9; line-height: 1;
+  animation: bit-burst var(--dur, 0.8s) cubic-bezier(0.15, 0.8, 0.35, 1) forwards;
+}
+@keyframes bit-burst {
+  from { transform: translate(0, 0) rotate(0deg) scale(0.5); opacity: 1; }
+  to { transform: translate(var(--tx, 0px), var(--ty, -120px)) rotate(var(--rot, 200deg)) scale(1); opacity: 0; }
+}
+.confetti-drop {
+  position: absolute; top: -8%; pointer-events: none; line-height: 1; opacity: 0;
+  animation: bit-fall var(--dur, 2.8s) linear var(--delay, 0s) infinite;
+}
+@keyframes bit-fall {
+  0% { transform: translateY(0) rotate(0deg); opacity: 0; }
+  8% { opacity: 0.9; }
+  100% { transform: translateY(115vh) rotate(var(--rot, 360deg)); opacity: 0.9; }
+}
+
 /* ── 결과 화면 ────────────────────────────── */
 .result-card {
   background: #ffffffd8; border-radius: 24px; padding: 26px 20px; text-align: center;
   box-shadow: 0 8px 24px #d3b8e040; margin: auto 0; display: flex; flex-direction: column; gap: 8px;
+  position: relative; z-index: 1; animation: card-rise 0.45s cubic-bezier(0.2, 1.4, 0.4, 1);
 }
-.result-title { font-size: 26px; }
+@keyframes card-rise { from { transform: translateY(26px) scale(0.94); opacity: 0; } }
+.result-title { font-size: 26px; animation: pop-in 0.5s cubic-bezier(0.2, 1.6, 0.4, 1); }
 .result-score-label { font-size: 13px; color: #a08cae; }
-.result-score { font-size: 56px; font-weight: 900; color: #ff7ea8; line-height: 1.1; }
+.result-score {
+  font-size: 56px; font-weight: 900; line-height: 1.1;
+  background: linear-gradient(90deg, #ff7ea8, #b07ce8, #ff9e6e, #ff7ea8);
+  background-size: 300% 100%;
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  animation: title-shimmer 4s linear infinite;
+}
 .result-detail { font-size: 14px; color: #8a7692; margin-bottom: 6px; }
 .final-ranking { list-style: none; display: flex; flex-direction: column; gap: 6px; margin: 6px 0 10px; }
 .final-ranking li {
@@ -273,3 +376,10 @@ html, body {
 }
 .final-ranking li.is-me { background: #ffe1ee; border: 2px solid #ff9ec0; }
 .final-ranking .rank-stat { color: #a08cae; font-weight: 500; }
+
+/* ── 모션 최소화 설정 존중 ─────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .sparkle, .confetti-bit, .confetti-drop, .title-gift, .title-text,
+  .room-code, .room-code-box::after, .btn--primary, .btn--primary::after,
+  .result-score, .screen.is-active { animation: none !important; }
+}
