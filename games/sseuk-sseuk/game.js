@@ -106,6 +106,7 @@ muteBtn?.addEventListener('click', () => {
   applyMuteBtn();
 });
 const rankingsList     = document.getElementById('rankingsList');
+const myAwardLine      = document.getElementById('myAwardLine');
 const exitBtn          = document.getElementById('exitBtn');
 
 /* ── Screen helpers ─────────────────────────────────── */
@@ -231,6 +232,31 @@ function showCorrectToast(text, isMe) {
     correctToast.classList.remove('is-show');
     correctToast.classList.add('is-hidden');
   }, 1500);
+}
+
+/* 이모지 컨페티 — 정답/게임 종료 순간 화면 위에서 쏟아진다.
+ * DOM 조각을 만들어 CSS 애니메이션으로 떨어뜨리고 끝나면 제거.
+ * 동시 조각 수를 제한해 저사양 모바일에서도 안전하게. */
+const CONFETTI_EMOJIS = ['🎉', '⭐', '✨', '🌸', '💛', '🎈', '💖'];
+let liveConfettiCount = 0;
+function spawnEmojiConfetti(count) {
+  const budget = Math.min(count, 60 - liveConfettiCount);
+  for (let i = 0; i < budget; i += 1) {
+    const piece = document.createElement('span');
+    piece.className = 'confetti-piece';
+    piece.textContent = CONFETTI_EMOJIS[Math.floor(Math.random() * CONFETTI_EMOJIS.length)];
+    piece.style.left = `${Math.random() * 100}vw`;
+    piece.style.fontSize = `${16 + Math.random() * 18}px`;
+    const duration = 1200 + Math.random() * 1400;
+    piece.style.animationDuration = `${duration}ms`;
+    piece.style.animationDelay = `${Math.random() * 250}ms`;
+    document.body.appendChild(piece);
+    liveConfettiCount += 1;
+    setTimeout(() => {
+      piece.remove();
+      liveConfettiCount -= 1;
+    }, duration + 300);
+  }
 }
 
 /* 미니 리더보드 — SS_CORRECT 들어올 때마다 칩 1개 추가. SS_ROUND_START 에서 리셋. */
@@ -861,7 +887,7 @@ function formatBreakdown(b) {
   return '';
 }
 
-function renderGameEnd(rankings) {
+function renderGameEnd(rankings, awards) {
   showScreen('result');
   rankingsList.innerHTML = '';
   for (const r of rankings) {
@@ -872,15 +898,35 @@ function renderGameEnd(rankings) {
     num.textContent = String(r.rank);
     li.appendChild(num);
     appendCharAvatar(li, r.characterId, 32, 'rank-avatar');
+    const nameWrap = document.createElement('span');
+    nameWrap.className = 'rank-name-wrap';
     const nm = document.createElement('span');
     nm.className = 'rank-name';
     nm.textContent = r.name + (r.id === playerId ? ' (나)' : '');
-    li.appendChild(nm);
+    nameWrap.appendChild(nm);
+    const award = awards?.[r.id];
+    if (award) {
+      const aw = document.createElement('span');
+      aw.className = 'rank-award';
+      aw.textContent = `${award.emoji} ${award.title}`;
+      aw.title = award.desc || '';
+      nameWrap.appendChild(aw);
+    }
+    li.appendChild(nameWrap);
     const sc = document.createElement('span');
     sc.className = 'rank-score';
     sc.textContent = `${r.score}점`;
     li.appendChild(sc);
     rankingsList.appendChild(li);
+  }
+
+  // 내 칭호는 순위표 위에 한 줄로 크게 — "나도 뭔가 받았다"는 보상감.
+  const myAward = awards?.[playerId];
+  if (myAwardLine) {
+    myAwardLine.classList.toggle('is-hidden', !myAward);
+    if (myAward) {
+      myAwardLine.textContent = `${myAward.emoji} 내 칭호: ${myAward.title} — ${myAward.desc}`;
+    }
   }
 }
 
@@ -1101,6 +1147,8 @@ function handleMessage(msg) {
         ? `🎉 나 ${msg.rank}등 정답!`
         : `🎉 ${msg.name}님 ${msg.rank}등!`;
       showCorrectToast(toastText, isMe);
+      // 정답 순간 이모지 컨페티 — 내 정답은 크게, 남의 정답은 가볍게.
+      spawnEmojiConfetti(isMe ? 18 : 7);
       // 2) 미니 리더보드에 칩 추가.
       addToMiniLeaderboard({ id: msg.playerId, name: msg.name, rank: msg.rank });
       // 3) 시스템 메시지 (기록용, 채팅 로그에).
@@ -1128,7 +1176,8 @@ function handleMessage(msg) {
       Audio.stopBgm();
       Audio.SFX.gameEnd();
       stopTimer();
-      renderGameEnd(msg.rankings);
+      renderGameEnd(msg.rankings, msg.awards);
+      spawnEmojiConfetti(28);   // 최종 결과 — 전원 축하 세례
       break;
     case 'error':
       setStatus(`오류: ${msg.message || '알 수 없음'}`, 'is-error');

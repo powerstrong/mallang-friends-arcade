@@ -806,4 +806,52 @@ body.is-typing .chat-messages {
 .rankings-list .rank-num { font-weight: 800; min-width: 24px; }
 .rankings-list .rank-score { margin-left: auto; font-variant-numeric: tabular-nums; font-weight: 700; }
 
+/* 칭호 — 순위 행 이름 아래 작은 칩 */
+.rank-name-wrap { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.rank-award {
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: #7c5cb8;
+  background: rgba(139, 108, 217, 0.12);
+  border-radius: 999px;
+  padding: 1px 8px;
+  align-self: flex-start;
+  white-space: nowrap;
+}
+.rankings-list li.is-me .rank-award { color: #fff; background: rgba(255, 255, 255, 0.24); }
+
+/* 내 칭호 하이라이트 라인 — 순위표 위 */
+.my-award-line {
+  margin: 4px 0 8px;
+  padding: 8px 14px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #fff3c9, #ffe1ef);
+  font-weight: 800;
+  color: #a05a2c;
+}
+.my-award-line.is-hidden { display: none; }
+
+/* 이모지 컨페티 */
+.confetti-piece {
+  position: fixed;
+  top: -6vh;
+  z-index: 999;
+  pointer-events: none;
+  animation: confetti-fall linear both;
+}
+
+@keyframes confetti-fall {
+  0% {
+    transform: translateY(0) rotate(0deg);
+    opacity: 1;
+  }
+  85% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(112vh) rotate(320deg);
+    opacity: 0.4;
+  }
+}
+
 .result-actions { display: flex; justify-content: center; margin-top: 12px; }

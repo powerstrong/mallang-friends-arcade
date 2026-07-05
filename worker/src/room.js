@@ -1164,11 +1164,29 @@ export class GameRoom {
         score: 0,
       })),
       drawerHistory: [],          // 각 라운드별 drawerId. 가중치 산정에 사용.
+      stats: {},                  // playerId → 칭호(어워드) 산정용 누적 통계.
       usedKeywords: [],
       currentRound: null,         // { drawerId, keyword, syllableCount, startedAt, volunteers, firstCorrectAt, correctOrder, strokes }
       tokens: { volunteer: 0, round: 0, bonus: 0, hint: 0 },
       timers: { volunteer: null, round: null, bonus: null, hint: [] },
     };
+  }
+
+  // 칭호 산정용 플레이어 누적 통계 (게임 1판 동안 유지).
+  _ssStat(id) {
+    if (!this.sseukGame.stats) this.sseukGame.stats = {};
+    if (!this.sseukGame.stats[id]) {
+      this.sseukGame.stats[id] = {
+        firstCorrect: 0,    // 1등 정답 횟수
+        correct: 0,         // 총 정답 횟수
+        bestMs: null,       // 가장 빠른 정답 (라운드 시작 후 ms)
+        guesses: 0,         // 추측 시도 횟수
+        volunteers: 0,      // 출제 자원 횟수
+        drawerRounds: 0,    // 출제자로 뛴 라운드 수
+        drawerRateSum: 0,   // 출제 라운드 정답률(q) 합 — 평균용
+      };
+    }
+    return this.sseukGame.stats[id];
   }
 
   _clearSseukTimers() {
@@ -1335,7 +1353,10 @@ export class GameRoom {
     if (!this.sseukGame || this.sseukGame.phase !== 'volunteering') return;
     const r = this.sseukGame.currentRound;
     if (!r) return;
-    if (!r.volunteers.includes(player.id)) r.volunteers.push(player.id);
+    if (!r.volunteers.includes(player.id)) {
+      r.volunteers.push(player.id);
+      this._ssStat(player.id).volunteers += 1;
+    }
     this._broadcastGame({
       type: 'SS_VOLUNTEER_UPDATE',
       volunteers: r.volunteers,
@@ -1595,6 +1616,8 @@ export class GameRoom {
     const guess = norm(text);
     const answer = norm(r.keyword);
 
+    this._ssStat(player.id).guesses += 1;   // 칭호(끈기왕) 산정용
+
     if (guess === answer) {
       this._handleSseukCorrectGuess(player, text);
       return;
@@ -1660,6 +1683,11 @@ export class GameRoom {
     const atMs = r.startedAt ? Math.max(0, Date.now() - r.startedAt) : 0;
     r.correctOrder.push({ id: player.id, atMs });
     const rank = r.correctOrder.length;
+
+    const stat = this._ssStat(player.id);
+    stat.correct += 1;
+    if (rank === 1) stat.firstCorrect += 1;
+    if (stat.bestMs === null || atMs < stat.bestMs) stat.bestMs = atMs;
 
     // 1) 본인에게는 원문 그대로.
     const myWs = this._findPlayerWs(player.id);
@@ -1850,6 +1878,9 @@ export class GameRoom {
       };
       const drawer = this.sseukGame.players.find(p => p.id === r.drawerId);
       if (drawer) drawer.score += drawerTotal;
+      const drawerStat = this._ssStat(r.drawerId);
+      drawerStat.drawerRounds += 1;
+      drawerStat.drawerRateSum += q;
     } else if (r?.drawerId) {
       // 정답 0명 — 출제자 점수 0 (분해 정보는 보내서 UI 에 0 표기).
       perPlayerBreakdown[r.drawerId] = {
@@ -1860,6 +1891,7 @@ export class GameRoom {
         multiplier: Md,
         total: 0,
       };
+      this._ssStat(r.drawerId).drawerRounds += 1;
     }
 
     this._broadcastGame({
@@ -1894,13 +1926,69 @@ export class GameRoom {
     this._startSseukRound();
   }
 
+  // 게임 종료 칭호 — 전원이 하나씩 받는다 (꼴찌 포함). 카테고리는 우선순위
+  // 순서로 "가장 두드러진" 사람에게 1개씩 배정하고, 남은 사람은 폴백 칭호.
+  _computeSseukAwards(rankings) {
+    const stats = this.sseukGame.stats || {};
+    const emptyStat = { firstCorrect: 0, correct: 0, bestMs: null, guesses: 0, volunteers: 0, drawerRounds: 0, drawerRateSum: 0 };
+    const get = (id) => stats[id] || emptyStat;
+    const awarded = new Set();
+    const awards = {};
+
+    // score(stat) 최대인 미수상자 선택. min 미만이면 해당 카테고리 유찰.
+    const pickTop = (score, min = 1) => {
+      let bestId = null;
+      let best = -Infinity;
+      for (const p of rankings) {
+        if (awarded.has(p.id)) continue;
+        const v = score(get(p.id));
+        if (v >= min && v > best) { best = v; bestId = p.id; }
+      }
+      return bestId;
+    };
+
+    const categories = [
+      { emoji: '⚡', title: '번개 정답왕', desc: '1등 정답이 가장 많았어요', pick: () => pickTop(s => s.firstCorrect) },
+      { emoji: '🎨', title: '금손 화가', desc: '그림을 그리면 다들 척척 맞혔어요', pick: () => pickTop(s => (s.drawerRounds > 0 ? s.drawerRateSum / s.drawerRounds : 0), 0.5) },
+      { emoji: '🎯', title: '척척 명탐정', desc: '정답을 가장 많이 맞혔어요', pick: () => pickTop(s => s.correct) },
+      { emoji: '🚀', title: '초스피드', desc: '가장 빠른 정답을 기록했어요', pick: () => pickTop(s => (s.bestMs === null ? -1 : 1_000_000 - s.bestMs), 1) },
+      { emoji: '🙋', title: '용감한 도전자', desc: '먼저 그리겠다고 가장 많이 손들었어요', pick: () => pickTop(s => s.volunteers, 2) },
+      { emoji: '🔥', title: '끈기왕', desc: '포기하지 않고 가장 많이 도전했어요', pick: () => pickTop(s => s.guesses, 3) },
+    ];
+    for (const c of categories) {
+      if (awarded.size >= rankings.length) break;
+      const id = c.pick();
+      if (id) {
+        awarded.add(id);
+        awards[id] = { emoji: c.emoji, title: c.title, desc: c.desc };
+      }
+    }
+
+    const fallbacks = [
+      { emoji: '🌟', title: '오늘의 주인공', desc: '다음 판 우승 예감!' },
+      { emoji: '💪', title: '열정 플레이어', desc: '끝까지 함께해줘서 고마워요' },
+      { emoji: '🍀', title: '행운의 친구', desc: '다음 판엔 행운이 찾아올 거예요' },
+      { emoji: '🌈', title: '분위기 메이커', desc: '함께라서 더 즐거웠어요' },
+      { emoji: '🧸', title: '말랑 지킴이', desc: '오늘도 즐겁게 놀아줘서 고마워요' },
+    ];
+    let fi = 0;
+    for (const p of rankings) {
+      if (!awards[p.id]) {
+        awards[p.id] = fallbacks[fi % fallbacks.length];
+        fi += 1;
+      }
+    }
+    return awards;
+  }
+
   async _finishSseukGame() {
     if (!this.sseukGame) return;
     this.sseukGame.phase = 'finished';
     const rankings = [...this.sseukGame.players]
       .sort((a, b) => b.score - a.score)
       .map((p, i) => ({ rank: i + 1, id: p.id, name: p.name, characterId: p.characterId, colorIndex: p.colorIndex, score: p.score }));
-    this._broadcastGame({ type: 'SS_GAME_END', rankings }, 'sseuk-sseuk');
+    const awards = this._computeSseukAwards(rankings);
+    this._broadcastGame({ type: 'SS_GAME_END', rankings, awards }, 'sseuk-sseuk');
     this._submitScoresToLeaderboard('sseuk-sseuk', rankings.map(r => ({ id: r.id, name: r.name, score: r.score })));
     const scores = {};
     this.sseukGame.players.forEach(p => { scores[p.id] = { name: p.name, score: p.score, colorIndex: p.colorIndex }; });
