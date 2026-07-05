@@ -241,6 +241,16 @@ const SPACE_ZONE_FROM = ZONES[2].from;
 const MILESTONES = [50, 100, 200, 300, 500, 750, 1000, 1500, 2000, 3000];
 const PERSONAL_BEST_KEY = "mallang-jump.personalBest";
 
+// ── 아기 병아리 구조 미션 (솔로 전용) ─────────────────────────
+// 옆길 발판에 앉은 아기 병아리 — 닿으면 자동 구조, 100m 동행 후 축하와
+// 함께 독립(날아감). 높이 기록에는 영향 없음. 누적 구조 수만 기기에 저장.
+const CHICK_FIRST_M = 80;          // 첫 병아리 등장 높이 — 짧은 판에서도 만나게
+const CHICK_INTERVAL_M_MIN = 150;  // 이후 등장 간격
+const CHICK_INTERVAL_M_MAX = 200;
+const CHICK_FOLLOW_M = 100;        // 동행 거리 — 이만큼 오르면 독립
+const CHICK_SIZE = 52;
+const CHICK_LIFETIME_KEY = "mallang-jump.chicksRescued";
+
 const PLAYER_COLORS = ["#ef4444", "#3b82f6", "#22c55e", "#f59e0b", "#a855f7", "#ec4899", "#14b8a6", "#f97316"];
 const NETWORK_TICK_MS = 33;
 const NETWORK_PING_INTERVAL_MS = 2000;
@@ -283,6 +293,9 @@ const state = {
     milestoneIdx: 0,
     recordShown: false,
   },
+  chicks: [],
+  nextChickAtM: CHICK_FIRST_M,
+  chicksRescuedThisRun: 0,
   audio: {
     ctx: null,
     unlocked: false,
@@ -436,6 +449,7 @@ const zoneSpaceEl = document.getElementById("zoneSpace");
 const skyBannerEl = document.getElementById("skyBanner");
 const setupBestEl = document.getElementById("setupBest");
 const resultRecordEl = document.getElementById("resultRecord");
+const resultChicksEl = document.getElementById("resultChicks");
 
 function loadPersonalBest() {
   try {
@@ -460,10 +474,13 @@ function savePersonalBest(value) {
 
 function refreshSetupBest() {
   if (!setupBestEl) return;
-  setupBestEl.classList.toggle("is-hidden", personalBest <= 0);
-  if (personalBest > 0) {
-    setupBestEl.textContent = `🏆 내 최고 기록 ${personalBest}m — 오늘은 넘어볼까요?`;
+  const parts = [];
+  if (personalBest > 0) parts.push(`🏆 내 최고 기록 ${personalBest}m`);
+  if (typeof lifetimeChicks === "number" && lifetimeChicks > 0) {
+    parts.push(`🐤 구조한 병아리 ${lifetimeChicks}마리`);
   }
+  setupBestEl.classList.toggle("is-hidden", parts.length === 0);
+  if (parts.length > 0) setupBestEl.textContent = parts.join(" · ");
 }
 
 // 배너 큐 — 존 진입과 마일스톤이 같은 순간 겹치면 순서대로 보여준다.
@@ -517,6 +534,8 @@ function resetRunProgress() {
   state.progress.zoneIndex = 0;
   state.progress.milestoneIdx = 0;
   state.progress.recordShown = false;
+  state.nextChickAtM = CHICK_FIRST_M;
+  state.chicksRescuedThisRun = 0;
   applyZoneVisual(0);
   resetSkyBanner();
 }
@@ -547,6 +566,178 @@ function updateRunProgress(heightM) {
     showSkyBanner(`🎉 신기록 달성! (이전 ${personalBest}m)`);
     playRecordSound();
   }
+}
+
+// ── 아기 병아리 구조 미션 ────────────────────────────────────
+function loadLifetimeChicks() {
+  try {
+    const value = Number(window.localStorage.getItem(CHICK_LIFETIME_KEY));
+    return Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
+  } catch (error) {
+    return 0;
+  }
+}
+
+let lifetimeChicks = loadLifetimeChicks();
+
+function saveLifetimeChicks() {
+  try {
+    window.localStorage.setItem(CHICK_LIFETIME_KEY, String(lifetimeChicks));
+  } catch (error) {
+    /* 저장 불가 환경 — 세션 내 카운트만 유지 */
+  }
+}
+
+// 메인 경로 플랫폼이 다음 병아리 높이를 넘으면, 반대쪽 가장자리에
+// 옆길 발판을 하나 놓고 그 위에 병아리를 앉힌다.
+function maybeSpawnChick(mainPlatform) {
+  if (isRoomSession) return;   // 2P 맵은 서버 생성 — 솔로 전용
+  const meters = (settings.startLineY - mainPlatform.y) / 10;
+  if (meters < state.nextChickAtM) return;
+  state.nextChickAtM = meters + random(CHICK_INTERVAL_M_MIN, CHICK_INTERVAL_M_MAX);
+
+  const width = Math.round(random(72, 92));
+  const mainCenter = mainPlatform.x + mainPlatform.width / 2;
+  const onLeft = mainCenter > settings.worldWidth / 2;
+  const x = onLeft
+    ? settings.safePlatformInset
+    : settings.worldWidth - width - settings.safePlatformInset;
+  // 메인보다 살짝 아래 — 경로 생성 anchor(topmost)를 침범하지 않는다
+  const y = mainPlatform.y + 34;
+
+  const el = document.createElement("div");
+  el.className = "platform platform--cloud";
+  el.style.width = `${width}px`;
+  worldEl.appendChild(el);
+  const platform = {
+    x, y, width, height: 18, el, baseX: x, rotation: 0,
+    motion: { type: "static", amplitude: 0, speed: 0, phase: 0, rotateAmplitude: 0 },
+    gimmick: null,
+  };
+  state.platforms.push(platform);
+
+  const chickEl = document.createElement("div");
+  chickEl.className = "chick chick--waiting";
+  chickEl.innerHTML = '<span class="chick-bubble is-hidden"></span>';
+  worldEl.appendChild(chickEl);
+  state.chicks.push({
+    x: x + width / 2 - CHICK_SIZE / 2,
+    y: y - CHICK_SIZE,
+    size: CHICK_SIZE,
+    el: chickEl,
+    bubbleEl: chickEl.firstElementChild,
+    bubbleTimer: 0,
+    mode: "waiting",
+    owner: null,
+    rescuedAtM: 0,
+    departAt: 0,
+    bobPhase: Math.random() * Math.PI * 2,
+  });
+}
+
+function showChickBubble(chick, text) {
+  if (!chick.bubbleEl) return;
+  chick.bubbleEl.textContent = text;
+  chick.bubbleEl.classList.remove("is-hidden");
+  if (chick.bubbleTimer) window.clearTimeout(chick.bubbleTimer);
+  chick.bubbleTimer = window.setTimeout(() => {
+    chick.bubbleEl.classList.add("is-hidden");
+  }, 1600);
+}
+
+function handleChickRescue(player) {
+  if (!player.alive || state.chicks.length === 0) return;
+  const playerBox = { x: player.x, y: player.y, width: player.width, height: player.height };
+  for (const chick of state.chicks) {
+    if (chick.mode !== "waiting") continue;
+    const chickBox = { x: chick.x, y: chick.y, width: chick.size, height: chick.size };
+    if (!intersects(playerBox, chickBox)) continue;
+    chick.mode = "following";
+    chick.owner = player;
+    // bestHeight는 같은 프레임 후반에 갱신되므로 현재 높이로 직접 계산
+    chick.rescuedAtM = Math.max(
+      player.bestHeight,
+      Math.round((settings.startLineY - player.y) / 10)
+    );
+    chick.el.classList.remove("chick--waiting");
+    chick.el.classList.add("chick--flying");
+    showChickBubble(chick, "삐약! 고마워");
+    playChickRescueSound();
+    state.chicksRescuedThisRun += 1;
+    lifetimeChicks += 1;
+    saveLifetimeChicks();
+    refreshSetupBest();
+    setStatus(`🐤 아기 병아리 구조! (오늘 ${state.chicksRescuedThisRun}마리)`);
+  }
+}
+
+// 독립: "잃는 것"이 아니라 축하 이벤트 — 말풍선 + 반짝임과 함께 위로 날아간다.
+function startChickDeparture(chick) {
+  chick.mode = "departing";
+  chick.departAt = performance.now();
+  chick.el.classList.add("chick--departing");
+  showChickBubble(chick, "다 컸어요! 고마워!");
+  spawnEffect("pickup", chick.x + chick.size / 2, chick.y + chick.size / 2);
+  playChickDepartSound();
+}
+
+function updateChicks() {
+  if (state.chicks.length === 0) return;
+  const arenaH = state.arenaMetrics.clientHeight || 600;
+  const cleanupLimit = state.cameraY + arenaH + 220;
+  const now = performance.now();
+
+  state.chicks = state.chicks.filter((chick) => {
+    if (chick.mode === "waiting") {
+      if (chick.y > cleanupLimit) {
+        chick.el.remove();
+        return false;
+      }
+      return true;
+    }
+
+    if (chick.mode === "following") {
+      const p = chick.owner;
+      if (!p || !p.alive) {
+        startChickDeparture(chick);
+        return true;
+      }
+      const siblings = state.chicks.filter((c) => c.mode === "following" && c.owner === p);
+      const followIndex = siblings.indexOf(chick);
+      const dir = p.vx >= 0 ? -1 : 1;
+      const targetX = p.x + p.width / 2 - chick.size / 2 + dir * (36 + followIndex * 26);
+      const targetY = p.y - 24 - followIndex * 10 + Math.sin(now / 280 + chick.bobPhase) * 6;
+      chick.x += (targetX - chick.x) * 0.12;
+      chick.y += (targetY - chick.y) * 0.12;
+      if (p.bestHeight >= chick.rescuedAtM + CHICK_FOLLOW_M) startChickDeparture(chick);
+      return true;
+    }
+
+    // departing — 위로 파닥이며 사라진다
+    chick.y -= 3.4;
+    chick.x += Math.sin(now / 140 + chick.bobPhase) * 1.6;
+    if (now >= chick.departAt + 1400 || chick.y < state.cameraY - 140) {
+      chick.el.remove();
+      return false;
+    }
+    return true;
+  });
+}
+
+function playChickRescueSound() {
+  // "삐약" 2연타 — 짧고 높은 톤
+  playTone({ type: "triangle", frequency: 1200, endFrequency: 1500, duration: 0.08, volume: 0.045 });
+  window.setTimeout(() => {
+    playTone({ type: "triangle", frequency: 1350, endFrequency: 1650, duration: 0.09, volume: 0.045 });
+  }, 90);
+}
+
+function playChickDepartSound() {
+  [660, 880, 1174].forEach((frequency, index) => {
+    window.setTimeout(() => {
+      playTone({ type: "sine", frequency, endFrequency: frequency * 1.12, duration: 0.14, volume: 0.035 });
+    }, index * 100);
+  });
 }
 
 // 결과 화면에 신기록/최고 기록 표시 + 저장. myScore = 이번 판 내 기록(m).
@@ -975,6 +1166,15 @@ function showResultsOverlay() {
   const me = state.players.find((entry) => entry.slot === 0);
   applyRecordToResults(me ? me.bestHeight : Math.max(0, ...state.players.map((p) => p.bestHeight)));
 
+  if (resultChicksEl) {
+    const showChicks = state.chicksRescuedThisRun > 0 || lifetimeChicks > 0;
+    resultChicksEl.classList.toggle("is-hidden", !showChicks);
+    if (showChicks) {
+      resultChicksEl.textContent =
+        `🐤 오늘 ${state.chicksRescuedThisRun}마리 구조 · 지금까지 ${lifetimeChicks}마리`;
+    }
+  }
+
   applyResultButtonLabels();
   resultsOverlay.classList.add("is-active");
 }
@@ -997,6 +1197,7 @@ function showNetworkResultsOverlay(results) {
 
   const myEntry = results.find((entry) => entry.slot === state.network.mySlot);
   applyRecordToResults(myEntry ? myEntry.score : 0);
+  if (resultChicksEl) resultChicksEl.classList.add("is-hidden");   // 병아리는 솔로 전용
 
   applyResultButtonLabels();
   resultsOverlay.classList.add("is-active");
@@ -2358,6 +2559,7 @@ function clearWorld() {
   state.platforms = [];
   state.boosts = [];
   state.monsters = [];
+  state.chicks = [];
   state.effects = [];
   state.touchAssignments.clear();
   state.playerTouchDirections = [0, 0];
@@ -2380,6 +2582,7 @@ function resetWorld() {
   for (let i = 1; i < 32; i += 1) {
     const platform = createPlatform(settings.startLineY - i * settings.platformGap, false, lastPlatform);
     state.platforms.push(platform);
+    maybeSpawnChick(platform);
     lastPlatform = platform;
   }
 }
@@ -2430,6 +2633,7 @@ function ensurePlatformsAbove() {
     const newTop = topmost.y - settings.platformGap;
     const platform = createPlatform(newTop, false, topmost);
     state.platforms.push(platform);
+    maybeSpawnChick(platform);
   }
 
   const cleanupLimit = state.cameraY + state.arenaMetrics.clientHeight + 180;
@@ -2670,6 +2874,7 @@ function updatePlayers() {
 
     handleLanding(player, previousY);
     handleBoostPickup(player);
+    handleChickRescue(player);
     resolveSoloMonsterCollisions(player, previousY);
     updateBestHeight(player);
 
@@ -2735,6 +2940,10 @@ function render() {
     m.el.style.transform = formatWorldTranslate(m.x, m.y - state.cameraY);
   });
 
+  state.chicks.forEach((chick) => {
+    chick.el.style.transform = formatWorldTranslate(chick.x, chick.y - state.cameraY);
+  });
+
   state.players.forEach((player) => {
     updatePlayerVisualState(player);
     player.el.style.transform = formatWorldTranslate(player.x, player.y - state.cameraY);
@@ -2768,6 +2977,7 @@ function loop() {
   updatePlatformMotionLocal();
   updateMonsters();
   updatePlayers();
+  updateChicks();
   updateCamera();
   updateRunProgress(Math.max(0, ...state.players.map((player) => player.bestHeight)));
   render();

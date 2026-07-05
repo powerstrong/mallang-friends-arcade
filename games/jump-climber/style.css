@@ -568,6 +568,67 @@ button {
   pointer-events: none;
 }
 
+/* ── 아기 병아리 구조 미션 ─────────────────────────────────── */
+/* 스프라이트 시트(가로 스트립)를 background-position steps() 로 파닥이게 한다 */
+.chick {
+  position: absolute;
+  width: 52px;
+  height: 52px;
+  pointer-events: none;
+  will-change: transform;
+  background-repeat: no-repeat;
+  background-position: 0 0;
+}
+
+.chick--waiting {
+  background-image: url("./assets/chick_sit_sheet.png");
+  background-size: 300% 100%;
+  animation: chick-sit-cycle 1050ms steps(3) infinite;
+}
+
+.chick--flying {
+  background-image: url("./assets/chick_fly_sheet.png");
+  background-size: 400% 100%;
+  animation: chick-fly-cycle 440ms steps(4) infinite;
+}
+
+.chick--departing {
+  opacity: 0;
+  transition: opacity 1300ms ease-in;
+}
+
+@keyframes chick-sit-cycle {
+  to {
+    background-position-x: -156px;
+  }
+}
+
+@keyframes chick-fly-cycle {
+  to {
+    background-position-x: -208px;
+  }
+}
+
+.chick-bubble {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 4px 12px rgba(90, 80, 160, 0.2);
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: #a05a2c;
+  white-space: nowrap;
+  animation: sky-banner-pop 260ms cubic-bezier(0.24, 1.4, 0.44, 1) both;
+}
+
+.chick-bubble.is-hidden {
+  display: none;
+}
+
 .platform--leaf {
   background-image: url("./assets/platform_leaf.png");
 }
@@ -817,6 +878,17 @@ button {
 }
 
 .results-record.is-hidden {
+  display: none;
+}
+
+.results-chicks {
+  margin: 8px 0 0;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #b07a2a;
+}
+
+.results-chicks.is-hidden {
   display: none;
 }
 
