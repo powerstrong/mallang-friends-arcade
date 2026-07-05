@@ -702,7 +702,12 @@ function handleChickRescue(player) {
       Math.round((settings.startLineY - player.y) / 10)
     );
     chick.el.classList.remove("chick--waiting");
-    chick.el.classList.add("chick--flying");
+    chick.el.classList.add("chick--flying", "chick--rescue-pop");
+    window.setTimeout(() => chick.el?.classList.remove("chick--rescue-pop"), 700);
+    const chickCx = chick.x + chick.size / 2;
+    const chickCy = chick.y + chick.size / 2;
+    spawnEffect("pickup", chickCx, chickCy);
+    spawnSparkles(chickCx, chickCy, "chick");
     showChickBubble(chick, "삐약! 고마워");
     playChickRescueSound();
     state.chicksRescuedThisRun += 1;
@@ -772,6 +777,12 @@ function playChickRescueSound() {
   window.setTimeout(() => {
     playTone({ type: "triangle", frequency: 1350, endFrequency: 1650, duration: 0.09, volume: 0.045 });
   }, 90);
+  // 포로롱 — 삐약 뒤에 빠르게 올라가는 아르페지오 꼬리
+  [988, 1319, 1760].forEach((frequency, index) => {
+    window.setTimeout(() => {
+      playTone({ type: "sine", frequency, endFrequency: frequency * 1.15, duration: 0.1, volume: 0.03 });
+    }, 200 + index * 55);
+  });
 }
 
 function playChickDepartSound() {
@@ -2614,8 +2625,9 @@ function spawnSparkles(worldCx, worldCy, kind) {
     const offsetY = -10 - Math.random() * 50;
     sparkle.style.setProperty("--sparkle-x", `${offsetX}px`);
     sparkle.style.setProperty("--sparkle-y", `${offsetY}px`);
+    // left/top은 화면 좌표 — 다른 월드 오브젝트처럼 cameraY를 빼야 한다
     sparkle.style.left = `${worldCx}px`;
-    sparkle.style.top = `${worldCy}px`;
+    sparkle.style.top = `${worldCy - state.cameraY}px`;
     sparkle.style.transform = `translate(-50%, -50%)`;
     worldEl.appendChild(sparkle);
     setTimeout(() => {

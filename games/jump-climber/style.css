@@ -1746,6 +1746,13 @@ button {
   height: 16px;
 }
 
+/* 병아리 구조 포로롱 — 노랑 깃털빛 반짝이 */
+.boost-sparkle--chick {
+  background: radial-gradient(circle, #fff 30%, #ffe66b 55%, transparent 80%);
+  width: 12px;
+  height: 12px;
+}
+
 @keyframes sparkle-fly {
   0%   { transform: translate(-50%, -50%) scale(0.4); opacity: 0; }
   20%  { transform: translate(-50%, -50%) scale(1.2); opacity: 1; }
@@ -1909,6 +1916,19 @@ button {
 
 .platform.is-broken {
   visibility: hidden;
+}
+
+/* 병아리 구조 순간 포로롱 팝 — 이동이 inline transform이라 transform 대신
+   scale/rotate 개별 속성만 애니메이션한다 (충돌 방지) */
+.chick--rescue-pop {
+  animation: chick-rescue-pop 640ms ease-out;
+}
+
+@keyframes chick-rescue-pop {
+  0%   { scale: 1;    rotate: 0deg; }
+  25%  { scale: 1.35; rotate: -10deg; }
+  55%  { scale: 1.12; rotate: 8deg; }
+  100% { scale: 1;    rotate: 0deg; }
 }
 
 /* 부서진 발판 재등장 — 이동이 inline transform이라 opacity만 애니메이션 */
