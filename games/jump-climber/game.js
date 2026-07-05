@@ -231,6 +231,7 @@ const settings = {
   monsterLifetimeMs: 9000,
   // 게임성 v2 — 발판 행동·후반 난이도 램프 (서버 JUMP_GAME_SETTINGS와 동일 값 유지)
   cakeCrumbleDelayMs: 450,
+  platformRespawnMs: 2000,
   cloudSinkStep: 30,
   monsterSpawnIntervalMinLateMs: 3200,
   monsterSpawnIntervalMaxLateMs: 6200,
@@ -2896,15 +2897,18 @@ function handleLanding(player, previousY) {
   }
 }
 
-// 깜빡 구름 — 한 번 밟히면 배열에서 즉시 제거(재착지 불가)하고 퐁 하고 사라진다.
+// 깜빡 구름 — 밟히면 퐁 하고 사라졌다가 platformRespawnMs 뒤 다시 나타난다.
+// broken 동안은 착지 판정에서 제외 (handleLanding이 broken을 건너뜀).
 // 이동은 inline transform이라 페이드는 opacity만 건드린다 (transform 충돌 방지).
 function crumblePlatform(platform) {
-  const index = state.platforms.indexOf(platform);
-  if (index !== -1) state.platforms.splice(index, 1);
+  platform.broken = true;
   platform.el.classList.add("is-poofing");
   spawnEffect("land", platform.x + platform.width / 2, platform.y);
   playPoofSound();
-  window.setTimeout(() => platform.el.remove(), 420);
+  window.setTimeout(() => {
+    platform.el.classList.remove("is-poofing");
+    platform.broken = false;
+  }, settings.platformRespawnMs);
 }
 
 // ── 발판 행동 (케이크 1회용·구름 가라앉음) — 멀티에서도 플레이어별 로컬 판정 ──
@@ -2918,11 +2922,18 @@ function notePlatformBounce(platform) {
 
   if (target.kind === "cake" && !target.broken) {
     target.broken = true;
+    target.el?.classList.remove("is-respawning");
     target.el?.classList.add("is-crumbling");
     window.setTimeout(() => {
       target.el?.classList.remove("is-crumbling");
       target.el?.classList.add("is-broken");
     }, settings.cakeCrumbleDelayMs);
+    // 부서진 뒤 platformRespawnMs 지나면 다시 나타난다 (1회용 → 재생성)
+    window.setTimeout(() => {
+      target.el?.classList.remove("is-broken");
+      target.el?.classList.add("is-respawning");
+      target.broken = false;
+    }, settings.cakeCrumbleDelayMs + settings.platformRespawnMs);
   } else if (target.kind === "cloud") {
     target.sinkTarget = (target.sinkTarget || 0) + settings.cloudSinkStep;
   }

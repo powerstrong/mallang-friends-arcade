@@ -554,6 +554,8 @@ button {
   height: 26px;
   background-image: url("./assets/platform_cloud_sleepy.png");
   box-shadow: none;
+  /* is-poofing 제거(재등장) 시에도 부드럽게 페이드 인 */
+  transition: opacity 380ms ease;
 }
 
 .platform--spring {
@@ -1907,6 +1909,16 @@ button {
 
 .platform.is-broken {
   visibility: hidden;
+}
+
+/* 부서진 발판 재등장 — 이동이 inline transform이라 opacity만 애니메이션 */
+.platform.is-respawning {
+  animation: platform-respawn 380ms ease-out;
+}
+
+@keyframes platform-respawn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 
 /* ── 게임성 v2: 고도 바이오엄 틴트 ──────────────────────────────── */
