@@ -35,6 +35,24 @@
   var finished = false;
   var myFinal = null; // { round, score, bestCombo }
   var roundToken = 0; // 라운드 타이머 무효화용
+  var myRunId = null; // 현재 판 식별자 — 이전 판 스냅샷과 섞임 방지
+  var connecting = mp.available; // 릴레이 합류 완료 전 시작 금지
+
+  function newRunId() {
+    return Math.random().toString(36).slice(2, 10);
+  }
+  // 같은 판(run)을 뛰는 원격 플레이어만 (시작 전이면 runId 없는 스냅샷도 허용하지 않음)
+  function sameRunRemotes() {
+    return mp.remoteList().filter(function (r) { return myRunId && r.runId === myRunId; });
+  }
+  // 생존 = alive 스냅샷 + 최근 12초 내 수신. 라운드는 최장 ~5초 간격으로 스냅샷을
+  // 보내므로, 12초 무소식이면 네트워크 이탈로 간주(전원 사망 감지 blind spot 방지).
+  var STALE_MS = 12000;
+  function anySameRunAlive() {
+    return sameRunRemotes().some(function (r) {
+      return r.alive !== false && (!r.lastSeen || Date.now() - r.lastSeen < STALE_MS);
+    });
+  }
 
   /* ── 이름 · 캐릭터 ─────────────────────────── */
   var storedName = '';
@@ -43,7 +61,18 @@
 
   var chars = window.CHARACTERS || [];
   var myChar = null;
-  try { myChar = localStorage.getItem('surprisePartyChar') || null; } catch (e) {}
+  // 광장에서 넘어온 캐릭터(?characterId=) 우선, 없으면 저장값, 그다음 첫 캐릭터
+  var urlChar = new URLSearchParams(window.location.search).get('characterId');
+  if (urlChar) {
+    var matched = chars.find(function (c) {
+      if (c.worldId === urlChar) return true;
+      return Object.keys(c.gameIds || {}).some(function (g) { return c.gameIds[g] === urlChar; });
+    });
+    if (matched) myChar = matched.worldId;
+  }
+  if (!myChar) {
+    try { myChar = localStorage.getItem('surprisePartyChar') || null; } catch (e) {}
+  }
   if (!chars.some(function (c) { return c.worldId === myChar; })) myChar = null;
   if (!myChar && chars.length) myChar = chars[0].worldId;
 
@@ -81,27 +110,43 @@
     });
   }
 
+  // 진행 중 판이 있으면 시작을 잠근다 — 늦은 합류자가 시작을 눌러 판이 갈라지는 것 방지
+  function refreshStartGate() {
+    if (playing || finished) return;
+    var ongoing = mp.remoteList().some(function (r) {
+      return r.alive !== false && (r.round | 0) > 0;
+    });
+    ui.ongoingHint.hidden = !ongoing;
+    ui.btnStart.disabled = connecting || ongoing;
+    ui.btnStart.textContent = connecting ? '연결 중...' : (ongoing ? '진행 중...' : '시작!');
+  }
+
   if (mp.available) {
     mp.on('players', renderRoster);
-    mp.on('start', function () {
-      if (!playing && !finished) beginCountdown();
+    mp.on('start', function (p) {
+      if (!playing && !finished) beginCountdown(p && p.runId);
     });
     mp.on('snapshot', function () {
-      // 로비에 있는데 누군가 이미 진행 중이면 힌트
-      if (!playing && !finished) ui.ongoingHint.hidden = false;
+      refreshStartGate();
       renderRivals();
       checkAllDead();
     });
-    mp.on('change', function () { renderRivals(); checkAllDead(); });
+    mp.on('change', function () { refreshStartGate(); renderRivals(); checkAllDead(); });
     mp.connect(myName(), myChar).then(function (info) {
       ui.roomCode.textContent = info.code;
+      connecting = false;
+      refreshStartGate();
     }).catch(function () {
       ui.roomCode.textContent = '오프라인 연습 모드';
       renderRoster([{ name: myName() + ' (나)' }]);
+      connecting = false;
+      refreshStartGate();
     });
   } else {
     ui.roomCode.textContent = '오프라인 연습 모드';
     renderRoster([{ name: '나' }]);
+    connecting = false;
+    refreshStartGate();
   }
 
   /* ── 라이벌 스트립 ─────────────────────────── */
@@ -109,8 +154,9 @@
     var list = mp.remoteList();
     ui.rivalStrip.innerHTML = '';
     list.forEach(function (r) {
+      var otherRun = playing && myRunId && r.runId !== myRunId;
       var d = document.createElement('div');
-      d.className = 'rival' + (r.alive === false ? ' is-dead' : '');
+      d.className = 'rival' + (r.alive === false && !otherRun ? ' is-dead' : '');
       var av = document.createElement('span');
       av.className = 'rival-avatar';
       var c = charOf(r.char);
@@ -121,7 +167,8 @@
       nm.textContent = r.name || '친구';
       var st = document.createElement('span');
       st.className = 'rival-stat';
-      st.textContent = r.alive === false
+      if (otherRun) st.textContent = '⏳ 대기';
+      else st.textContent = r.alive === false
         ? '😵 R' + (r.round || 0)
         : '❤️' + (r.lives != null ? r.lives : '?') + ' R' + (r.round || 0);
       d.appendChild(av); d.appendChild(nm); d.appendChild(st);
@@ -137,19 +184,23 @@
 
   /* ── 시작 흐름 ─────────────────────────────── */
   ui.btnStart.addEventListener('click', function () {
+    if (ui.btnStart.disabled) return;
     try { localStorage.setItem('mallangName', myName()); } catch (e) {}
-    if (mp.isMulti) mp.broadcastStart();
-    beginCountdown();
+    var runId = newRunId();
+    if (mp.isMulti) mp.broadcastStart(runId);
+    beginCountdown(runId);
   });
   ui.btnExit.addEventListener('click', function () { if (boot.exit) boot.exit(); });
   ui.btnExitOver.addEventListener('click', function () { if (boot.exit) boot.exit(); });
   ui.btnRestart.addEventListener('click', function () { window.location.reload(); });
   ui.btnSkipWait.addEventListener('click', function () { showResult(); });
 
-  function beginCountdown() {
+  function beginCountdown(runId) {
     if (playing) return;
     playing = true;
-    var seed = mp.seedString() || ('solo-' + Math.random().toString(36).slice(2));
+    myRunId = runId || newRunId();
+    // 시드 = 방코드 + runId — 같은 방 전원 동일, 판마다 새 미션 순서(암기 방지)
+    var seed = (mp.seedString() || 'solo') + ':' + myRunId;
     engine = Engine.create({ seedString: seed, catalog: Games.catalog });
     showScreen(ui.play);
     updateHud(engine.getState());
@@ -179,7 +230,7 @@
     if (!mp.isMulti || !engine) return;
     var s = engine.getState();
     mp.sendSnapshot({
-      round: s.round, lives: s.lives, score: s.score,
+      runId: myRunId, round: s.round, lives: s.lives, score: s.score,
       alive: !s.dead, name: myName(), char: myChar,
     }, force);
   }
@@ -215,6 +266,11 @@
     }
   }
 
+  // 멀티터치 판정 우회 방지: 첫 손가락(primary) 외 포인터는 미션에 닿기 전에 차단
+  function primaryGate(e) {
+    if (!e.isPrimary) { e.stopPropagation(); e.preventDefault(); }
+  }
+
   function runMicrogame(spec, mod) {
     var token = ++roundToken;
     ui.stage.innerHTML = '';
@@ -223,11 +279,16 @@
     var raf = null;
     var startTs = null;
 
+    ui.stage.addEventListener('pointerdown', primaryGate, true);
+    ui.stage.addEventListener('pointerup', primaryGate, true);
+
     var rng = Engine.createRng(spec.roundSeed);
     function settle(success) {
       if (resolved || token !== roundToken) return;
       resolved = true;
       if (raf) cancelAnimationFrame(raf);
+      ui.stage.removeEventListener('pointerdown', primaryGate, true);
+      ui.stage.removeEventListener('pointerup', primaryGate, true);
       if (cleanup) { try { cleanup(); } catch (e) {} }
       finishRound(success);
     }
@@ -235,6 +296,7 @@
       root: ui.stage,
       rng: rng,
       speed: spec.speed,
+      round: spec.round,
       durationMs: spec.durationMs,
       success: function () { settle(true); },
       fail: function () { settle(false); },
@@ -242,8 +304,13 @@
     try {
       cleanup = mod.mount(ctx) || null;
     } catch (e) {
-      // 모듈 오류 시 라운드를 성공 처리해 게임이 멈추지 않게 한다
-      settle(true);
+      // 모듈 오류 = 무효 라운드: 점수/목숨/콤보를 건드리지 않고 다음 라운드로.
+      // (성공 처리하면 해당 기기만 공짜 콤보 — 멀티 공정성 훼손)
+      resolved = true;
+      ui.stage.removeEventListener('pointerdown', primaryGate, true);
+      ui.stage.removeEventListener('pointerup', primaryGate, true);
+      ui.stage.innerHTML = '';
+      setTimeout(nextRound, 300);
       return;
     }
 
@@ -285,26 +352,28 @@
     sendSnap(true);
     ui.stage.innerHTML = '';
     ui.deadText.textContent = '탈락! R' + s.round + ' · ' + s.score + '점';
-    var anyAlive = mp.remoteList().some(function (r) { return r.alive !== false; });
-    if (mp.isMulti && anyAlive) {
+    if (mp.isMulti && anySameRunAlive()) {
       ui.spectateText.textContent = '친구들이 아직 버티는 중... 👀';
       ui.deadOverlay.hidden = false;
+      // 메시지가 아예 끊긴 이탈자도 감지하도록 주기 재평가
+      spectateTimer = setInterval(checkAllDead, 2000);
     } else {
       ui.deadOverlay.hidden = false;
       ui.spectateText.textContent = '';
-      setTimeout(showResult, 1100);
+      setTimeout(showResult, 700);
     }
   }
 
+  var spectateTimer = null;
   function checkAllDead() {
     if (!myFinal || finished) return;
-    var anyAlive = mp.remoteList().some(function (r) { return r.alive !== false; });
-    if (!anyAlive) setTimeout(showResult, 900);
+    if (!anySameRunAlive()) setTimeout(showResult, 900);
   }
 
   function showResult() {
     if (finished || !myFinal) return;
     finished = true;
+    if (spectateTimer) { clearInterval(spectateTimer); spectateTimer = null; }
     ui.deadOverlay.hidden = true;
     showScreen(ui.over);
 
@@ -312,7 +381,7 @@
       me: true, name: myName() + ' (나)',
       round: myFinal.round, score: myFinal.score,
     }];
-    mp.remoteList().forEach(function (r) {
+    sameRunRemotes().forEach(function (r) {
       entries.push({ me: false, name: r.name || '친구', round: r.round || 0, score: r.score || 0 });
     });
     entries.sort(function (a, b) { return (b.round - a.round) || (b.score - a.score); });

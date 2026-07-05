@@ -11,10 +11,13 @@
   'use strict';
 
   var SNAPSHOT_INTERVAL_MS = 400; // 라운드 단위 게임이라 낮은 빈도로 충분. 중요 이벤트는 force.
+  // 직접 URL(/games/surprise-party/index.html) 진입은 GameBoot.gameId 가 null 이므로
+  // 명시 폴백이 없으면 릴레이가 영영 안 켜진다 (codex 리뷰 Critical #1).
+  var GAME_ID = 'surprise-party';
 
   function create() {
     var boot = window.GameBoot || {};
-    var hasRelay = !!(window.MallangRelay && boot.gameId);
+    var hasRelay = !!window.MallangRelay;
 
     var state = {
       available: hasRelay,
@@ -22,8 +25,9 @@
       myId: boot.playerId || 'me',
       myName: boot.name || '',
       code: boot.code || null,
-      remotes: {},   // id -> { id, name, char, round, lives, score, alive }
+      remotes: {},   // id -> { id, name, char, runId, round, lives, score, alive }
       started: false,
+      runId: null,
     };
 
     var relay = null;
@@ -36,17 +40,26 @@
       var p = msg.payload || {};
       if (from === state.myId) return;
       if (p.t === 'start') {
-        if (!state.started) { state.started = true; fire('start', p); }
+        // runId 로 판(run)을 구분한다 — 늦은 합류자가 이전 판 신호/스냅샷과 섞이지 않게.
+        if (!state.started || (p.runId && p.runId !== state.runId)) {
+          state.started = true;
+          state.runId = p.runId || state.runId;
+          fire('start', p);
+        }
         return;
       }
       if (p.t === 'snap') {
         var r = state.remotes[from] || { id: from };
         r.name = p.name || r.name || '친구';
         r.char = p.char || r.char || null;
+        r.runId = p.runId || null;
         r.round = p.round | 0;
         r.lives = p.lives | 0;
         r.score = p.score | 0;
         r.alive = p.alive !== false;
+        // 네트워크 끊김은 relay_presence 가 수십 초 늦을 수 있어(서버 TCP 타임아웃)
+        // 스냅샷 신선도로도 생존을 판단할 수 있게 수신 시각을 남긴다.
+        r.lastSeen = Date.now();
         state.remotes[from] = r;
         fire('snapshot', r);
         fire('change');
@@ -59,6 +72,7 @@
       get myId() { return state.myId; },
       get code() { return state.code; },
       get started() { return state.started; },
+      get runId() { return state.runId; },
       remotes: function () { return state.remotes; },
       remoteList: function () {
         return Object.keys(state.remotes).map(function (id) { return state.remotes[id]; });
@@ -72,7 +86,7 @@
         state.myName = name || state.myName || '말랑이';
         state.started = false;
         relay = window.MallangRelay.create({
-          gameId: boot.gameId, name: state.myName, characterId: characterId || null,
+          gameId: boot.gameId || GAME_ID, name: state.myName, characterId: characterId || null,
         });
         relay.on('players', function (list) {
           state.myId = relay.playerId || state.myId;
@@ -93,20 +107,21 @@
         });
       },
 
-      broadcastStart: function () {
+      broadcastStart: function (runId) {
         if (!relay) return;
         state.started = true;
-        relay.send({ t: 'start' });
+        state.runId = runId || null;
+        relay.send({ t: 'start', runId: runId });
       },
 
-      // s = { round, lives, score, alive, name, char }
+      // s = { runId, round, lives, score, alive, name, char }
       sendSnapshot: function (s, force) {
         if (!relay) return;
         var now = (window.performance && performance.now) ? performance.now() : Date.now();
         if (!force && now - lastSendAt < SNAPSHOT_INTERVAL_MS) return;
         lastSendAt = now;
         relay.send({
-          t: 'snap', round: s.round, lives: s.lives, score: s.score,
+          t: 'snap', runId: s.runId || null, round: s.round, lives: s.lives, score: s.score,
           alive: s.alive !== false, name: s.name, char: s.char,
         });
       },

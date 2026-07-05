@@ -82,6 +82,11 @@ max(420, 700/speed)ms → baseMs/speed (≥1200ms) → ⭕480ms / ❌650ms → �
 
 원칙: **명령은 항상 2~4글자 명령형**, 입력은 터치 온리(기울임/마이크 금지), 판정은 ctx.rng 만 사용.
 
+추가로 신규 미션 전에 **기존 미션 라운드 밴드 변형**(codex 리뷰 제안)이 우선순위:
+R9+ tap-now 가짜 초록 1회 섞기, bomb-fruit 목표 개수 2/3 랜덤(명령에 숫자 표기),
+swipe-arrow 이중 화살표 등. 10종만으로 패턴 암기가 시작되는 2~3판째의 신선도를 지킨다.
+(RNG 는 반드시 roundSeed 스트림에서만 소비 — 클라 간 동일 배치 계약 유지.)
+
 ### v2 — 변이·아이템
 
 - **반대로 라운드** (R13+, 10% 확률): 보라색 스플래시 "반대로!" — swipe-arrow 는 반대 방향,
@@ -132,7 +137,15 @@ max(420, 700/speed)ms → baseMs/speed (≥1200ms) → ⭕480ms / ❌650ms → �
 - `microgames.js` — `{id, prompt, hint, icon, baseMs, winOnTimeout, mount(ctx)}`.
   `ctx = {root, rng, speed, durationMs, success, fail}`. mount 는 cleanup 함수 반환 가능.
   무작위는 ctx.rng 만. **모듈 1개 = 미션 1개** — 기여자 확장 포인트(공모 후보).
-- `multiplayer.js` — MallangRelay 래핑, 판정 불개입. 스냅샷 `{t:'snap', round, lives, score,
-  alive, name, char}` (이름·캐릭터 동봉 → 로스터 조회 무의존). 방코드 = 시드.
+- `multiplayer.js` — MallangRelay 래핑, 판정 불개입. `gameId` 는 `boot.gameId || 'surprise-party'`
+  (직접 URL 진입 시 GameBoot.gameId 가 null — 폴백 없으면 릴레이 불능).
+- **run 계약 (리뷰 반영)**: 시작 `{t:'start', runId}`(시작자가 생성), 스냅샷 `{t:'snap', runId,
+  round, lives, score, alive, name, char}`. **시드 = 방코드 + ':' + runId** — 같은 방 전원 동일
+  + 판마다 새 순서(암기 방지). 랭킹·전원사망 감지는 같은 runId 만 집계(늦은 합류자 격리).
+  생존 판정 = alive 스냅샷 && 12초 내 수신(네트워크 이탈 blind spot 방지, 관전 중 2초 주기 재평가).
+  시작 버튼은 릴레이 합류 완료 전·다른 판 진행 중엔 잠금.
+- **입력 공정성 (리뷰 반영)**: 스테이지 캡처 단계에서 비-primary 포인터 차단(멀티터치 연타/
+  동시탭 우회 방지). swipe/charge 는 pointercancel 시 판정 없이 리셋. 모듈 mount 예외 =
+  무효 라운드(점수·목숨·콤보 불변, 다음 라운드로) — 공짜 성공 금지.
 - 서버 무변경(릴레이만), 신규 이미지 에셋 0(이모지+공용 초상화), 무빌드 window 전역.
 - 디버그 핸들 `window.__sp` (프리뷰 하니스 전용).

@@ -86,7 +86,8 @@
       id: 'tap-fast', prompt: '연타!', hint: '젤리를 마구 두드려!', icon: '🍮',
       baseMs: 3600, winOnTimeout: false,
       mount: function (ctx) {
-        var need = Math.round(6 + ctx.speed * 3 + ctx.rng() * 2);
+        // 상한 10회: x2.0 기준 초당 ~5.5회 — 초딩 손 속도의 물리적 한계 고려
+        var need = Math.min(10, Math.round(6 + ctx.speed * 3 + ctx.rng() * 2));
         var jelly = el('div', 'mg-jelly', '🍮');
         var count = el('p', 'mg-count', String(need));
         ctx.root.appendChild(jelly);
@@ -129,7 +130,7 @@
 
     /* ── 5. 과일만! — 폭탄 판별 ─────────────────────────── */
     {
-      id: 'bomb-fruit', prompt: '과일만!', hint: '폭탄은 만지지 마!', icon: '🍎',
+      id: 'bomb-fruit', prompt: '과일만!', hint: '과일 3개! 폭탄은 금지!', icon: '🍎',
       baseMs: 4200, winOnTimeout: false,
       mount: function (ctx) {
         var fruits = ['🍎', '🍌', '🍇', '🍓', '🍊'];
@@ -165,7 +166,9 @@
       baseMs: 4200, winOnTimeout: false,
       mount: function (ctx) {
         var zoneStart = 62 + ctx.rng() * 12;        // 62~74%
-        var zoneWidth = Math.max(14, 22 / ctx.speed); // 빨라질수록 존이 좁아짐
+        // R13 미만은 존을 넉넉히 — 초딩 타깃에서 "운"으로 느껴지지 않게 (codex 리뷰 Major #5)
+        var zoneFloor = (ctx.round || 1) >= 13 ? 13 : 17;
+        var zoneWidth = Math.max(zoneFloor, 22 / ctx.speed);
         var bar = el('div', 'mg-bar');
         var zone = el('div', 'mg-bar-zone');
         zone.style.left = zoneStart + '%';
@@ -197,14 +200,16 @@
           if (value >= zoneStart && value <= zoneStart + zoneWidth) ctx.success();
           else ctx.fail();
         }
+        // OS 제스처 등으로 취소되면 판정하지 않고 홀드만 해제 (억울한 실패 방지)
+        function cancel() { holding = false; }
         ctx.root.addEventListener('pointerdown', down);
         ctx.root.addEventListener('pointerup', up);
-        ctx.root.addEventListener('pointercancel', up);
+        ctx.root.addEventListener('pointercancel', cancel);
         return function () {
           if (raf) cancelAnimationFrame(raf);
           ctx.root.removeEventListener('pointerdown', down);
           ctx.root.removeEventListener('pointerup', up);
-          ctx.root.removeEventListener('pointercancel', up);
+          ctx.root.removeEventListener('pointercancel', cancel);
         };
       },
     },
@@ -222,11 +227,12 @@
         var arrow = el('div', 'mg-arrow', target.emo);
         ctx.root.appendChild(arrow);
         var start = null;
-        function down(e) { start = { x: e.clientX, y: e.clientY }; }
+        var startId = null;
+        function down(e) { start = { x: e.clientX, y: e.clientY }; startId = e.pointerId; }
         function up(e) {
-          if (!start) return;
+          if (!start || e.pointerId !== startId) return;
           var dx = e.clientX - start.x, dy = e.clientY - start.y;
-          start = null;
+          start = null; startId = null;
           if (Math.abs(dx) < 24 && Math.abs(dy) < 24) return; // 스와이프 아님 — 무시
           var horiz = Math.abs(dx) >= Math.abs(dy);
           var ok = horiz
@@ -234,11 +240,16 @@
             : (target.dy !== 0 && Math.sign(dy) === target.dy);
           if (ok) ctx.success(); else ctx.fail();
         }
+        // iOS 가장자리 제스처/알림 등으로 취소되면 시작점을 버린다 —
+        // 다음 터치의 up 이 이전 좌표와 비교되는 억울한 판정 방지
+        function cancel() { start = null; startId = null; }
         ctx.root.addEventListener('pointerdown', down);
         ctx.root.addEventListener('pointerup', up);
+        ctx.root.addEventListener('pointercancel', cancel);
         return function () {
           ctx.root.removeEventListener('pointerdown', down);
           ctx.root.removeEventListener('pointerup', up);
+          ctx.root.removeEventListener('pointercancel', cancel);
         };
       },
     },
@@ -302,7 +313,8 @@
       id: 'stop-bar', prompt: '멈춰!', hint: '가운데 존에서 탭!', icon: '🎯',
       baseMs: 3600, winOnTimeout: false,
       mount: function (ctx) {
-        var zoneWidth = Math.max(16, 24 / ctx.speed);
+        var zoneFloor = (ctx.round || 1) >= 13 ? 15 : 19;
+        var zoneWidth = Math.max(zoneFloor, 24 / ctx.speed);
         var zoneLeft = 50 - zoneWidth / 2;
         var bar = el('div', 'mg-bar');
         var zone = el('div', 'mg-bar-zone');
