@@ -20,6 +20,12 @@
           <p class="room-code-label">친구에게 이 코드를 공유하세요</p>
           <div id="roomCode" class="room-code">⏳ 연결 중...</div>
           <p class="room-code-hint">같은 코드로 접속하면 같은 방, 같은 미션 순서!</p>
+          <button id="btnCopyLink" class="btn btn--small" hidden>🔗 초대 링크 복사</button>
+          <div id="joinCodeRow" class="join-code-row">
+            <input id="joinCodeInput" class="join-code-input" type="text" inputmode="numeric"
+                   pattern="[0-9]*" maxlength="4" placeholder="받은 코드 4자리" autocomplete="off" />
+            <button id="btnJoinCode" class="btn btn--small btn--secondary">입장</button>
+          </div>
         </div>
 
         <div class="setup-box">

@@ -13,6 +13,8 @@
   var ui = {
     lobby: $('lobbyScreen'), play: $('playScreen'), over: $('overScreen'),
     roomCodeBox: $('roomCodeBox'), roomCode: $('roomCode'),
+    btnCopyLink: $('btnCopyLink'), joinCodeRow: $('joinCodeRow'),
+    joinCodeInput: $('joinCodeInput'), btnJoinCode: $('btnJoinCode'),
     nameInput: $('nameInput'), charPicker: $('charPicker'),
     playerList: $('playerList'), ongoingHint: $('ongoingHint'),
     btnStart: $('btnStart'), btnExit: $('btnExit'),
@@ -134,20 +136,63 @@
     mp.on('change', function () { refreshStartGate(); renderRivals(); checkAllDead(); });
     mp.connect(myName(), myChar).then(function (info) {
       ui.roomCode.textContent = info.code;
+      ui.btnCopyLink.hidden = false;
       connecting = false;
       refreshStartGate();
     }).catch(function () {
       ui.roomCode.textContent = '오프라인 연습 모드';
+      ui.joinCodeRow.hidden = true;
       renderRoster([{ name: myName() + ' (나)' }]);
       connecting = false;
       refreshStartGate();
     });
   } else {
     ui.roomCode.textContent = '오프라인 연습 모드';
+    ui.joinCodeRow.hidden = true;
     renderRoster([{ name: '나' }]);
     connecting = false;
     refreshStartGate();
   }
+
+  /* ── 초대 링크 공유 · 받은 코드로 입장 ───────── */
+  // 코드만 보여주면 친구가 입력할 곳이 없다 — ① 초대 링크(?code=) 공유,
+  // ② 받은 코드를 입력하면 그 방으로 이동(?code= 재진입이 relay 합류 경로).
+  function inviteUrl() {
+    return window.location.origin + window.location.pathname +
+      '?code=' + encodeURIComponent(mp.code || '');
+  }
+  ui.btnCopyLink.addEventListener('click', function () {
+    if (!mp.code) return;
+    var url = inviteUrl();
+    // 모바일은 OS 공유 시트가 가장 자연스럽다. 사용자가 취소하면 조용히 무시.
+    if (navigator.share) {
+      navigator.share({ title: '말랑 깜짝파티', text: '깜짝파티 같이 하자! 코드 ' + mp.code, url: url })
+        .catch(function () {});
+      return;
+    }
+    var done = function () {
+      ui.btnCopyLink.textContent = '✅ 복사됐어요!';
+      setTimeout(function () { ui.btnCopyLink.textContent = '🔗 초대 링크 복사'; }, 2000);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).then(done)
+        .catch(function () { window.prompt('링크를 복사하세요', url); });
+    } else {
+      window.prompt('링크를 복사하세요', url);
+    }
+  });
+
+  function joinByCode() {
+    var code = (ui.joinCodeInput.value || '').replace(/\D/g, '');
+    if (code.length !== 4) { ui.joinCodeInput.focus(); return; }
+    if (mp.code && code === String(mp.code)) return; // 이미 이 방에 있음
+    mp.leave();
+    window.location.href = window.location.pathname + '?code=' + code;
+  }
+  ui.btnJoinCode.addEventListener('click', joinByCode);
+  ui.joinCodeInput.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); joinByCode(); }
+  });
 
   /* ── 라이벌 스트립 ─────────────────────────── */
   function renderRivals() {

@@ -45,6 +45,21 @@ html, body {
 .room-code { font-size: 34px; font-weight: 800; letter-spacing: 6px; margin: 6px 0; color: #7c5cbf; }
 .room-code-hint { font-size: 11px; color: #b5a3c0; }
 
+/* 초대 링크 복사 + 받은 코드 입력 — 코드 공유/합류 동선 */
+.btn--small {
+  padding: 8px 14px; font-size: 13px; border-radius: 12px;
+  background: #f3ebff; color: #7c5cbf; border: 2px solid #ddc9f5;
+  margin-top: 8px;
+}
+.join-code-row { display: flex; gap: 6px; margin-top: 10px; }
+.join-code-input {
+  flex: 1; min-width: 0; padding: 8px 12px; border: 2px solid #e9d7ef;
+  border-radius: 12px; font-size: 15px; text-align: center; letter-spacing: 3px;
+  background: #fff; outline: none; font-family: inherit;
+}
+.join-code-input:focus { border-color: #d78ec2; }
+.join-code-row .btn--small { margin-top: 0; flex: 0 0 auto; }
+
 .setup-box { margin-bottom: 14px; }
 .name-input {
   width: 100%; padding: 12px 14px; border: 2px solid #f0c9e2; border-radius: 14px;
