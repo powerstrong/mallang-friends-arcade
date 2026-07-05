@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>말랑 깜짝파티</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <main class="game-shell">
+
+      <!-- ══════════════════════════════════════
+           대기 화면 — 방 코드 공유 & 캐릭터 선택
+           ══════════════════════════════════════ -->
+      <section id="lobbyScreen" class="screen is-active">
+        <h1 class="game-title">🎁 말랑 깜짝파티</h1>
+        <p class="game-desc">5초 깜짝 미션이 쉴 새 없이!<br>목숨 3개로 끝까지 버티는 사람이 우승 🏆</p>
+
+        <div id="roomCodeBox" class="room-code-box">
+          <p class="room-code-label">친구에게 이 코드를 공유하세요</p>
+          <div id="roomCode" class="room-code">⏳ 연결 중...</div>
+          <p class="room-code-hint">같은 코드로 접속하면 같은 방, 같은 미션 순서!</p>
+        </div>
+
+        <div class="setup-box">
+          <input id="nameInput" class="name-input" type="text" maxlength="10" placeholder="별명 입력" autocomplete="off" />
+          <div id="charPicker" class="char-picker"></div>
+        </div>
+
+        <div class="players-box">
+          <p class="players-label">참가자</p>
+          <ul id="playerList" class="player-list"></ul>
+          <p id="ongoingHint" class="ongoing-hint" hidden>지금 한 판이 진행 중이에요! 끝나면 함께 시작해요 ⏳</p>
+        </div>
+
+        <div class="btn-group">
+          <button id="btnStart" class="btn btn--primary" disabled>연결 중...</button>
+          <button id="btnExit" class="btn btn--secondary">광장으로</button>
+        </div>
+      </section>
+
+      <!-- ══════════════════════════════════════
+           플레이 화면
+           ══════════════════════════════════════ -->
+      <section id="playScreen" class="screen screen--play">
+        <header class="play-hud">
+          <div id="rivalStrip" class="rival-strip"></div>
+          <div class="my-hud">
+            <span id="hudLives" class="hud-lives">❤️❤️❤️</span>
+            <span id="hudRound" class="hud-round">R1</span>
+            <span id="hudScore" class="hud-score">0</span>
+          </div>
+          <div class="timer-track"><div id="timerFill" class="timer-fill"></div></div>
+        </header>
+
+        <div class="stage-wrap">
+          <div id="stage" class="stage"></div>
+
+          <!-- 명령 스플래시 -->
+          <div id="promptSplash" class="prompt-splash" hidden>
+            <div id="promptIcon" class="prompt-icon">🚦</div>
+            <div id="promptText" class="prompt-text">눌러!</div>
+            <div id="promptHint" class="prompt-hint">초록불이 켜지면!</div>
+          </div>
+
+          <!-- 라운드 결과 플래시 -->
+          <div id="resultFlash" class="result-flash" hidden>⭕</div>
+
+          <!-- 카운트다운 -->
+          <div id="countOverlay" class="count-overlay" hidden>3</div>
+
+          <!-- 탈락(관전) 오버레이 -->
+          <div id="deadOverlay" class="dead-overlay" hidden>
+            <div class="dead-face">😵</div>
+            <p id="deadText" class="dead-text">탈락!</p>
+            <p id="spectateText" class="spectate-text">친구들이 아직 버티는 중...</p>
+            <button id="btnSkipWait" class="btn btn--secondary">결과 보기</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══════════════════════════════════════
+           결과 화면
+           ══════════════════════════════════════ -->
+      <section id="overScreen" class="screen">
+        <div class="result-card">
+          <h2 class="result-title" id="resultTitle">결과 발표!</h2>
+          <p class="result-score-label">버틴 라운드</p>
+          <p id="finalRound" class="result-score">0</p>
+          <p id="finalDetail" class="result-detail">점수 0 · 최고 콤보 0</p>
+          <ul id="finalRanking" class="final-ranking"></ul>
+
+          <div class="btn-group">
+            <button id="btnRestart" class="btn btn--primary">다시 하기</button>
+            <button id="btnExitOver" class="btn btn--secondary">광장으로</button>
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- 반드시 이 순서를 지키세요: registry → config → bootstrap → characters → relay → engine → microgames → mp → game -->
+    <script src="/games/registry.js"></script>
+    <script src="/shared/config.js"></script>
+    <script src="/shared/bootstrap.js"></script>
+    <script src="/shared/character_sprites.js"></script>
+    <script src="/shared/relay.js"></script>
+    <script src="./rush-engine.js"></script>
+    <script src="./microgames.js"></script>
+    <script src="./multiplayer.js"></script>
+    <script src="./game.js"></script>
+  </body>
+</html>
