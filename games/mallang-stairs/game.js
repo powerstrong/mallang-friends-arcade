@@ -42,14 +42,11 @@
   var timeFill = $('timeFill'), feverFill = $('feverFill'), timeGauge = timeFill.parentElement;
   var rivalWrap = $('rivalWrap'), feverFx = $('feverFx'), floatLayer = $('floatLayer');
   var countdown = $('countdown'), countNum = $('countNum');
-  var charIntro = $('charIntro'), introImg = $('introImg'), introName = $('introName'),
-      introAbility = $('introAbility'), introTag = $('introTag');
   var resultOverlay = $('resultOverlay');
-  var roomPanel = $('roomPanel'), roomCode = $('roomCode'), rosterList = $('rosterList'),
-      roomStatus = $('roomStatus'), copyInvite = $('copyInvite');
-  var startSoloBtn = $('startSolo'), startMultiBtn = $('startMulti'), multiNote = $('multiNote');
+  var rosterList = $('rosterList'), roomStatus = $('roomStatus');
+  var startBtn = $('startBtn'), leaveBtn = $('leaveBtn'), multiNote = $('multiNote');
 
-  var selectedId = 'mochi-rabbit';
+  var selectedId = 'peach-chick';
   var activeChar = null;
   var engine = null;
   var mp = window.MallangStairsMP ? window.MallangStairsMP.create() : null;
@@ -83,6 +80,8 @@
   var latestRoster = [];
   var remoteChars = {};
   var waitingForNext = false;
+  var playerPoseTimer = 0;
+  var isRoomEntry = !!Boot.code;
 
   function safeChar(id) {
     return Chars.get(id) || Chars.get('mochi-rabbit');
@@ -100,11 +99,6 @@
     return connected && latestRoster.length > 0 && normalizeId(latestRoster[0]) === myId();
   }
   function currentCharIdForRoom() {
-    if (selectedId === 'random') {
-      var picked = Chars.pickRandomId();
-      selectChar(picked);
-      return picked;
-    }
     return safeChar(selectedId).id;
   }
 
@@ -134,60 +128,41 @@
     var pick = $('charPick');
     pick.innerHTML = '';
     Chars.PUBLIC_LIST.forEach(function (c) {
-      pick.appendChild(makeChip(c.id, c.assets.main, c.name, false));
+      pick.appendChild(makeChip(c.id, c.assets.main, c.name));
     });
-    pick.appendChild(makeChip('random', null, '랜덤', true));
-    selectChar(validBootCharacter() || 'mochi-rabbit');
+    selectChar('peach-chick');
   }
-  function validBootCharacter() {
-    var raw = Boot.characterId || new URLSearchParams(window.location.search).get('characterId');
-    if (!raw) return null;
-    return Chars.get(raw) ? raw : null;
-  }
-  function makeChip(id, img, label, isRandom) {
+  function makeChip(id, img, label) {
     var el = document.createElement('button');
     el.type = 'button';
-    el.className = 'char-chip' + (isRandom ? ' char-chip--random' : '');
+    el.className = 'char-chip';
     el.dataset.id = id;
-    if (isRandom) {
-      el.innerHTML = '<div class="char-chip__dice">🎲</div><span class="char-chip__label">랜덤</span>';
-    } else {
-      el.innerHTML = '<img src="' + img + '" alt="" draggable="false" />' +
-        '<span class="char-chip__label">' + escapeHtml(label) + '</span>';
-    }
+    el.innerHTML = '<img src="' + img + '" alt="" draggable="false" />' +
+      '<span class="char-chip__label">' + escapeHtml(label) + '</span>';
     el.addEventListener('click', function () { selectChar(id); });
     return el;
   }
   function selectChar(id) {
-    if (id !== 'random' && !Chars.get(id)) id = 'mochi-rabbit';
+    if (!Chars.get(id)) id = 'mochi-rabbit';
     selectedId = id;
     Array.prototype.forEach.call(document.querySelectorAll('.char-chip'), function (el) {
       el.classList.toggle('is-selected', el.dataset.id === id);
     });
     var setupImg = $('setupCharImg'), name = $('setupCharName'),
         role = $('setupCharRole'), ability = $('setupCharAbility');
-    if (id === 'random') {
-      setupImg.src = '';
-      setupImg.style.visibility = 'hidden';
-      name.textContent = '랜덤 친구';
-      role.textContent = '누가 나올까?';
-      ability.textContent = '숨은 친구까지 깜짝 등장할 수 있어요.';
-    } else {
-      var c = safeChar(id);
-      setupImg.src = c.assets.main;
-      setupImg.style.visibility = 'visible';
-      name.textContent = c.name;
-      role.textContent = c.role;
-      ability.textContent = c.desc;
-    }
+    var c = safeChar(id);
+    setupImg.src = c.assets.main;
+    setupImg.style.visibility = 'visible';
+    name.textContent = c.name;
+    role.textContent = c.role;
+    ability.textContent = c.desc;
     if (connected && mp) {
       mp.broadcastChar(currentCharIdForRoom(), playerName());
       renderRoomPanel();
     }
   }
   function resolveCharacter() {
-    var id = selectedId === 'random' ? Chars.pickRandomId() : selectedId;
-    return safeChar(id);
+    return safeChar(selectedId);
   }
   function preloadPoses(c) {
     Object.keys(c.assets).forEach(function (k) { var im = new Image(); im.src = c.assets[k]; });
@@ -298,12 +273,11 @@
     playScreen.classList.toggle('is-active', screen === 'play');
   }
 
-  function beginRound(seedStr, durationSec, runId) {
+  function beginRound(seedStr, durationSec, runId, multi) {
     if (playing || lifeRestarting) return;
-    isMulti = true;
-    currentRunId = runId || makeRunId();
-    // 방코드에 공유 runId를 섞어 라운드마다 계단 패턴이 달라진다(전원 동일 시드 유지).
-    roundSeed = runId ? seedStr + ':' + runId : seedStr;
+    isMulti = !!multi;
+    currentRunId = isMulti ? runId : null;
+    roundSeed = isMulti ? seedStr + ':' + runId : seedStr;
     roundDurationMs = Math.max(1, durationSec || selectedDuration) * 1000;
     bestStep = 0;
     bestScore = 0;
@@ -323,51 +297,23 @@
     updateCloudParallax();
     layoutStairs();
     updateHud(engine.getState());
-    var afterIntro = function () { runCountdown(); };
-    if (selectedId === 'random') showIntro(activeChar, afterIntro);
-    else afterIntro();
-  }
-  function startSolo() {
-    if (playing || lifeRestarting) return;
-    isMulti = false;
-    currentRunId = null;
-    roundSeed = String(Math.floor(Math.random() * 1e9));
-    roundDurationMs = Infinity;
-    bestStep = 0;
-    bestScore = 0;
-    roundMaxCombo = 0;
-    roundPerfect = 0;
-    activeChar = resolveCharacter();
-    preloadPoses(activeChar);
-    createLifeEngine(false);
-    resultOverlay.classList.add('is-hidden');
-    feverFx.classList.remove('is-on');
-    show('play');
-    placePlayer();
-    camX = camTX = homeX() - stepX(0);
-    camY = camTY = homeY() - stepY(0);
-    stairLayer.style.transform = 'translate3d(' + camX + 'px,' + camY + 'px,0)';
-    updateCloudParallax();
-    layoutStairs();
-    updateHud(engine.getState());
     runCountdown();
+  }
+  function startTimedSolo() {
+    selectedDuration = clampDuration(selectedDuration);
+    beginRound(makeSoloSeed(), selectedDuration, null, false);
+  }
+  function makeSoloSeed() {
+    return Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
   }
   function createLifeEngine(startNow) {
     engine = Engine.create({ seed: roundSeed, character: activeChar });
     xCache = [0];
     buildPool();
-    playerImg.src = activeChar.assets.main;
+    setIdlePose();
     playerEl.classList.remove('is-dead');
     comboFlame.classList.remove('is-active');
     if (startNow) engine.start();
-  }
-  function showIntro(c, done) {
-    introImg.src = c.assets.main;
-    introName.textContent = c.name;
-    introAbility.textContent = c.desc;
-    introTag.textContent = c.secret ? '숨은 친구!' : '랜덤 등장!';
-    charIntro.classList.remove('is-hidden');
-    setTimeout(function () { charIntro.classList.add('is-hidden'); done(); }, 1500);
   }
   function runCountdown() {
     var n = 3;
@@ -402,8 +348,7 @@
     if (!ev) return;
     flashTouch(dir);
     if (ev.dead) { onDeath(); return; }
-    playerImg.src = dir < 0 ? activeChar.assets.left : activeChar.assets.right;
-    hop();
+    hop(dir);
     playFx('dust', homeX(), homeY() - 8, Math.random() < 0.5);
     if (ev.grade === 'perfect') playFx('perfect', homeX(), homeY() - 42);
     if (ev.grade) popFloat(ev.grade, ev.gain);
@@ -413,10 +358,27 @@
     updateCharacterFx(engine.getState());
     layoutStairs();
   }
-  function hop() {
+  function clearPlayerPoseTimer() {
+    if (playerPoseTimer) clearTimeout(playerPoseTimer);
+    playerPoseTimer = 0;
+  }
+  function setIdlePose() {
+    clearPlayerPoseTimer();
+    if (!activeChar) return;
+    playerImg.src = activeChar.assets.main;
+    playerImg.style.animation = '';
+    playerImg.classList.add('is-idle');
+  }
+  function hop(dir) {
+    clearPlayerPoseTimer();
+    playerImg.classList.remove('is-idle');
+    playerImg.src = dir < 0 ? activeChar.assets.left : activeChar.assets.right;
     playerImg.style.animation = 'none';
     void playerImg.offsetWidth;
     playerImg.style.animation = 'introHop .22s';
+    playerPoseTimer = setTimeout(function () {
+      if (!playerEl.classList.contains('is-dead')) setIdlePose();
+    }, 240);
   }
   function flashTouch(dir) {
     var sel = dir < 0 ? '.touch-zones__side--left' : '.touch-zones__side--right';
@@ -606,13 +568,15 @@
         el.appendChild(img);
         el.appendChild(label);
         shadowLayer.appendChild(el);
-        node = { el: el, img: img, label: label, visualStep: r.step || 0, ch: null };
+        node = { el: el, img: img, label: label, visualStep: r.step || 0, lastStep: r.step || 0, hopUntil: 0, ch: null };
         shadowNodes[r.id] = node;
       }
       var target = Math.max(0, r.step || 0);
       node.visualStep += (target - node.visualStep) * 0.35;
       var c = safeChar(r.characterId || remoteChars[r.id] || 'mochi-rabbit');
-      var pose = r.alive === false ? c.assets.fall : c.assets.main;
+      if (r.alive !== false && target > node.lastStep) node.hopUntil = Date.now() + 250;
+      node.lastStep = Math.max(node.lastStep, target);
+      var pose = r.alive === false ? c.assets.fall : (Date.now() < node.hopUntil ? c.assets.right : c.assets.main);
       if (node.ch !== pose) {
         node.img.src = pose;
         node.ch = pose;
@@ -636,6 +600,8 @@
     lifeRestarting = true;
     cancelAnimationFrame(rafId);
     var s = engine.getState();
+    clearPlayerPoseTimer();
+    playerImg.classList.remove('is-idle');
     playerImg.src = activeChar.assets.fall;
     playerEl.classList.add('is-dead');
     comboFlame.classList.remove('is-active');
@@ -643,10 +609,6 @@
     stage.classList.add('is-shake');
     setTimeout(function () { stage.classList.remove('is-shake'); }, 320);
     if (isMulti && mp) sendSnapshot(s, true);
-    if (!isMulti) {
-      setTimeout(function () { finishRound(s.deadReason || 'dead'); }, FALL_RESTART_MS);
-      return;
-    }
     setTimeout(function () {
       if (remainingMs() <= 0) { finishRound('time'); return; }
       restartLife();
@@ -676,10 +638,10 @@
     if (isMulti && mp) sendSnapshot(s, true);
     lastResult = {
       reason: reason,
-      best: isMulti ? bestStep : s.pos,
-      score: isMulti ? bestScore : s.score,
-      maxCombo: isMulti ? roundMaxCombo : s.maxCombo,
-      perfect: isMulti ? roundPerfect : s.perfectCount,
+      best: bestStep,
+      score: bestScore,
+      maxCombo: roundMaxCombo,
+      perfect: roundPerfect,
     };
     if (reason === 'time') spawnFloat('시간 종료!', 'perfect', 140);
     setTimeout(function () { showResult(s, reason); }, reason === 'time' ? 450 : 0);
@@ -697,7 +659,7 @@
     $('resScore').textContent = result.score;
     $('resCombo').textContent = result.maxCombo;
     $('resPerfect').textContent = result.perfect;
-    $('resultCharImg').src = activeChar.assets.main;
+    setResultCharacter(activeChar);
     $('resCharName').textContent = activeChar.name;
     $('resCharAbility').textContent = activeChar.desc;
     $('resultTitle').textContent = reason === 'time' ? '시간 종료!' :
@@ -705,6 +667,14 @@
     resultTrophy.classList.toggle('is-hidden', !renderResultRank(result));
     renderRetryState();
     resultOverlay.classList.remove('is-hidden');
+  }
+  function setResultCharacter(c) {
+    var image = $('resultCharImg');
+    image.onerror = function () {
+      image.onerror = null;
+      image.src = c.assets.main;
+    };
+    image.src = c.assets.win;
   }
   function renderResultRank(result) {
     var rankEl = $('resultRank');
@@ -753,14 +723,14 @@
       return;
     }
     connecting = true;
-    roomPanel.classList.remove('is-hidden');
+    rosterList.classList.remove('is-hidden');
+    roomStatus.classList.remove('is-hidden');
     roomStatus.textContent = '방에 들어가는 중...';
     var roomChar = currentCharIdForRoom();
-    mp.connect(roomChar, playerName()).then(function (info) {
+    mp.connect(roomChar, playerName()).then(function () {
       connected = true;
       connecting = false;
       isMulti = true;
-      roomCode.textContent = info.code || '????';
       mp.broadcastChar(roomChar, playerName());
       renderRoomPanel();
     }).catch(function () {
@@ -768,13 +738,14 @@
       roomStatus.textContent = '방 연결에 실패했어요. 잠시 뒤 다시 눌러 주세요.';
     });
   }
-  function startMulti() {
+  function startRace() {
+    if (!isRoomEntry) { startTimedSolo(); return; }
     if (!connected) { connectRoom(); return; }
     if (!isHost() || waitingForNext) return;
     var runId = makeRunId();
     selectedDuration = clampDuration(selectedDuration);
     mp.broadcastStart(selectedDuration, runId);
-    beginRound(mp.seedString(), selectedDuration, runId);
+    beginRound(mp.seedString(), selectedDuration, runId, true);
   }
   function makeRunId() {
     return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -785,9 +756,9 @@
   }
   function renderRoomPanel() {
     if (!connected && !connecting) return;
-    roomPanel.classList.remove('is-hidden');
+    rosterList.classList.remove('is-hidden');
+    roomStatus.classList.remove('is-hidden');
     latestRoster = mp ? mp.roster() : latestRoster;
-    roomCode.textContent = mp && mp.code ? mp.code : '...';
     renderRoster();
     renderTimeButtons();
     waitingForNext = !playing && !lifeRestarting && remoteRoundRunning();
@@ -795,16 +766,16 @@
     else if (waitingForNext) roomStatus.textContent = '라운드 진행 중 - 다음 판부터 함께해요.';
     else if (isHost()) roomStatus.textContent = '방장(👑)이 시간을 고르고 시작해요.';
     else roomStatus.textContent = '방장(👑)이 시작해요.';
-    startMultiBtn.disabled = !connected || !isHost() || waitingForNext;
-    startMultiBtn.textContent = connected
-      ? (isHost() ? (waitingForNext ? '다음 판 대기' : '레이스 시작') : '방장(👑)이 시작해요')
-      : '친구와 경쟁';
+    startBtn.disabled = !connected || !isHost() || waitingForNext;
+    startBtn.textContent = connected
+      ? (isHost() ? (waitingForNext ? '다음 판 대기' : '시작') : '방장(👑)이 시작해요')
+      : '방에 들어가는 중...';
   }
   function renderRoster() {
     rosterList.innerHTML = '';
     latestRoster.forEach(function (p, idx) {
       var id = normalizeId(p);
-      var ch = (id === myId()) ? safeChar(selectedId === 'random' ? 'mochi-rabbit' : selectedId) :
+      var ch = (id === myId()) ? safeChar(selectedId) :
         safeChar(remoteChars[id] || p.characterId || 'mochi-rabbit');
       var li = document.createElement('li');
       var img = document.createElement('img');
@@ -832,28 +803,6 @@
   function remoteRoundRunning() {
     return mp && mp.remoteList().some(function (r) { return r.running && (!currentRunId || r.runId !== currentRunId); });
   }
-  function inviteUrl() {
-    return window.location.origin + window.location.pathname + '?code=' + encodeURIComponent((mp && mp.code) || '');
-  }
-  function copyInviteLink() {
-    if (!mp || !mp.code) return;
-    var url = inviteUrl();
-    var done = function () {
-      copyInvite.textContent = '복사 완료';
-      setTimeout(function () { copyInvite.textContent = '초대 링크'; }, 1600);
-    };
-    if (navigator.share) {
-      navigator.share({ title: '말랑 계단 레이스', text: '같이 계단 레이스 하자! 코드 ' + mp.code, url: url })
-        .catch(function () {});
-      return;
-    }
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(url).then(done).catch(function () { window.prompt('초대 링크를 복사해 주세요', url); });
-    } else {
-      window.prompt('초대 링크를 복사해 주세요', url);
-    }
-  }
-
   function onKey(e) {
     if (e.repeat) return;
     if (e.key === 'a' || e.key === 'A' || e.key === 'ArrowLeft') { e.preventDefault(); doInput(-1); }
@@ -866,9 +815,8 @@
       doInput(dir);
     });
     window.addEventListener('keydown', onKey);
-    startSoloBtn.addEventListener('click', startSolo);
-    startMultiBtn.addEventListener('click', startMulti);
-    copyInvite.addEventListener('click', copyInviteLink);
+    startBtn.addEventListener('click', startRace);
+    leaveBtn.addEventListener('click', function () { if (mp) mp.leave(); Boot.exit(); });
     Array.prototype.forEach.call(document.querySelectorAll('.time-option'), function (btn) {
       btn.addEventListener('click', function () {
         if (connected && !isHost()) return;
@@ -883,9 +831,9 @@
         if (!isHost()) return;
         var runId = makeRunId();
         mp.broadcastStart(selectedDuration, runId);
-        beginRound(mp.seedString(), selectedDuration, runId);
+        beginRound(mp.seedString(), selectedDuration, runId, true);
       } else {
-        startSolo();
+        startTimedSolo();
       }
     });
     $('exitBtn').addEventListener('click', function () { if (mp) mp.leave(); Boot.exit(); });
@@ -915,7 +863,7 @@
       mp.on('start', function (p) {
         selectedDuration = clampDuration(p && p.dur);
         resultOverlay.classList.add('is-hidden');
-        beginRound(mp.seedString(), selectedDuration, p && p.runId);
+        beginRound(mp.seedString(), selectedDuration, p && p.runId, true);
       });
     }
   }
@@ -931,8 +879,7 @@
     buildCharPick();
     bind();
     renderTimeButtons();
-    if (Boot.isMultiplayer) {
-      multiNote.textContent = '방 코드로 들어왔어요. 친구들과 같이 준비해요!';
+    if (isRoomEntry) {
       connectRoom();
     }
   }

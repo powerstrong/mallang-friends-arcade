@@ -23,10 +23,10 @@
   function poses(id) {
     return {
       main:  ASSET_DIR + id + '-main.png',
-      up:    ASSET_DIR + id + '-up.png',
       left:  ASSET_DIR + id + '-left.png',
       right: ASSET_DIR + id + '-right.png',
       fall:  ASSET_DIR + id + '-fall.png',
+      win:   ASSET_DIR + id + '-win.png',
     };
   }
 
@@ -81,26 +81,13 @@
     {
       id: 'latte-puppy',
       name: '라떼 강아지',
-      secret: true,            // 직접 선택 불가 — 랜덤 전용
-      role: '랜덤 전용 폭발형',
-      desc: '랜덤으로만 만나는 두근두근 슈퍼 스텝!',
+      secret: false,
+      role: '콤보 폭발형',
+      desc: '콤보 30마다 슈퍼 스텝! 잠깐 점수가 두 배가 돼요.',
       accent: '#e7c79a',
       assets: poses('latte-puppy'),
       ability: {
         superStep: { everyCombo: 30, steps: 3, mul: 2.0 },
-      },
-    },
-    {
-      id: 'mint-kitten',
-      name: '민트 고양이',
-      secret: true,            // 직접 선택 불가 — 랜덤 전용
-      role: '랜덤 전용 피버형',
-      desc: '별빛 피버가 더 빠르게 차올라요.',
-      accent: '#8fe3d2',
-      assets: poses('mint-kitten'),
-      ability: {
-        feverGainMul: 1.30,
-        feverScoreBonus: 0.10,
       },
     },
   ];
@@ -108,13 +95,7 @@
   var BY_ID = {};
   LIST.forEach(function (c) { BY_ID[c.id] = c; });
 
-  // 직접 선택 버튼에 노출되는 목록 (secret 제외)
-  var PUBLIC_LIST = LIST.filter(function (c) { return !c.secret; });
-
-  // 랜덤 선택은 secret 포함 전체 풀에서 뽑는다 (라떼·민트도 등장 가능)
-  function pickRandomId() {
-    return LIST[Math.floor(Math.random() * LIST.length)].id;
-  }
+  var PUBLIC_LIST = LIST;
 
   function get(id) { return BY_ID[id] || null; }
 
@@ -123,6 +104,5 @@
     LIST: LIST,
     PUBLIC_LIST: PUBLIC_LIST,
     get: get,
-    pickRandomId: pickRandomId,
   };
 })();

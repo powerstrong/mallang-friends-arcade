@@ -3,10 +3,9 @@
   'use strict';
 
   var SNAPSHOT_INTERVAL_MS = 130;
-  var GAME_ID = 'mallang-stairs';
-
   function create() {
     var boot = window.GameBoot || {};
+    var gameId = boot.gameId || 'mallang-stairs';
     var hasRelay = !!window.MallangRelay;
     var state = {
       available: hasRelay,
@@ -101,7 +100,7 @@
         if (!state.available) return Promise.reject(new Error('relay unavailable'));
         state.myName = name || state.myName || '말랑이';
         relay = window.MallangRelay.create({
-          gameId: boot.gameId || GAME_ID,
+          gameId: gameId,
           name: state.myName,
           characterId: characterId || null,
         });

@@ -17,34 +17,25 @@
 
           <div class="char-stage">
             <img id="setupCharImg" class="char-stage__img" src="" alt="" draggable="false" />
-            <div class="char-stage__name" id="setupCharName">모찌 토끼</div>
+            <div class="char-stage__name" id="setupCharName">말랑 병아리</div>
             <div class="char-stage__role" id="setupCharRole"></div>
             <p class="char-stage__ability" id="setupCharAbility"></p>
           </div>
 
           <div class="char-pick" id="charPick" role="listbox" aria-label="캐릭터 선택"></div>
-          <p class="setup-hint">🎲 <strong>랜덤</strong>은 숨은 친구도 나올 수 있어요!</p>
-
-          <section id="roomPanel" class="room-panel is-hidden" aria-live="polite">
-            <div class="room-panel__top">
-              <div>
-                <p class="room-panel__label">방 코드</p>
-                <strong id="roomCode" class="room-panel__code">...</strong>
-              </div>
-              <button id="copyInvite" type="button" class="btn btn--tiny">초대 링크</button>
-            </div>
-            <ol id="rosterList" class="roster-list"></ol>
+          <section id="roomPanel" class="room-panel" aria-live="polite">
+            <ol id="rosterList" class="roster-list is-hidden"></ol>
             <div class="time-picker" aria-label="경기 시간">
               <button type="button" class="time-option" data-sec="60">1분</button>
               <button type="button" class="time-option" data-sec="120">2분</button>
               <button type="button" class="time-option" data-sec="180">3분</button>
             </div>
-            <p id="roomStatus" class="room-status"></p>
+            <p id="roomStatus" class="room-status is-hidden"></p>
           </section>
 
           <div class="setup-actions">
-            <button id="startSolo" type="button" class="btn btn--primary">혼자 도전</button>
-            <button id="startMulti" type="button" class="btn btn--ghost">친구와 경쟁</button>
+            <button id="startBtn" type="button" class="btn btn--primary">시작</button>
+            <button id="leaveBtn" type="button" class="btn btn--ghost">광장으로</button>
           </div>
           <p class="setup-note" id="multiNote"></p>
         </div>
@@ -107,13 +98,6 @@
           <div id="floatLayer" class="float-layer" aria-hidden="true"></div>
           <div id="countdown" class="countdown is-hidden"><span id="countNum">3</span></div>
 
-          <div id="charIntro" class="char-intro is-hidden" aria-hidden="true">
-            <div class="char-intro__burst"></div>
-            <img id="introImg" class="char-intro__img" src="" alt="" draggable="false" />
-            <div class="char-intro__tag" id="introTag">랜덤 등장!</div>
-            <h2 id="introName" class="char-intro__name"></h2>
-            <p id="introAbility" class="char-intro__ability"></p>
-          </div>
         </div>
 
         <div id="resultOverlay" class="result-overlay is-hidden">
