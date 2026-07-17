@@ -130,6 +130,7 @@
     const file = gameId === 'jump-climber' ? 'booth_jump.png'
                : gameId === 'mallang-quiz-battle' ? 'booth_quiz.png'
                : gameId === 'sseuk-sseuk' ? 'booth_sseuk.png'
+               : gameId === 'mallang-stairs' ? 'booth_stairs.png'
                : gameId === 'machine-animal-runner' ? 'booth_runner.png' : null;
     if (!file) return null;
     let entry = boothImages[gameId];

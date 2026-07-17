@@ -88,8 +88,15 @@
         </header>
 
         <div id="stage" class="stage">
+          <div id="stageBgA" class="stage-bg stage-bg--a is-visible" aria-hidden="true"></div>
+          <div id="stageBgB" class="stage-bg stage-bg--b" aria-hidden="true"></div>
+          <div id="cloudLayer" class="cloud-layer" aria-hidden="true"></div>
           <div id="stairLayer" class="stair-layer"></div>
-          <div id="player" class="player"><img id="playerImg" src="" alt="" draggable="false" /></div>
+          <div id="stageFx" class="stage-fx" aria-hidden="true"></div>
+          <div id="player" class="player">
+            <img id="comboFlame" class="combo-flame" src="./assets/fx-combo-flame.png" alt="" draggable="false" />
+            <img id="playerImg" src="" alt="" draggable="false" />
+          </div>
 
           <div class="touch-zones" aria-hidden="true">
             <div class="touch-zones__side touch-zones__side--left"><span>←</span></div>
@@ -112,6 +119,7 @@
         <div id="resultOverlay" class="result-overlay is-hidden">
           <div class="result-card">
             <h2 class="result-card__title" id="resultTitle">결과</h2>
+            <img id="resultTrophy" class="result-card__trophy is-hidden" src="./assets/ui-trophy.png" alt="" draggable="false" />
             <img id="resultCharImg" class="result-card__char" src="" alt="" draggable="false" />
             <div class="result-grid">
               <div class="result-grid__cell"><span>최고 계단</span><strong id="resStep">0</strong></div>

@@ -12,11 +12,31 @@
   var DURATIONS = [60, 120, 180];
   var DEFAULT_DURATION = 180;
   var FALL_RESTART_MS = 620;
+  var THEME_STEPS = [
+    { min: 0, bg: 'bg-sky-day.jpg', stair: 'stair-cloud.png' },
+    { min: 60, bg: 'bg-sky-high.jpg', stair: 'stair-cloud.png' },
+    { min: 140, bg: 'bg-sunset.jpg', stair: 'stair-candy.png' },
+    { min: 220, bg: 'bg-sky-dawn.jpg', stair: 'stair-candy.png' },
+    { min: 300, bg: 'bg-space.jpg', stair: 'stair-cookie.png' }
+  ];
+  var FX_ASSETS = {
+    dust: 'fx-step-dust.png', perfect: 'fx-perfect-ring.png', fall: 'fx-fall-puff.png',
+    feverBurst: 'fx-fever-burst.png', star: 'fx-star-yellow.png'
+  };
+  var ART_ASSETS = [
+    'bg-sky-day.jpg', 'bg-sky-high.jpg', 'bg-sunset.jpg', 'bg-sky-dawn.jpg', 'bg-space.jpg',
+    'bg-cloud-parallax.png', 'stair-cloud.png', 'stair-candy.png', 'stair-cookie.png', 'stair-next-glow.png',
+    'booster-speed.png', 'booster-stable.png', 'booster-combo.png', 'booster-fever.png',
+    'fx-perfect-ring.png', 'fx-step-dust.png', 'fx-combo-flame.png', 'fx-fever-burst.png', 'fx-fall-puff.png', 'fx-star-yellow.png',
+    'ui-title-plate.png', 'ui-trophy.png'
+  ];
 
   var $ = function (id) { return document.getElementById(id); };
   var setupScreen = $('setupScreen'), playScreen = $('playScreen');
   var stage = $('stage'), stairLayer = $('stairLayer');
   var playerEl = $('player'), playerImg = $('playerImg');
+  var stageBgA = $('stageBgA'), stageBgB = $('stageBgB'), cloudLayer = $('cloudLayer'), stageFx = $('stageFx');
+  var comboFlame = $('comboFlame'), resultTrophy = $('resultTrophy');
   var hudTime = $('hudTime'), hudStep = $('hudStep'), hudBest = $('hudBest'),
       hudScore = $('hudScore'), hudCombo = $('hudCombo');
   var timeFill = $('timeFill'), feverFill = $('feverFill'), timeGauge = timeFill.parentElement;
@@ -43,6 +63,9 @@
   var shadowLayer = null;
   var shadowNodes = {};
   var rankRows = {};
+  var activeThemeIndex = -1;
+  var visibleBg = stageBgA;
+  var fxPools = {}, fxCursor = {};
 
   var isMulti = false;
   var connected = false;
@@ -169,6 +192,71 @@
   function preloadPoses(c) {
     Object.keys(c.assets).forEach(function (k) { var im = new Image(); im.src = c.assets[k]; });
   }
+  function preloadArt() {
+    ART_ASSETS.forEach(function (file) { var im = new Image(); im.src = './assets/' + file; });
+  }
+  function themeForStep(step) {
+    var index = 0;
+    for (var i = 1; i < THEME_STEPS.length; i++) {
+      if (step >= THEME_STEPS[i].min) index = i;
+    }
+    return index;
+  }
+  function applyTheme(step) {
+    var index = themeForStep(step || 0);
+    if (index === activeThemeIndex) return;
+    activeThemeIndex = index;
+    var theme = THEME_STEPS[index];
+    var nextBg = visibleBg === stageBgA ? stageBgB : stageBgA;
+    nextBg.style.backgroundImage = 'url("./assets/' + theme.bg + '")';
+    nextBg.classList.add('is-visible');
+    if (visibleBg !== nextBg) visibleBg.classList.remove('is-visible');
+    visibleBg = nextBg;
+    stairLayer.style.setProperty('--stair-image', 'url("./assets/' + theme.stair + '")');
+  }
+  function updateCloudParallax() {
+    // 배경 타일 높이(153px)로 감아 무한 반복 — camY는 층수에 비례해 수천 px까지 커진다.
+    var offset = ((camY * 0.25) % 153 + 153) % 153;
+    cloudLayer.style.transform = 'translate3d(0,' + offset.toFixed(2) + 'px,0)';
+  }
+  function buildFxPool(kind, count) {
+    fxPools[kind] = [];
+    fxCursor[kind] = 0;
+    for (var i = 0; i < count; i++) {
+      var node = document.createElement('img');
+      node.className = 'fx-pop fx-pop--' + kind;
+      node.src = './assets/' + FX_ASSETS[kind];
+      node.alt = '';
+      node.draggable = false;
+      stageFx.appendChild(node);
+      fxPools[kind].push(node);
+    }
+  }
+  function buildFxPools() {
+    stageFx.innerHTML = '';
+    buildFxPool('dust', 4);
+    buildFxPool('perfect', 2);
+    buildFxPool('fall', 1);
+    buildFxPool('feverBurst', 1);
+    buildFxPool('star', 5);
+  }
+  function playFx(kind, x, y, flip) {
+    var pool = fxPools[kind];
+    if (!pool || !pool.length) return;
+    var node = pool[fxCursor[kind]++ % pool.length];
+    if (node._fxTimer) clearTimeout(node._fxTimer);
+    node.classList.remove('is-active');
+    node.style.setProperty('--fx-x', x + 'px');
+    node.style.setProperty('--fx-y', y + 'px');
+    node.style.setProperty('--fx-flip', flip ? '-1' : '1');
+    void node.offsetWidth;
+    node.classList.add('is-active');
+    node._fxTimer = setTimeout(function () { node.classList.remove('is-active'); },
+      kind === 'dust' ? 300 : kind === 'perfect' ? 370 : kind === 'fall' ? 420 : kind === 'feverBurst' ? 520 : 1120);
+  }
+  function updateCharacterFx(s) {
+    comboFlame.classList.toggle('is-active', !!s && s.combo >= 15 && !s.feverActive);
+  }
 
   function buildPool() {
     stairLayer.innerHTML = '';
@@ -188,6 +276,7 @@
   function layoutStairs() {
     if (!engine) return;
     var pos = engine.getState().pos;
+    applyTheme(pos);
     var lo = Math.max(0, pos - 3);
     for (var n = 0; n < POOL; n++) {
       var idx = lo + n;
@@ -196,11 +285,13 @@
       el.classList.toggle('is-next', idx === pos + 1);
       var badge = el.firstChild;
       var b = idx > pos ? engine.boosterAt(idx) : null;
-      badge.textContent = b ? boosterIcon(b) : '';
+      badge.innerHTML = b ? boosterIcon(b) : '';
     }
   }
   function boosterIcon(t) {
-    return t === 'speed' ? '⚡' : t === 'stable' ? '🛡️' : t === 'combo' ? '💫' : '⭐';
+    var file = t === 'speed' ? 'booster-speed.png' : t === 'stable' ? 'booster-stable.png' :
+      t === 'combo' ? 'booster-combo.png' : 'booster-fever.png';
+    return '<img src="./assets/' + file + '" alt="" draggable="false" />';
   }
   function show(screen) {
     setupScreen.classList.toggle('is-active', screen === 'setup');
@@ -229,6 +320,7 @@
     camX = camTX = homeX() - stepX(0);
     camY = camTY = homeY() - stepY(0);
     stairLayer.style.transform = 'translate3d(' + camX + 'px,' + camY + 'px,0)';
+    updateCloudParallax();
     layoutStairs();
     updateHud(engine.getState());
     var afterIntro = function () { runCountdown(); };
@@ -255,6 +347,7 @@
     camX = camTX = homeX() - stepX(0);
     camY = camTY = homeY() - stepY(0);
     stairLayer.style.transform = 'translate3d(' + camX + 'px,' + camY + 'px,0)';
+    updateCloudParallax();
     layoutStairs();
     updateHud(engine.getState());
     runCountdown();
@@ -265,6 +358,7 @@
     buildPool();
     playerImg.src = activeChar.assets.main;
     playerEl.classList.remove('is-dead');
+    comboFlame.classList.remove('is-active');
     if (startNow) engine.start();
   }
   function showIntro(c, done) {
@@ -310,16 +404,19 @@
     if (ev.dead) { onDeath(); return; }
     playerImg.src = dir < 0 ? activeChar.assets.left : activeChar.assets.right;
     hop();
+    playFx('dust', homeX(), homeY() - 8, Math.random() < 0.5);
+    if (ev.grade === 'perfect') playFx('perfect', homeX(), homeY() - 42);
     if (ev.grade) popFloat(ev.grade, ev.gain);
     if (ev.booster) popBooster(ev.booster);
     if (ev.fever && !feverFx.classList.contains('is-on')) enterFever();
     updateRoundBest(engine.getState());
+    updateCharacterFx(engine.getState());
     layoutStairs();
   }
   function hop() {
     playerImg.style.animation = 'none';
     void playerImg.offsetWidth;
-    playerImg.style.animation = 'introHop .25s';
+    playerImg.style.animation = 'introHop .22s';
   }
   function flashTouch(dir) {
     var sel = dir < 0 ? '.touch-zones__side--left' : '.touch-zones__side--right';
@@ -341,21 +438,24 @@
     var label = grade === 'perfect' ? 'PERFECT' : grade === 'good' ? 'GOOD' : '+';
     spawnFloat(label + ' ' + gain, grade, 70);
   }
-  function popBooster(type) { spawnFloat(boosterIcon(type) + ' GET', 'good', 110); }
+  function popBooster(type) {
+    var el = document.createElement('div');
+    el.className = 'float-pop float-pop--booster';
+    el.innerHTML = boosterIcon(type) + '<span>GET</span>';
+    el.style.setProperty('--px', homeX() + 'px');
+    el.style.setProperty('--py', (homeY() - 110) + 'px');
+    floatLayer.appendChild(el);
+    setTimeout(function () { el.remove(); }, 700);
+  }
   function enterFever() {
     feverFx.classList.add('is-on');
+    playFx('feverBurst', stage.clientWidth / 2, stage.clientHeight / 2);
     for (var i = 0; i < 6; i++) spawnStar();
   }
   function spawnStar() {
-    var s = document.createElement('div');
-    s.className = 'fever-star';
-    s.textContent = '⭐';
     var sx = 20 + Math.random() * (stage.clientWidth - 40);
     var sy = stage.clientHeight * 0.5 + Math.random() * 60;
-    s.style.setProperty('--px', sx + 'px');
-    s.style.setProperty('--py', sy + 'px');
-    feverFx.appendChild(s);
-    setTimeout(function () { s.remove(); }, 1100);
+    playFx('star', sx, sy);
   }
 
   function frame(ts) {
@@ -377,9 +477,11 @@
     camX += (camTX - camX) * 0.18;
     camY += (camTY - camY) * 0.18;
     stairLayer.style.transform = 'translate3d(' + camX + 'px,' + camY + 'px,0)';
+    updateCloudParallax();
 
     if (!s.feverActive && feverFx.classList.contains('is-on')) feverFx.classList.remove('is-on');
     if (s.feverActive && Math.random() < 0.3) spawnStar();
+    updateCharacterFx(s);
 
     updateRoundBest(s);
     updateHud(s);
@@ -536,6 +638,8 @@
     var s = engine.getState();
     playerImg.src = activeChar.assets.fall;
     playerEl.classList.add('is-dead');
+    comboFlame.classList.remove('is-active');
+    playFx('fall', homeX(), homeY() - 34);
     stage.classList.add('is-shake');
     setTimeout(function () { stage.classList.remove('is-shake'); }, 320);
     if (isMulti && mp) sendSnapshot(s, true);
@@ -555,6 +659,7 @@
     camX = camTX = homeX() - stepX(0);
     camY = camTY = homeY() - stepY(0);
     stairLayer.style.transform = 'translate3d(' + camX + 'px,' + camY + 'px,0)';
+    updateCloudParallax();
     layoutStairs();
     playing = true;
     lifeRestarting = false;
@@ -597,13 +702,13 @@
     $('resCharAbility').textContent = activeChar.desc;
     $('resultTitle').textContent = reason === 'time' ? '시간 종료!' :
       (s.deadReason === 'wrong' ? '발을 헛디뎠어요!' : (s.deadReason === 'gauge' ? '게이지가 비었어요!' : '결과'));
-    renderResultRank(result);
+    resultTrophy.classList.toggle('is-hidden', !renderResultRank(result));
     renderRetryState();
     resultOverlay.classList.remove('is-hidden');
   }
   function renderResultRank(result) {
     var rankEl = $('resultRank');
-    if (!isMulti || !mp) { rankEl.classList.add('is-hidden'); return; }
+    if (!isMulti || !mp) { rankEl.classList.add('is-hidden'); return false; }
     var rows = [{ name: playerName(), best: result.best, score: result.score, me: true }];
     mp.remoteList().forEach(function (r) {
       if (currentRunId && r.runId && r.runId !== currentRunId) return;
@@ -616,6 +721,7 @@
         '<span>' + r.best + '층 · ' + r.score + '점</span></div>';
     }).join('');
     rankEl.classList.remove('is-hidden');
+    return !!rows[0].me;
   }
   function renderRetryState() {
     var retry = $('retryBtn');
@@ -819,6 +925,9 @@
     });
   }
   function init() {
+    preloadArt();
+    buildFxPools();
+    applyTheme(0);
     buildCharPick();
     bind();
     renderTimeButtons();
