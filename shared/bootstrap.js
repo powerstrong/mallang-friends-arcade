@@ -19,6 +19,7 @@ window.GameBoot = (function () {
   const name   = params.get('name')   || null;
   const gameId = params.get('gameId') || null;
   const playerId = params.get('playerId') || null;
+  const characterId = params.get('characterId') || null;
 
   const registry = window.GAME_REGISTRY || [];
   const gameMeta = registry.find(g => g.id === gameId) || null;
@@ -71,5 +72,5 @@ window.GameBoot = (function () {
     window.location.href = '/';
   }
 
-  return { code, name, gameId, gameType, playerId, isMultiplayer, from, submitResult, exit };
+  return { code, name, gameId, gameType, playerId, characterId, isMultiplayer, from, submitResult, exit };
 })();

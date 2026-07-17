@@ -146,10 +146,10 @@
   // 제안 로직이 돌아 깨지므로 클라 전용으로 렌더/판정한다. 들어서면 매칭 대신
   // GAME_REGISTRY 의 stage:'LAB' 게임 목록 패널을 열고, 카드 탭 시 해당 게임으로
   // ?from=lab 직접 이동(솔로).
-  //   좌표: worldZones BOOTH_LAYOUT 의 상단 3열 그리드 index 2(우측 상단) 슬롯
-  //   (boothRect(2) = x:571,y:200,w:165,h:200). 서버 부스가 2개라 비어 있는 칸.
-  //   ⚠️ 서버 부스가 3개 이상이 되면 이 슬롯과 겹치므로 좌표를 옮길 것.
-  const LAB_BOOTH = { x: 571, y: 200, w: 165, h: 200 };
+  //   좌표: 정식 부스 3번째 슬롯(boothRect(2), x:571,y:200)은 mallang-stairs가
+  //   사용하므로 실험실 부스는 바로 아래 2행 우측 칸으로 이동했다.
+  //   (x:571,y:424,w:165,h:200). SPAWN_POINT(480,520)와도 겹치지 않는다.
+  const LAB_BOOTH = { x: 571, y: 424, w: 165, h: 200 };
   const LAB_THEME = { color: '#b08cff', dark: '#6f4fd6', icon: '🧪' };
   let inLabBooth = false; // me 가 실험실 부스 rect 안에 있는지(진입/이탈 전이 추적)
   let labDismissed = false; // ✕ 로 패널을 닫음 — 같은 자리에선 재오픈 안 함(나갔다 들어오면 해제)

@@ -8,12 +8,11 @@
   </head>
   <body>
     <main class="shell">
-      <!-- ===== 셋업 화면 ===== -->
       <section id="setupScreen" class="screen is-active">
         <div class="setup-inner">
           <h1 class="title">
             <span class="title__main">말랑 계단 레이스</span>
-            <span class="title__sub">왼쪽·오른쪽만 눌러 계단을 정복!</span>
+            <span class="title__sub">왼쪽·오른쪽을 눌러 최고 계단까지!</span>
           </h1>
 
           <div class="char-stage">
@@ -24,8 +23,24 @@
           </div>
 
           <div class="char-pick" id="charPick" role="listbox" aria-label="캐릭터 선택"></div>
+          <p class="setup-hint">🎲 <strong>랜덤</strong>은 숨은 친구도 나올 수 있어요!</p>
 
-          <p class="setup-hint">🎲 <strong>랜덤</strong>은 숨겨진 친구도 추첨돼요!</p>
+          <section id="roomPanel" class="room-panel is-hidden" aria-live="polite">
+            <div class="room-panel__top">
+              <div>
+                <p class="room-panel__label">방 코드</p>
+                <strong id="roomCode" class="room-panel__code">...</strong>
+              </div>
+              <button id="copyInvite" type="button" class="btn btn--tiny">초대 링크</button>
+            </div>
+            <ol id="rosterList" class="roster-list"></ol>
+            <div class="time-picker" aria-label="경기 시간">
+              <button type="button" class="time-option" data-sec="60">1분</button>
+              <button type="button" class="time-option" data-sec="120">2분</button>
+              <button type="button" class="time-option" data-sec="180">3분</button>
+            </div>
+            <p id="roomStatus" class="room-status"></p>
+          </section>
 
           <div class="setup-actions">
             <button id="startSolo" type="button" class="btn btn--primary">혼자 도전</button>
@@ -35,14 +50,23 @@
         </div>
       </section>
 
-      <!-- ===== 플레이 화면 ===== -->
       <section id="playScreen" class="screen">
         <header class="hud">
           <div class="hud__row">
+            <div class="hud__stat hud__stat--time">
+              <span class="hud__label">남은 시간</span>
+              <strong id="hudTime">--:--</strong>
+            </div>
             <div class="hud__stat hud__stat--step">
               <span class="hud__label">계단</span>
               <strong id="hudStep">0</strong>
             </div>
+            <div class="hud__stat hud__stat--best">
+              <span class="hud__label">내 최고층</span>
+              <strong id="hudBest">0</strong>
+            </div>
+          </div>
+          <div class="hud__row hud__row--compact">
             <div class="hud__stat hud__stat--score">
               <span class="hud__label">점수</span>
               <strong id="hudScore">0</strong>
@@ -54,13 +78,13 @@
           </div>
           <div class="gauge gauge--time">
             <div class="gauge__fill" id="timeFill"></div>
-            <span class="gauge__tag">TIME</span>
+            <span class="gauge__tag">LIFE</span>
           </div>
           <div class="gauge gauge--fever">
             <div class="gauge__fill" id="feverFill"></div>
             <span class="gauge__tag">FEVER</span>
           </div>
-          <div class="rival" id="rivalWrap" aria-hidden="true"></div>
+          <div class="live-rank" id="rivalWrap" aria-label="라이브 순위"></div>
         </header>
 
         <div id="stage" class="stage">
@@ -68,13 +92,12 @@
           <div id="player" class="player"><img id="playerImg" src="" alt="" draggable="false" /></div>
 
           <div class="touch-zones" aria-hidden="true">
-            <div class="touch-zones__side touch-zones__side--left"><span>◀</span></div>
-            <div class="touch-zones__side touch-zones__side--right"><span>▶</span></div>
+            <div class="touch-zones__side touch-zones__side--left"><span>←</span></div>
+            <div class="touch-zones__side touch-zones__side--right"><span>→</span></div>
           </div>
 
           <div id="feverFx" class="fever-fx" aria-hidden="true"></div>
           <div id="floatLayer" class="float-layer" aria-hidden="true"></div>
-
           <div id="countdown" class="countdown is-hidden"><span id="countNum">3</span></div>
 
           <div id="charIntro" class="char-intro is-hidden" aria-hidden="true">
@@ -86,7 +109,6 @@
           </div>
         </div>
 
-        <!-- ===== 결과 ===== -->
         <div id="resultOverlay" class="result-overlay is-hidden">
           <div class="result-card">
             <h2 class="result-card__title" id="resultTitle">결과</h2>
@@ -100,8 +122,9 @@
             <div class="result-card__char-name" id="resCharName"></div>
             <p class="result-card__ability" id="resCharAbility"></p>
             <div id="resultRank" class="result-rank is-hidden"></div>
+            <p id="retryHint" class="retry-hint"></p>
             <div class="result-card__actions">
-              <button id="retryBtn" type="button" class="btn btn--primary">한 판 더</button>
+              <button id="retryBtn" type="button" class="btn btn--primary">한판 더</button>
               <button id="exitBtn" type="button" class="btn btn--ghost">광장으로</button>
             </div>
           </div>

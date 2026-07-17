@@ -13,6 +13,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const HOLD = 3000;
 const JUMP = getZone('jump-climber');
 const SSEUK = getZone('sseuk-sseuk');
+const STAIRS = getZone('mallang-stairs');
 
 function fresh(id, overrides = {}) {
   return { id, status: PLAYER_STATUS.ROAM, currentZoneId: null, candidateSince: null, ...overrides };
@@ -133,13 +134,20 @@ test('findZoneAt returns the matching zone or null', () => {
 });
 
 test('every zone has a registered gameId path', () => {
-  const known = new Set(['jump-climber', 'sseuk-sseuk', 'machine-animal-runner']);
+  const known = new Set(['jump-climber', 'sseuk-sseuk', 'mallang-stairs', 'machine-animal-runner']);
   for (const zone of GAME_ZONES) {
     assert.ok(known.has(zone.gameId), `unknown gameId: ${zone.gameId}`);
     assert.ok(zone.minPlayers >= 1);
     assert.ok(zone.maxPlayers >= zone.minPlayers);
     assert.ok(zone.holdMs > 0);
   }
+});
+
+test('mallang-stairs is a formal booth zone in the third top-row slot', () => {
+  assert.equal(STAIRS.id, 'mallang-stairs');
+  assert.equal(STAIRS.minPlayers, 1);
+  assert.equal(STAIRS.maxPlayers, 6);
+  assert.deepEqual(STAIRS.rect, { x: 571, y: 200, w: 165, h: 200 });
 });
 
 // ── characters ──────────────────────────────────────────────────────────────
@@ -152,6 +160,7 @@ test('character ids round-trip world → game', () => {
   assert.equal(toGameCharacterId('mochi_rabbit', 'jump-climber'), 'mochi-rabbit');
   assert.equal(toGameCharacterId('mint_kitten', 'mallang-quiz-battle'), 'mint-kitten');
   assert.equal(toGameCharacterId('peach_chick', 'jump-climber'), 'peach-chick');
+  assert.equal(toGameCharacterId('mochi_rabbit', 'mallang-stairs'), 'mochi-rabbit');
   assert.equal(toGameCharacterId('not_a_thing', 'jump-climber'), null);
 });
 

@@ -1,58 +1,82 @@
-/* multiplayer.js — 말랑 계단 레이스 느슨한 릴레이 멀티 (window 전역)
- *
- * 역할: MallangRelay 로 같은 방 참가자와 진행도/점수/생존을 공유한다.
- * 절대 하지 않는 것: 게임 판정. 입력/사망/점수는 100% 로컬 engine 이 결정하고,
- *   이 모듈은 "상대가 어디까지 갔나"를 표시하기 위한 스냅샷 송수신만 한다.
- *
- * 공유 시드: 방 코드(relay.code === GameBoot.code)를 그대로 시드 문자열로 쓴다.
- *   → 같은 방의 모두가 동일한 계단 패턴을 본다.
- *
- * 시작 동기화: 누구든 먼저 start 를 누르면 broadcastStart() 가 모두에게 전파되고,
- *   중복 start 는 무시(idempotent)되어 모든 클라가 같은 신호로 카운트다운을 시작한다.
- */
+/* Mallang Stairs relay transport. Game rules stay entirely in game.js/engine. */
 (function () {
   'use strict';
 
-  var SNAPSHOT_INTERVAL_MS = 130; // ≈7.7Hz
+  var SNAPSHOT_INTERVAL_MS = 130;
+  var GAME_ID = 'mallang-stairs';
 
   function create() {
     var boot = window.GameBoot || {};
-    var hasRelay = !!(window.MallangRelay && boot.gameId);
-
+    var hasRelay = !!window.MallangRelay;
     var state = {
       available: hasRelay,
       isMulti: false,
       myId: boot.playerId || 'me',
-      myName: boot.name || '나',
+      myName: boot.name || '말랑이',
       code: boot.code || null,
-      remotes: {},          // id -> { id, name, step, score, combo, gaugeRatio, feverActive, alive }
-      started: false,
+      roster: [],
+      remotes: {},
+      startedRunId: null,
     };
 
     var relay = null;
     var lastSendAt = 0;
-    var cbs = { players: [], start: [], snapshot: [], change: [] };
-    function fire(ev, arg) { cbs[ev].forEach(function (f) { try { f(arg); } catch (e) {} }); }
-
+    var cbs = { players: [], start: [], time: [], snapshot: [], change: [], char: [] };
+    function fire(ev, arg) {
+      (cbs[ev] || []).forEach(function (fn) {
+        try { fn(arg); } catch (e) {}
+      });
+    }
+    function normId(p) { return p && (p.playerId || p.id); }
     function rosterName(id) {
-      if (!relay) return id;
-      var p = relay.players().find(function (r) { return r.playerId === id || r.id === id; });
-      return (p && p.name) || id;
+      var p = state.roster.find(function (r) { return normId(r) === id; });
+      return (p && p.name) || id || '친구';
+    }
+    function rosterChar(id) {
+      var p = state.roster.find(function (r) { return normId(r) === id; });
+      return (p && p.characterId) || null;
     }
 
     function handleMessage(msg) {
       var from = msg.from;
       var p = msg.payload || {};
-      if (from === state.myId) return;
+      if (!from || from === state.myId) return;
+
       if (p.t === 'start') {
-        if (!state.started) { state.started = true; fire('start', p); }
+        var runId = p.runId || String(Date.now());
+        if (state.startedRunId !== runId) {
+          state.startedRunId = runId;
+          fire('start', { dur: p.dur, runId: runId });
+        }
+        return;
+      }
+      if (p.t === 'time') {
+        fire('time', { sec: p.sec });
+        return;
+      }
+      if (p.t === 'char') {
+        var cr = state.remotes[from] || { id: from, name: rosterName(from) };
+        cr.characterId = p.ch || cr.characterId || rosterChar(from);
+        cr.name = p.name || cr.name || rosterName(from);
+        state.remotes[from] = cr;
+        fire('char', cr);
+        fire('change');
         return;
       }
       if (p.t === 'snap') {
         var r = state.remotes[from] || { id: from, name: rosterName(from) };
-        r.step = p.step; r.score = p.score; r.combo = p.combo;
-        r.gaugeRatio = p.g; r.feverActive = !!p.fv; r.alive = p.alive !== false;
-        r.name = r.name || rosterName(from);
+        r.name = p.name || r.name || rosterName(from);
+        r.step = p.step | 0;
+        r.best = p.best | 0;
+        r.score = p.score | 0;
+        r.combo = p.combo | 0;
+        r.gaugeRatio = Number.isFinite(p.g) ? p.g : 0;
+        r.feverActive = !!p.fv;
+        r.alive = p.alive !== false;
+        r.characterId = p.ch || r.characterId || rosterChar(from);
+        r.runId = p.runId || null;
+        r.running = !!p.running;
+        r.lastSeen = Date.now();
         state.remotes[from] = r;
         fire('snapshot', r);
         fire('change');
@@ -64,31 +88,32 @@
       get isMulti() { return state.isMulti; },
       get myId() { return state.myId; },
       get code() { return state.code; },
+      roster: function () { return state.roster.slice(); },
       remotes: function () { return state.remotes; },
+      remoteList: function () {
+        return Object.keys(state.remotes).map(function (id) { return state.remotes[id]; });
+      },
       seedString: function () { return state.code || 'solo'; },
-
       on: function (ev, cb) { if (cbs[ev]) cbs[ev].push(cb); return this; },
-
-      // 특정 이벤트의 리스너를 모두 제거 (리트라이 시 누적 방지)
       off: function (ev) { if (cbs[ev]) cbs[ev] = []; return this; },
 
-      // 방에 합류. 성공 시 공유 시드(code)가 준비된다.
-      connect: function (characterId) {
-        if (!state.available) return Promise.reject(new Error('relay 사용 불가'));
-        // 재접속 시 started 플래그 초기화
-        state.started = false;
+      connect: function (characterId, name) {
+        if (!state.available) return Promise.reject(new Error('relay unavailable'));
+        state.myName = name || state.myName || '말랑이';
         relay = window.MallangRelay.create({
-          gameId: boot.gameId, name: state.myName, characterId: characterId,
+          gameId: boot.gameId || GAME_ID,
+          name: state.myName,
+          characterId: characterId || null,
         });
         relay.on('players', function (list) {
           state.myId = relay.playerId || state.myId;
-          // 떠난 참가자 정리
+          state.roster = (list || []).slice();
           var ids = {};
-          list.forEach(function (r) { ids[r.playerId || r.id] = true; });
+          state.roster.forEach(function (r) { ids[normId(r)] = true; });
           Object.keys(state.remotes).forEach(function (id) {
             if (!ids[id]) delete state.remotes[id];
           });
-          fire('players', list);
+          fire('players', state.roster.slice());
           fire('change');
         });
         relay.on('message', handleMessage);
@@ -100,25 +125,37 @@
         });
       },
 
-      // 시작 신호 브로드캐스트 (모두가 같은 신호로 카운트다운 시작)
-      broadcastStart: function () {
+      broadcastStart: function (dur, runId) {
         if (!relay) return;
-        state.started = true;
-        relay.send({ t: 'start' });
+        state.startedRunId = runId || String(Date.now());
+        relay.send({ t: 'start', dur: dur, runId: state.startedRunId });
       },
-
-      // 진행 스냅샷 송신 (스로틀). force=true 면 즉시(사망/시작 등).
+      broadcastTime: function (sec) {
+        if (relay) relay.send({ t: 'time', sec: sec });
+      },
+      broadcastChar: function (characterId, name) {
+        if (relay) relay.send({ t: 'char', ch: characterId, name: name || state.myName });
+      },
       sendSnapshot: function (s, force) {
         if (!relay) return;
-        var now = (window.performance && performance.now) ? performance.now() : 0;
+        var now = (window.performance && performance.now) ? performance.now() : Date.now();
         if (!force && now - lastSendAt < SNAPSHOT_INTERVAL_MS) return;
         lastSendAt = now;
         relay.send({
-          t: 'snap', step: s.pos, score: s.score, combo: s.combo,
-          g: Math.round(s.gaugeRatio * 100) / 100, fv: s.feverActive, alive: !s.dead,
+          t: 'snap',
+          step: s.step | 0,
+          best: s.best | 0,
+          score: s.score | 0,
+          combo: s.combo | 0,
+          g: Math.round((s.gaugeRatio || 0) * 100) / 100,
+          fv: !!s.feverActive,
+          alive: s.alive !== false,
+          ch: s.characterId || null,
+          runId: s.runId || null,
+          running: !!s.running,
+          name: s.name || state.myName,
         });
       },
-
       leave: function () { if (relay) relay.leave(); },
     };
   }

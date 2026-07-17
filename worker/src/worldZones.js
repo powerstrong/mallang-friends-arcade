@@ -5,6 +5,7 @@
  *
  *   jump-climber        : 1..2  (worker/src/room.js JUMP_SESSION_LIMITS.players)
  *   sseuk-sseuk         : 2..6  (registry recommendedPlayers)
+ *   mallang-stairs      : 1..6  (time-limited relay race)
  *
  * holdMs is the dwell time before a candidate becomes intent_ready.
  */
@@ -17,12 +18,12 @@
 const BOOTH_CATALOG = [
   { gameId: 'jump-climber',          title: '말랑프렌즈 점프',     minPlayers: 1, maxPlayers: 2 },
   { gameId: 'sseuk-sseuk',           title: '말랑프렌즈 쓱쓱',     minPlayers: 2, maxPlayers: 6 },
+  { gameId: 'mallang-stairs',        title: '말랑 계단 레이스',   minPlayers: 1, maxPlayers: 6 },
   // 'machine-animal-runner' 는 광장 정면 부스에서 내려 '실험실'(🧪)로 이동했다.
   //   → registry.js 의 stage:'LAB' 로 노출, world/world.js 의 클라 전용 실험실
   //     부스가 목록을 렌더한다(매칭 없음, ?from=lab 솔로 진입). 협동은 ?coop= 직접 URL.
-  // ⚠️ 부스가 3개 이상이 되면 상단 3열 그리드의 index 2(우측 상단) 슬롯을
-  //    실험실 부스(world/world.js LAB_BOOTH, 좌표 x:571,y:200)가 점유 중이므로
-  //    위치가 겹친다. 그때는 LAB_BOOTH 좌표를 옮길 것.
+  // 정식 부스 3번째 슬롯은 mallang-stairs가 사용한다.
+  // 실험실 LAB_BOOTH는 world/world.js에서 x:571,y:424로 이동해 겹치지 않는다.
 ];
 
 // Portrait(960x960) 광장 자동 레이아웃. 상단에 3열 그리드로 배치해 스폰 지점
@@ -64,7 +65,8 @@ const ZONES_BY_ID = new Map(GAME_ZONES.map((z) => [z.id, z]));
 // (world.js _handleLabQueue). 발사는 기존 월드 매칭 파이프라인을 그대로 재사용하므로
 // 여기 gameId 는 반드시 room.js GAME_PATHS + world.js GAME_URLS 에 등록돼 있어야 한다.
 //   현재 충족: machine-animal-runner (GameRoom 권위 협동방).
-//   계단(mallang-stairs)은 MallangRelay 릴레이 게임이라 이 파이프라인을 못 타므로 제외.
+//   mallang-stairs는 MallangRelay 게임이다. 여기서는 lab_queue 자동 매칭에서만
+//   제외하며, 정식 부스의 world-launch 파이프라인은 탈 수 있다.
 const LAB_ZONE_PREFIX = 'lab:';
 const LAB_MATCH_CATALOG = [
   { gameId: 'machine-animal-runner', title: '말랑프렌즈 러너', minPlayers: 2, maxPlayers: 2 },

@@ -6,28 +6,29 @@
  *   jump-climber        : all five
  *   mallang-quiz-battle : all five
  *   sseuk-sseuk         : all five
+ *   mallang-stairs      : all five (same kebab-case ids as jump-climber)
  */
 
 export const CHARACTERS = Object.freeze([
   Object.freeze({
     worldId: 'latte_puppy', label: '라떼강아지',
-    gameIds: Object.freeze({ 'jump-climber': 'latte-puppy', 'mallang-quiz-battle': 'latte-puppy', 'sseuk-sseuk': 'latte-puppy' }),
+    gameIds: Object.freeze({ 'jump-climber': 'latte-puppy', 'mallang-quiz-battle': 'latte-puppy', 'sseuk-sseuk': 'latte-puppy', 'mallang-stairs': 'latte-puppy' }),
   }),
   Object.freeze({
     worldId: 'mochi_rabbit', label: '토끼',
-    gameIds: Object.freeze({ 'jump-climber': 'mochi-rabbit', 'mallang-quiz-battle': 'mochi-rabbit', 'sseuk-sseuk': 'mochi-rabbit' }),
+    gameIds: Object.freeze({ 'jump-climber': 'mochi-rabbit', 'mallang-quiz-battle': 'mochi-rabbit', 'sseuk-sseuk': 'mochi-rabbit', 'mallang-stairs': 'mochi-rabbit' }),
   }),
   Object.freeze({
     worldId: 'pudding_hamster', label: '햄스터',
-    gameIds: Object.freeze({ 'jump-climber': 'pudding-hamster', 'mallang-quiz-battle': 'pudding-hamster', 'sseuk-sseuk': 'pudding-hamster' }),
+    gameIds: Object.freeze({ 'jump-climber': 'pudding-hamster', 'mallang-quiz-battle': 'pudding-hamster', 'sseuk-sseuk': 'pudding-hamster', 'mallang-stairs': 'pudding-hamster' }),
   }),
   Object.freeze({
     worldId: 'mint_kitten', label: '고양이',
-    gameIds: Object.freeze({ 'jump-climber': 'mint-kitten', 'mallang-quiz-battle': 'mint-kitten', 'sseuk-sseuk': 'mint-kitten' }),
+    gameIds: Object.freeze({ 'jump-climber': 'mint-kitten', 'mallang-quiz-battle': 'mint-kitten', 'sseuk-sseuk': 'mint-kitten', 'mallang-stairs': 'mint-kitten' }),
   }),
   Object.freeze({
     worldId: 'peach_chick', label: '병아리',
-    gameIds: Object.freeze({ 'jump-climber': 'peach-chick', 'mallang-quiz-battle': 'peach-chick', 'sseuk-sseuk': 'peach-chick' }),
+    gameIds: Object.freeze({ 'jump-climber': 'peach-chick', 'mallang-quiz-battle': 'peach-chick', 'sseuk-sseuk': 'peach-chick', 'mallang-stairs': 'peach-chick' }),
   }),
 ]);
 
@@ -44,7 +45,7 @@ export function isValidCharacterId(worldId) {
 export function toGameCharacterId(worldId, gameId) {
   const entry = BY_WORLD_ID.get(worldId);
   if (!entry) return null;
-  return entry.gameIds[gameId] ?? null;
+  return entry.gameIds[gameId] ?? entry.worldId.replaceAll('_', '-');
 }
 
 /* Returns a {worldId, gameCharacterId} pair guaranteed to be playable in the

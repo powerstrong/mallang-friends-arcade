@@ -19,6 +19,7 @@ const COLORS = [
 const GAME_PATHS = {
   'jump-climber': '/games/jump-climber/index.html',
   'sseuk-sseuk': '/games/sseuk-sseuk/index.html',
+  'mallang-stairs': '/games/mallang-stairs/index.html',
   'machine-animal-runner': '/games/machine-animal-runner/index.html',
 };
 
@@ -2449,7 +2450,7 @@ export class GameRoom {
    * which already handles phase=playing + gameRoster correctly.
    *
    * Caller contract:
-   *   gameId  : 'jump-climber' | 'sseuk-sseuk' | 'machine-animal-runner'
+   *   gameId  : 'jump-climber' | 'sseuk-sseuk' | 'mallang-stairs' | 'machine-animal-runner'
    *   players : [{ id, name, characterId? }]  (id is the world sessionId,
    *             reused as the game playerId so the URL ?playerId= matches)
    *   code    : optional 4-digit-style code; for world matches we just use
