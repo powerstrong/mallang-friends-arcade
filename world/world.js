@@ -6,6 +6,16 @@
  */
 
 (function () {
+  // 일부 모바일 브라우저(삼성 인터넷 등)가 100dvh 를 하단 툴바를 제외하지 않은
+  // 큰 뷰포트(lvh)로 계산해 페이지 맨 아래 채팅 입력줄이 툴바에 가려진다.
+  // 실측 innerHeight 를 CSS 변수로 공급해 #app 높이를 항상 가시 영역에 맞춘다.
+  function syncAppHeight() {
+    document.documentElement.style.setProperty('--app-h', window.innerHeight + 'px');
+  }
+  syncAppHeight();
+  window.addEventListener('resize', syncAppHeight);
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', syncAppHeight);
+
   const PROTOCOL_VERSION = 1;
   const HEARTBEAT_MS = 15_000;
   const MOVE_SPEED = 180; // px/sec

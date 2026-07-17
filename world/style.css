@@ -35,8 +35,13 @@ body {
 }
 
 #app {
-  /* 모바일 한 화면 고정: 뷰포트 전체를 점유하고 내부 스크롤 차단 */
+  /* 모바일 한 화면 고정: 뷰포트 전체를 점유하고 내부 스크롤 차단.
+   * 3단 폴백: vh(구형) → dvh(모던) → JS 실측(--app-h, world.js syncAppHeight).
+   * 삼성 인터넷 등이 dvh 를 하단 툴바 포함(lvh)으로 잘못 계산해 채팅 입력줄이
+   * 가려지는 문제를 JS 실측값이 최종적으로 바로잡는다. */
+  height: 100vh;
   height: 100dvh;
+  height: var(--app-h, 100dvh);
   overflow: hidden;
   display: flex;
   flex-direction: column;
