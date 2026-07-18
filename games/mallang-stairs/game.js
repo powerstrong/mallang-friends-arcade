@@ -12,6 +12,7 @@
   var DURATIONS = [60, 120, 180];
   var DEFAULT_DURATION = 180;
   var FALL_RESTART_MS = 620;
+  var CHECKPOINT_INTERVAL = 25;
   var THEME_STEPS = [
     { min: 0, bg: 'bg-sky-day.jpg', stair: 'stair-cloud.png' },
     { min: 60, bg: 'bg-sky-high.jpg', stair: 'stair-cloud.png' },
@@ -41,6 +42,7 @@
       hudScore = $('hudScore'), hudCombo = $('hudCombo');
   var timeFill = $('timeFill'), feverFill = $('feverFill'), timeGauge = timeFill.parentElement;
   var rivalWrap = $('rivalWrap'), feverFx = $('feverFx'), floatLayer = $('floatLayer');
+  var soundBtn = $('soundBtn'), gameAnnouncement = $('gameAnnouncement');
   var countdown = $('countdown'), countNum = $('countNum');
   var resultOverlay = $('resultOverlay');
   var rosterList = $('rosterList'), roomStatus = $('roomStatus');
@@ -74,6 +76,9 @@
   var currentRunId = null;
   var bestStep = 0;
   var bestScore = 0;
+  var checkpointStep = 0;
+  var checkpointScore = 0;
+  var lifeScoreOffset = 0;
   var roundMaxCombo = 0;
   var roundPerfect = 0;
   var lastResult = null;
@@ -81,7 +86,23 @@
   var remoteChars = {};
   var waitingForNext = false;
   var playerPoseTimer = 0;
+  var rankByPlayerId = {};
   var isRoomEntry = !!Boot.code;
+
+  function audio() { return window.MallangStairsAudio; }
+  function playSound(name, arg) {
+    var sfx = audio();
+    if (sfx && typeof sfx.play === 'function') sfx.play(name, arg);
+  }
+  function syncSoundButton() {
+    var sfx = audio();
+    var muted = !sfx || sfx.isMuted();
+    soundBtn.setAttribute('aria-pressed', String(muted));
+    soundBtn.textContent = muted ? 'SOUND OFF' : 'SOUND ON';
+  }
+  function announce(message) {
+    if (gameAnnouncement) gameAnnouncement.textContent = message;
+  }
 
   function safeChar(id) {
     return Chars.get(id) || Chars.get('mochi-rabbit');
@@ -300,6 +321,10 @@
     roundDurationMs = Math.max(1, durationSec || selectedDuration) * 1000;
     bestStep = 0;
     bestScore = 0;
+    checkpointStep = 0;
+    checkpointScore = 0;
+    lifeScoreOffset = 0;
+    rankByPlayerId = {};
     roundMaxCombo = 0;
     roundPerfect = 0;
     lastResult = null;
@@ -325,8 +350,12 @@
   function makeSoloSeed() {
     return Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
   }
-  function createLifeEngine(startNow) {
-    engine = Engine.create({ seed: roundSeed, character: activeChar });
+  function createLifeEngine(startNow, startAtStep) {
+    engine = Engine.create({
+      seed: roundSeed,
+      character: activeChar,
+      startAtStep: Math.max(0, startAtStep || 0)
+    });
     xCache = [0];
     buildPool();
     setIdlePose();
@@ -337,15 +366,18 @@
   function runCountdown() {
     var n = 3;
     countNum.textContent = n;
+    playSound('countdown', n);
     countdown.classList.remove('is-hidden');
     var iv = setInterval(function () {
       n--;
       if (n <= 0) {
         clearInterval(iv);
         countdown.classList.add('is-hidden');
+        playSound('countdown', 0);
         startPlay();
       } else {
         countNum.textContent = n;
+        playSound('countdown', n);
         countNum.style.animation = 'none';
         void countNum.offsetWidth;
         countNum.style.animation = '';
@@ -366,15 +398,24 @@
     var ev = engine.input(dir);
     if (!ev) return;
     flashTouch(dir);
+    playSound('tap');
     if (ev.dead) { onDeath(); return; }
     hop(dir);
     playFx('dust', homeX(), homeY() - 8, Math.random() < 0.5);
-    if (ev.grade === 'perfect') playFx('perfect', homeX(), homeY() - 42);
+    if (ev.grade === 'perfect') {
+      playFx('perfect', homeX(), homeY() - 42);
+      playSound('perfect');
+    }
     if (ev.grade) popFloat(ev.grade, ev.gain);
-    if (ev.booster) popBooster(ev.booster);
+    if (ev.booster) {
+      popBooster(ev.booster);
+      playSound('booster', ev.booster);
+    }
     if (ev.fever && !feverFx.classList.contains('is-on')) enterFever();
-    updateRoundBest(engine.getState());
-    updateCharacterFx(engine.getState());
+    var state = engine.getState();
+    updateRoundBest(state);
+    updateCheckpoint(state);
+    updateCharacterFx(state);
     layoutStairs();
   }
   function clearPlayerPoseTimer() {
@@ -430,6 +471,7 @@
   }
   function enterFever() {
     feverFx.classList.add('is-on');
+    playSound('fever', 'start');
     playFx('feverBurst', stage.clientWidth / 2, stage.clientHeight / 2);
     for (var i = 0; i < 6; i++) spawnStar();
   }
@@ -460,7 +502,10 @@
     stairLayer.style.transform = 'translate3d(' + camX + 'px,' + camY + 'px,0)';
     updateCloudParallax();
 
-    if (!s.feverActive && feverFx.classList.contains('is-on')) feverFx.classList.remove('is-on');
+    if (!s.feverActive && feverFx.classList.contains('is-on')) {
+      feverFx.classList.remove('is-on');
+      playSound('fever', 'stop');
+    }
     if (s.feverActive && Math.random() < 0.3) spawnStar();
     updateCharacterFx(s);
 
@@ -475,14 +520,24 @@
   }
   function updateRoundBest(s) {
     if (!s) return;
+    var totalScore = lifeScoreOffset + s.score;
     if (s.pos > bestStep) {
       bestStep = s.pos;
-      bestScore = s.score;
-    } else if (s.pos === bestStep && s.score > bestScore) {
-      bestScore = s.score;
+      bestScore = totalScore;
+    } else if (s.pos === bestStep && totalScore > bestScore) {
+      bestScore = totalScore;
     }
     if (s.maxCombo > roundMaxCombo) roundMaxCombo = s.maxCombo;
     if (s.perfectCount > roundPerfect) roundPerfect = s.perfectCount;
+  }
+  function updateCheckpoint(s) {
+    var reached = Math.floor(s.pos / CHECKPOINT_INTERVAL) * CHECKPOINT_INTERVAL;
+    if (reached <= checkpointStep) return;
+    checkpointStep = reached;
+    checkpointScore = lifeScoreOffset + s.score;
+    spawnFloat('SAFE STEP ' + checkpointStep, 'checkpoint', 132);
+    announce('Safe step reached: ' + checkpointStep);
+    playSound('checkpoint');
   }
   function remainingMs() {
     if (!Number.isFinite(roundEndAt)) return Infinity;
@@ -491,7 +546,7 @@
   function updateHud(s) {
     hudStep.textContent = s.pos;
     hudBest.textContent = bestStep;
-    hudScore.textContent = s.score;
+    hudScore.textContent = lifeScoreOffset + s.score;
     hudCombo.textContent = s.combo;
     timeFill.style.transform = 'scaleX(' + Math.max(0, s.gaugeRatio) + ')';
     feverFill.style.transform = 'scaleX(' + Math.min(1, s.feverRatio) + ')';
@@ -529,6 +584,28 @@
     }, force);
   }
 
+  function rankRowsByBest(rows) {
+    rows.sort(function (a, b) { return b.best - a.best; });
+    var lastBest = null;
+    var place = 0;
+    rows.forEach(function (row, index) {
+      if (row.best !== lastBest) place = index + 1;
+      row.place = place;
+      lastBest = row.best;
+    });
+    return rows;
+  }
+  function announceRankImprovement(rows) {
+    var mine = rows.find(function (row) { return row.me; });
+    if (!mine) return;
+    var previousPlace = rankByPlayerId[mine.id];
+    if (previousPlace && mine.place < previousPlace && mine.best > 0) {
+      spawnFloat(mine.place === 1 ? 'TAKE THE LEAD!' : 'OVERTAKE!', 'overtake', 166);
+      announce(mine.place === 1 ? 'You took the lead!' : 'You overtook a friend!');
+      playSound('overtake');
+    }
+    rows.forEach(function (row) { rankByPlayerId[row.id] = row.place; });
+  }
   function renderRanking() {
     if (!isMulti || !mp) { rivalWrap.innerHTML = ''; return; }
     var rows = [{
@@ -542,9 +619,10 @@
         score: r.score || 0, alive: r.alive !== false, me: false,
       });
     });
-    rows.sort(function (a, b) { return (b.best - a.best) || (b.score - a.score); });
+    rankRowsByBest(rows);
+    announceRankImprovement(rows);
     var keep = {};
-    rows.slice(0, 6).forEach(function (r, idx) {
+    rows.slice(0, 6).forEach(function (r) {
       keep[r.id] = true;
       var row = rankRows[r.id];
       if (!row) {
@@ -555,8 +633,9 @@
         rivalWrap.appendChild(row);
       }
       row.classList.toggle('is-me', !!r.me);
+      row.classList.toggle('is-leader', r.place === 1);
       row.classList.toggle('is-dead', r.alive === false);
-      row.children[0].textContent = String(idx + 1);
+      row.children[0].textContent = r.place === 1 ? '★' : String(r.place);
       row.children[1].textContent = r.name;
       row.children[2].textContent = r.best + '층';
       if (row.parentElement !== rivalWrap) rivalWrap.appendChild(row);
@@ -625,6 +704,7 @@
     playerEl.classList.add('is-dead');
     comboFlame.classList.remove('is-active');
     playFx('fall', homeX(), homeY() - 34);
+    playSound('death');
     stage.classList.add('is-shake');
     setTimeout(function () { stage.classList.remove('is-shake'); }, 320);
     if (isMulti && mp) sendSnapshot(s, true);
@@ -634,14 +714,19 @@
     }, FALL_RESTART_MS);
   }
   function restartLife() {
-    createLifeEngine(true);
+    lifeScoreOffset = checkpointScore;
+    createLifeEngine(true, checkpointStep);
     playerEl.classList.remove('is-dead');
     placePlayer();
-    camX = camTX = homeX() - stepX(0);
-    camY = camTY = homeY() - stepY(0);
+    camX = camTX = homeX() - stepX(checkpointStep);
+    camY = camTY = homeY() - stepY(checkpointStep);
     stairLayer.style.transform = 'translate3d(' + camX + 'px,' + camY + 'px,0)';
     updateCloudParallax();
     layoutStairs();
+    if (checkpointStep > 0) {
+      spawnFloat('BACK TO ' + checkpointStep, 'checkpoint', 122);
+      announce('Back to safe step ' + checkpointStep);
+    }
     playing = true;
     lifeRestarting = false;
     lastTs = 0;
@@ -703,10 +788,10 @@
       if (currentRunId && r.runId && r.runId !== currentRunId) return;
       rows.push({ name: r.name || '친구', best: r.best || 0, score: r.score || 0, me: false });
     });
-    rows.sort(function (a, b) { return (b.best - a.best) || (b.score - a.score); });
-    rankEl.innerHTML = rows.map(function (r, i) {
+    rankRowsByBest(rows);
+    rankEl.innerHTML = rows.map(function (r) {
       return '<div class="result-rank__row' + (r.me ? ' is-me' : '') + '">' +
-        '<span>' + (i + 1) + '위 ' + escapeHtml(r.name) + '</span>' +
+        '<span>' + r.place + '위 ' + escapeHtml(r.name) + '</span>' +
         '<span>' + r.best + '층 · ' + r.score + '점</span></div>';
     }).join('');
     rankEl.classList.remove('is-hidden');
@@ -834,6 +919,14 @@
       doInput(dir);
     });
     window.addEventListener('keydown', onKey);
+    soundBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      var sfx = audio();
+      if (!sfx) return;
+      sfx.unlockAudio();
+      sfx.toggleMuted();
+      syncSoundButton();
+    });
     startBtn.addEventListener('click', startRace);
     leaveBtn.addEventListener('click', function () { if (mp) mp.leave(); Boot.exit(); });
     Array.prototype.forEach.call(document.querySelectorAll('.time-option'), function (btn) {
@@ -898,6 +991,7 @@
     buildCharPick();
     bind();
     renderTimeButtons();
+    syncSoundButton();
     if (isRoomEntry) {
       connectRoom();
     }

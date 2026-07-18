@@ -76,6 +76,7 @@
             <span class="gauge__tag">FEVER</span>
           </div>
           <div class="live-rank" id="rivalWrap" aria-label="라이브 순위"></div>
+          <button id="soundBtn" class="sound-btn" type="button" aria-pressed="false">SOUND ON</button>
         </header>
 
         <div id="stage" class="stage">
@@ -96,6 +97,7 @@
 
           <div id="feverFx" class="fever-fx" aria-hidden="true"></div>
           <div id="floatLayer" class="float-layer" aria-hidden="true"></div>
+          <p id="gameAnnouncement" class="sr-only" aria-live="polite"></p>
           <div id="countdown" class="countdown is-hidden"><span id="countNum">3</span></div>
 
         </div>
@@ -129,6 +131,7 @@
     <script src="/shared/relay.js"></script>
     <script src="./characters.js"></script>
     <script src="./stairs-engine.js"></script>
+    <script src="./audio.js"></script>
     <script src="./multiplayer.js"></script>
     <script src="./game.js"></script>
   </body>

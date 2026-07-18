@@ -25,10 +25,11 @@
   var GAUGE = {
     max: 100,
     initial: 70,
-    drainPerSecond: 18,
-    recoverNormal: 5,
-    recoverGood: 6,
-    recoverPerfect: 8,
+    resumeInitial: 85,
+    drainPerSecond: 16,
+    recoverNormal: 6,
+    recoverGood: 7.5,
+    recoverPerfect: 9.5,
     crisisThreshold: 12, // 이 아래로 떨어지면 토끼 위기회복 발동 가능
   };
 
@@ -51,6 +52,17 @@
     spawnEveryStepsMax: 13,
     durationMs: { speed: 8000, stable: 8000, combo: 10000, fever: 0 },
     types: ['speed', 'stable', 'combo', 'fever'],
+  };
+
+  var BOOSTER_EFFECTS = {
+    speed: {
+      drainMul: 0.9,
+      judgeElapsedMul: 0.85,
+      perfectScoreMul: 1.35,
+    },
+    stable: { gaugeRecoverMul: 1.5 },
+    combo: { comboExcessMul: 1.5 },
+    fever: { fillAmount: 55, extendMs: 1500 },
   };
 
   // ---- 결정적 의사난수 (mulberry32) ----
@@ -89,6 +101,7 @@
     var character = opts.character || { id: 'mochi-rabbit', ability: {} };
     var ability = character.ability || {};
     var seedInt = (typeof opts.seed === 'number') ? (opts.seed >>> 0) : hashSeed(opts.seed);
+    var startStep = Math.max(0, Math.floor(opts.startAtStep || 0));
 
     // 계단 방향 시퀀스는 seed 로부터 0번부터 순방향으로만 생성/캐시한다.
     // 같은 seed 면 모든 클라이언트가 동일한 배열을 얻는다.
@@ -161,12 +174,12 @@
       started: false,
       dead: false,
       deadReason: null,    // 'wrong' | 'gauge'
-      pos: 0,              // 현재 서 있는 계단 index
+      pos: startStep,      // 현재 서 있는 계단 index
       score: 0,
       combo: 0,
       maxCombo: 0,
       perfectCount: 0,
-      gauge: GAUGE.initial,
+      gauge: startStep > 0 ? GAUGE.resumeInitial : GAUGE.initial,
       feverGauge: 0,
       feverActive: false,
       feverRemainingMs: 0,
@@ -177,6 +190,7 @@
       boosters: { speed: 0, stable: 0, combo: 0 }, // 남은 ms
       lastEvent: null,     // {type, grade, step, booster, ...} 1회성 이벤트(렌더용)
       facing: 1,           // 캐릭터가 바라보는 방향(렌더 보조)
+      runStartStep: startStep,
     };
 
     function judgeWindow(grade) {
@@ -190,11 +204,20 @@
       return 'normal';
     }
 
+    function effectiveElapsedMs(elapsedMs) {
+      if (st.boosters.speed <= 0) return elapsedMs;
+      return elapsedMs * BOOSTER_EFFECTS.speed.judgeElapsedMul;
+    }
+
+    function gaugePressureFactor() {
+      var ramp = Math.max(0, st.pos - 20) / 180;
+      return 1 + Math.min(ramp, 1) * 0.30; // 20층 이후 200층까지 최대 +30%
+    }
+
     function effectiveDrainPerSec() {
-      var lateFactor = 1 + Math.min(st.pos / 200, 0.6); // 후반 최대 +60%
       var charMul = ability.drainMul || 1;
-      var boosterMul = st.boosters.speed > 0 ? 1.08 : 1; // 스피드 부스터 시 감소 소폭↑
-      return GAUGE.drainPerSecond * lateFactor * charMul * boosterMul;
+      var boosterMul = st.boosters.speed > 0 ? BOOSTER_EFFECTS.speed.drainMul : 1;
+      return GAUGE.drainPerSecond * gaugePressureFactor() * charMul * boosterMul;
     }
 
     function die(reason) {
@@ -208,9 +231,9 @@
     function applyBoosterPickup(type) {
       if (type === 'fever') {
         if (st.feverActive) {
-          st.feverRemainingMs += 1500; // 피버 중이면 시간 연장
+          st.feverRemainingMs += BOOSTER_EFFECTS.fever.extendMs; // 피버 중이면 시간 연장
         } else {
-          st.feverGauge = Math.min(FEVER.gaugeMax, st.feverGauge + 55);
+          st.feverGauge = Math.min(FEVER.gaugeMax, st.feverGauge + BOOSTER_EFFECTS.fever.fillAmount);
         }
       } else {
         st.boosters[type] = BOOSTER.durationMs[type];
@@ -230,9 +253,31 @@
 
       start: function () {
         st.started = true;
+        st.dead = false;
+        st.deadReason = null;
+        st.pos = st.runStartStep;
+        st.score = 0;
+        st.combo = 0;
+        st.maxCombo = 0;
+        st.perfectCount = 0;
+        st.gauge = st.runStartStep > 0 ? GAUGE.resumeInitial : GAUGE.initial;
+        st.feverGauge = 0;
+        st.feverActive = false;
+        st.feverRemainingMs = 0;
+        st.superStepLeft = 0;
+        st.boosters.speed = 0;
+        st.boosters.stable = 0;
+        st.boosters.combo = 0;
+        st.lastEvent = null;
+        st.clock = 0;
         st.lastInputClock = 0;
-        genUpTo(40);
-        ensureBoosterPlan(40);
+        st.crisisLeft = (ability.crisisRecover && ability.crisisRecover.once) || 0;
+        st.facing = 1;
+        genUpTo(st.pos + 40);
+        ensureBoosterPlan(st.pos + 40);
+        Object.keys(boosterAtStep).forEach(function (step) {
+          if (+step <= st.pos) delete boosterAtStep[step];
+        });
       },
 
       tick: function (dtMs) {
@@ -283,7 +328,8 @@
         // 올바른 입력 → 한 계단 상승
         var elapsed = st.clock - st.lastInputClock;
         st.lastInputClock = st.clock;
-        var grade = gradeFor(elapsed);
+        var effectiveElapsed = effectiveElapsedMs(elapsed);
+        var grade = gradeFor(effectiveElapsed);
         var sg = SPEED_GRADE[grade];
 
         st.pos++;
@@ -300,7 +346,7 @@
         var comboMul = getComboMultiplier(st.combo);
         if (st.boosters.combo > 0) {
           // 콤보 부스터: 콤보 배율의 초과분을 50% 증폭 (낮은 콤보면 효과 작음)
-          comboMul = 1 + (comboMul - 1) * 1.5;
+          comboMul = 1 + (comboMul - 1) * BOOSTER_EFFECTS.combo.comboExcessMul;
         }
 
         var charMul = ability.baseScoreMul || 1;
@@ -315,7 +361,7 @@
           buildMul *= (ability.superStep ? ability.superStep.mul : 2.0);
           st.superStepLeft--;
         }
-        if (st.boosters.speed > 0 && grade === 'perfect') buildMul *= 1.5;
+        if (st.boosters.speed > 0 && grade === 'perfect') buildMul *= BOOSTER_EFFECTS.speed.perfectScoreMul;
 
         var feverMul = 1;
         if (st.feverActive) {
@@ -327,7 +373,7 @@
 
         // --- 게이지 회복 ---
         var recover = sg.recover * sg.gaugeRecoverMul;
-        if (st.boosters.stable > 0) recover *= 1.5;
+        if (st.boosters.stable > 0) recover *= BOOSTER_EFFECTS.stable.gaugeRecoverMul;
         if (st.feverActive) recover *= FEVER.gaugeRecoverBonus;
         st.gauge = Math.min(GAUGE.max, st.gauge + recover);
 
@@ -355,6 +401,7 @@
           type: 'step', grade: grade, step: st.pos, gain: Math.round(gain),
           combo: st.combo, booster: booster,
           fever: st.feverActive, superStep: st.superStepLeft > 0,
+          effectiveElapsedMs: effectiveElapsed,
         };
         return st.lastEvent;
       },
@@ -371,6 +418,7 @@
           started: st.started,
           dead: st.dead,
           deadReason: st.deadReason,
+          runStartStep: st.runStartStep,
           pos: st.pos,
           score: st.score,
           combo: st.combo,
@@ -382,9 +430,12 @@
           feverRatio: st.feverGauge / FEVER.gaugeMax,
           feverActive: st.feverActive,
           feverRemainingMs: st.feverRemainingMs,
+          drainPerSecond: effectiveDrainPerSec(),
+          gaugePressureFactor: gaugePressureFactor(),
           facing: st.facing,
           nextDir: dirAt(st.pos + 1),
           boosters: { speed: st.boosters.speed, stable: st.boosters.stable, combo: st.boosters.combo },
+          boosterEffects: BOOSTER_EFFECTS,
           superStepLeft: st.superStepLeft,
         };
       },
@@ -396,6 +447,7 @@
     GAUGE: GAUGE,
     SPEED_GRADE: SPEED_GRADE,
     FEVER: FEVER,
+    BOOSTER_EFFECTS: BOOSTER_EFFECTS,
     getComboMultiplier: getComboMultiplier,
     hashSeed: hashSeed,
   };
