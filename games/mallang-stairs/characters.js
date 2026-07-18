@@ -90,12 +90,29 @@
         superStep: { everyCombo: 30, steps: 3, mul: 2.0 },
       },
     },
+    {
+      id: 'mint-kitten',
+      name: '민트 고양이',
+      secret: true,
+      role: '피버 질주형',
+      desc: '별빛 피버가 더 빠르게 차올라요.',
+      accent: '#8fe3d2',
+      assets: poses('mint-kitten'),
+      ability: {
+        feverGainMul: 1.30,
+        feverScoreBonus: 0.10,
+      },
+    },
   ];
 
   var BY_ID = {};
   LIST.forEach(function (c) { BY_ID[c.id] = c; });
 
-  var PUBLIC_LIST = LIST;
+  var PUBLIC_LIST = LIST.filter(function (c) { return !c.secret; });
+
+  function pickRandomId() {
+    return LIST[Math.floor(Math.random() * LIST.length)].id;
+  }
 
   function get(id) { return BY_ID[id] || null; }
 
@@ -104,5 +121,6 @@
     LIST: LIST,
     PUBLIC_LIST: PUBLIC_LIST,
     get: get,
+    pickRandomId: pickRandomId,
   };
 })();

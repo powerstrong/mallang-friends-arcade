@@ -99,6 +99,11 @@
     return connected && latestRoster.length > 0 && normalizeId(latestRoster[0]) === myId();
   }
   function currentCharIdForRoom() {
+    if (selectedId === 'random') {
+      var picked = Chars.pickRandomId();
+      selectChar(picked);
+      return picked;
+    }
     return safeChar(selectedId).id;
   }
 
@@ -128,41 +133,55 @@
     var pick = $('charPick');
     pick.innerHTML = '';
     Chars.PUBLIC_LIST.forEach(function (c) {
-      pick.appendChild(makeChip(c.id, c.assets.main, c.name));
+      pick.appendChild(makeChip(c.id, c.assets.main, c.name, false));
     });
+    pick.appendChild(makeChip('random', null, '랜덤', true));
     selectChar('peach-chick');
   }
-  function makeChip(id, img, label) {
+  function makeChip(id, img, label, isRandom) {
     var el = document.createElement('button');
     el.type = 'button';
-    el.className = 'char-chip';
+    el.className = 'char-chip' + (isRandom ? ' char-chip--random' : '');
     el.dataset.id = id;
-    el.innerHTML = '<img src="' + img + '" alt="" draggable="false" />' +
-      '<span class="char-chip__label">' + escapeHtml(label) + '</span>';
+    if (isRandom) {
+      el.innerHTML = '<div class="char-chip__dice">🎲</div><span class="char-chip__label">랜덤</span>';
+    } else {
+      el.innerHTML = '<img src="' + img + '" alt="" draggable="false" />' +
+        '<span class="char-chip__label">' + escapeHtml(label) + '</span>';
+    }
     el.addEventListener('click', function () { selectChar(id); });
     return el;
   }
   function selectChar(id) {
-    if (!Chars.get(id)) id = 'mochi-rabbit';
+    if (id !== 'random' && !Chars.get(id)) id = 'mochi-rabbit';
     selectedId = id;
     Array.prototype.forEach.call(document.querySelectorAll('.char-chip'), function (el) {
       el.classList.toggle('is-selected', el.dataset.id === id);
     });
     var setupImg = $('setupCharImg'), name = $('setupCharName'),
         role = $('setupCharRole'), ability = $('setupCharAbility');
-    var c = safeChar(id);
-    setupImg.src = c.assets.main;
-    setupImg.style.visibility = 'visible';
-    name.textContent = c.name;
-    role.textContent = c.role;
-    ability.textContent = c.desc;
+    if (id === 'random') {
+      setupImg.src = '';
+      setupImg.style.visibility = 'hidden';
+      name.textContent = '랜덤 친구';
+      role.textContent = '누가 나올까?';
+      ability.textContent = '숨은 친구가 깜짝 등장할지도 몰라요!';
+    } else {
+      var c = safeChar(id);
+      setupImg.src = c.assets.main;
+      setupImg.style.visibility = 'visible';
+      name.textContent = c.name;
+      role.textContent = c.role;
+      ability.textContent = c.desc;
+    }
     if (connected && mp) {
       mp.broadcastChar(currentCharIdForRoom(), playerName());
       renderRoomPanel();
     }
   }
   function resolveCharacter() {
-    return safeChar(selectedId);
+    var id = selectedId === 'random' ? Chars.pickRandomId() : selectedId;
+    return safeChar(id);
   }
   function preloadPoses(c) {
     Object.keys(c.assets).forEach(function (k) { var im = new Image(); im.src = c.assets[k]; });
