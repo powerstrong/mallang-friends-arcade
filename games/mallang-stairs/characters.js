@@ -39,6 +39,9 @@
   //   superStep          : N콤보마다 K스텝 동안 점수 배율
   //   feverGainMul       : 피버게이지 획득 배율
   //   feverScoreBonus    : 피버 중 점수 추가 배율
+  //
+  // stats: 캐릭터 선택 화면의 육각형 레이더 그래프용 능력치 (0~5).
+  //   score(점수) speed(속도) survive(생존) timing(판정) combo(콤보) fever(피버)
   var LIST = [
     {
       id: 'mochi-rabbit',
@@ -48,6 +51,7 @@
       desc: '위기의 순간 한 번 더 통! 게이지를 회복해요.',
       accent: '#ff8fb0',
       assets: poses('mochi-rabbit'),
+      stats: { score: 2, speed: 2, survive: 5, timing: 3, combo: 2, fever: 2 },
       ability: {
         crisisRecover: { ratio: 0.25, once: 1 },
       },
@@ -60,6 +64,7 @@
       desc: '빠르게 오를수록 점수가 쪼르르 올라요.',
       accent: '#f4b06a',
       assets: poses('pudding-hamster'),
+      stats: { score: 5, speed: 5, survive: 2, timing: 3, combo: 3, fever: 2 },
       ability: {
         perfectScoreBonus: 0.15,
         drainMul: 1.05,
@@ -73,6 +78,7 @@
       desc: '사뿐사뿐, 입력 타이밍이 조금 더 여유로워요.',
       accent: '#ffd54a',
       assets: poses('peach-chick'),
+      stats: { score: 2, speed: 2, survive: 3, timing: 5, combo: 2, fever: 2 },
       ability: {
         judgeWindowBonusMs: 25,
         baseScoreMul: 0.95,
@@ -86,6 +92,7 @@
       desc: '콤보 30마다 슈퍼 스텝! 잠깐 점수가 두 배가 돼요.',
       accent: '#e7c79a',
       assets: poses('latte-puppy'),
+      stats: { score: 3, speed: 3, survive: 3, timing: 2, combo: 5, fever: 2 },
       ability: {
         superStep: { everyCombo: 30, steps: 3, mul: 2.0 },
       },
@@ -98,6 +105,7 @@
       desc: '별빛 피버가 더 빠르게 차올라요.',
       accent: '#8fe3d2',
       assets: poses('mint-kitten'),
+      stats: { score: 3, speed: 4, survive: 2, timing: 2, combo: 2, fever: 5 },
       ability: {
         feverGainMul: 1.30,
         feverScoreBonus: 0.10,

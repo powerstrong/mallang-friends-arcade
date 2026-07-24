@@ -68,11 +68,15 @@ body {
 }
 .char-stage__img { width: 150px; height: 150px; object-fit: contain; filter: drop-shadow(0 6px 8px rgba(120,80,110,.22)); }
 .char-stage__name { font-size: 21px; font-weight: 900; }
-.char-stage__role {
-  display: inline-block; margin: 4px 0; font-size: 12px; font-weight: 800; color: #fff;
-  background: var(--mint); padding: 2px 12px; border-radius: 999px;
+.char-stage__radar { position: relative; display: flex; justify-content: center; align-items: center; margin-top: 2px; }
+.radar { width: 168px; height: 168px; overflow: visible; }
+.radar__ring { fill: rgba(255,255,255,.35); stroke: rgba(150,120,140,.28); stroke-width: 1; }
+.radar__axis { stroke: rgba(150,120,140,.28); stroke-width: 1; }
+.radar__data { stroke-width: 2.5; stroke-linejoin: round; }
+.radar__label { fill: #7a6771; font-size: 11px; font-weight: 800; text-anchor: middle; dominant-baseline: middle; }
+.char-stage__radar .radar__mark {
+  position: absolute; font-size: 40px; font-weight: 900; color: #b9a7b0;
 }
-.char-stage__ability { font-size: 14px; color: #6b5a64; min-height: 38px; line-height: 1.35; }
 .char-pick { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
 .char-chip {
   width: 70px; height: 84px; border-radius: 18px; border: 3px solid transparent;
@@ -239,8 +243,7 @@ body {
 .result-grid__cell { background: #fff3f8; border-radius: 14px; padding: 8px; display: flex; flex-direction: column; }
 .result-grid__cell span { font-size: 11px; color: #9a8893; font-weight: 700; }
 .result-grid__cell strong { font-size: 22px; font-weight: 900; }
-.result-card__char-name { font-size: 17px; font-weight: 900; }
-.result-card__ability { font-size: 12px; color: #8a7682; margin-bottom: 8px; min-height: 30px; }
+.result-card__char-name { font-size: 17px; font-weight: 900; margin-bottom: 8px; }
 .result-rank { font-size: 15px; font-weight: 800; margin-bottom: 10px; }
 .result-rank__row { display: flex; justify-content: space-between; padding: 3px 10px; border-radius: 8px; }
 .result-rank__row.is-me { background: #fff0a8; }
@@ -263,17 +266,9 @@ body {
 .roster-list img { width: 26px; height: 26px; object-fit: contain; flex: 0 0 auto; }
 .roster-list span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .roster-list b { color: #e7a900; flex: 0 0 auto; }
-.time-picker { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
-.time-picker--single { grid-template-columns: 1fr; }
 .pb-note { font-size: 12px; color: #7a6771; font-weight: 700; text-align: center; min-height: 16px; }
 .hud__stat--best.is-record strong { color: var(--pink); }
 .hud__stat--best.is-record::after { content: '신기록'; font-size: 9px; font-weight: 800; color: var(--pink); }
-.time-option {
-  border: 2px solid rgba(255,126,168,.35); border-radius: 999px; background: #fff;
-  color: #8a7682; font-family: inherit; font-weight: 900; font-size: 13px; padding: 8px 0;
-}
-.time-option.is-selected { background: var(--pink); color: #fff; border-color: var(--pink); }
-.time-option:disabled { opacity: .55; }
 .room-status { min-height: 16px; font-size: 12px; color: #8a7682; text-align: center; font-weight: 700; }
 .hud__row--compact .hud__stat { padding: 3px 8px; }
 .hud__row--compact .hud__stat strong { font-size: 16px; }
@@ -323,7 +318,7 @@ body {
 @media (max-height: 720px) {
   .setup-inner { gap: 8px; padding-top: 14px; }
   .char-stage__img { width: 118px; height: 118px; }
-  .char-stage__ability { min-height: 30px; font-size: 12px; }
+  .radar { width: 144px; height: 144px; }
   .char-chip { width: 62px; height: 72px; }
   .room-panel { padding: 8px; gap: 6px; }
 }

@@ -135,6 +135,63 @@
       : '아직 기록이 없어요 — 첫 도전을 남겨봐요!';
   }
 
+  // ---- 캐릭터 능력 육각형 레이더 ----
+  var STAT_AXES = [
+    { key: 'score', label: '점수' },
+    { key: 'speed', label: '속도' },
+    { key: 'fever', label: '피버' },
+    { key: 'combo', label: '콤보' },
+    { key: 'timing', label: '판정' },
+    { key: 'survive', label: '생존' },
+  ];
+  var STAT_MAX = 5;
+  function radarPoint(cx, cy, r, idx, total) {
+    var ang = (-90 + idx * (360 / total)) * Math.PI / 180;
+    return [cx + r * Math.cos(ang), cy + r * Math.sin(ang)];
+  }
+  function radarRing(cx, cy, r, total) {
+    var pts = [];
+    for (var i = 0; i < total; i++) {
+      var p = radarPoint(cx, cy, r, i, total);
+      pts.push(p[0].toFixed(1) + ',' + p[1].toFixed(1));
+    }
+    return pts.join(' ');
+  }
+  function radarSvg(stats, accent) {
+    var size = 168, cx = size / 2, cy = size / 2, R = 56, n = STAT_AXES.length;
+    var svg = '';
+    [0.25, 0.5, 0.75, 1].forEach(function (t) {
+      svg += '<polygon class="radar__ring" points="' + radarRing(cx, cy, R * t, n) + '"/>';
+    });
+    for (var i = 0; i < n; i++) {
+      var e = radarPoint(cx, cy, R, i, n);
+      svg += '<line class="radar__axis" x1="' + cx + '" y1="' + cy + '" x2="' + e[0].toFixed(1) + '" y2="' + e[1].toFixed(1) + '"/>';
+    }
+    var data = STAT_AXES.map(function (ax, idx) {
+      var v = (stats && stats[ax.key]) || 0;
+      var p = radarPoint(cx, cy, R * (v / STAT_MAX), idx, n);
+      return p[0].toFixed(1) + ',' + p[1].toFixed(1);
+    }).join(' ');
+    svg += '<polygon class="radar__data" points="' + data + '" style="fill:' + accent + '40;stroke:' + accent + ';"/>';
+    STAT_AXES.forEach(function (ax, idx) {
+      var lp = radarPoint(cx, cy, R + 14, idx, n);
+      svg += '<text class="radar__label" x="' + lp[0].toFixed(1) + '" y="' + lp[1].toFixed(1) + '">' + ax.label + '</text>';
+    });
+    return '<svg class="radar" viewBox="0 0 ' + size + ' ' + size + '" aria-hidden="true">' + svg + '</svg>';
+  }
+  function renderCharRadar(id) {
+    var box = $('setupCharRadar');
+    if (!box) return;
+    if (id === 'random') {
+      box.innerHTML = radarSvg(null, '#b9a7b0') + '<span class="radar__mark">?</span>';
+      box.classList.add('is-random');
+      return;
+    }
+    box.classList.remove('is-random');
+    var c = safeChar(id);
+    box.innerHTML = radarSvg(c.stats, c.accent);
+  }
+
   function safeChar(id) {
     return Chars.get(id) || Chars.get('mochi-rabbit');
   }
@@ -210,22 +267,18 @@
     Array.prototype.forEach.call(document.querySelectorAll('.char-chip'), function (el) {
       el.classList.toggle('is-selected', el.dataset.id === id);
     });
-    var setupImg = $('setupCharImg'), name = $('setupCharName'),
-        role = $('setupCharRole'), ability = $('setupCharAbility');
+    var setupImg = $('setupCharImg'), name = $('setupCharName');
     if (id === 'random') {
       setupImg.src = '';
       setupImg.style.visibility = 'hidden';
       name.textContent = '랜덤 친구';
-      role.textContent = '누가 나올까?';
-      ability.textContent = '숨은 친구가 깜짝 등장할지도 몰라요!';
     } else {
       var c = safeChar(id);
       setupImg.src = c.assets.main;
       setupImg.style.visibility = 'visible';
       name.textContent = c.name;
-      role.textContent = c.role;
-      ability.textContent = c.desc;
     }
+    renderCharRadar(id);
     if (connected && mp) {
       mp.broadcastChar(currentCharIdForRoom(), playerName());
       renderRoomPanel();
@@ -825,7 +878,6 @@
     if (newRecord) spawnFloat('🎉 자기 최고 기록!', 'overtake', 180);
     setResultCharacter(activeChar);
     $('resCharName').textContent = activeChar.name;
-    $('resCharAbility').textContent = activeChar.desc;
     $('resultTitle').textContent = reason === 'time' ? '시간 종료!' :
       (s.deadReason === 'wrong' ? '발을 헛디뎠어요!' : (s.deadReason === 'gauge' ? '게이지가 비었어요!' : '결과'));
     resultTrophy.classList.toggle('is-hidden', !renderResultRank(result));
@@ -869,7 +921,7 @@
     if (isHost()) {
       retry.disabled = false;
       retry.textContent = '한판 더';
-      hint.textContent = selectedDuration + '초로 다시 시작해요.';
+      hint.textContent = '방장(👑)이 시작하면 함께 달려요.';
     } else {
       retry.disabled = true;
       retry.textContent = '방장을 기다려요';
@@ -924,11 +976,10 @@
     roomStatus.classList.remove('is-hidden');
     latestRoster = mp ? mp.roster() : latestRoster;
     renderRoster();
-    renderTimeButtons();
     waitingForNext = !playing && !lifeRestarting && remoteRoundRunning();
     if (connecting) roomStatus.textContent = '방에 들어가는 중...';
     else if (waitingForNext) roomStatus.textContent = '라운드 진행 중 - 다음 판부터 함께해요.';
-    else if (isHost()) roomStatus.textContent = '방장(👑)이 시간을 고르고 시작해요.';
+    else if (isHost()) roomStatus.textContent = '방장(👑)이 시작을 눌러요.';
     else roomStatus.textContent = '방장(👑)이 시작해요.';
     startBtn.disabled = !connected || !isHost() || waitingForNext;
     startBtn.textContent = connected
@@ -957,13 +1008,6 @@
       rosterList.appendChild(li);
     });
   }
-  function renderTimeButtons() {
-    Array.prototype.forEach.call(document.querySelectorAll('.time-option'), function (btn) {
-      var sec = Number(btn.dataset.sec);
-      btn.classList.toggle('is-selected', sec === selectedDuration);
-      btn.disabled = connected && !isHost();
-    });
-  }
   function remoteRoundRunning() {
     return mp && mp.remoteList().some(function (r) { return r.running && (!currentRunId || r.runId !== currentRunId); });
   }
@@ -989,14 +1033,6 @@
     });
     startBtn.addEventListener('click', startRace);
     leaveBtn.addEventListener('click', function () { if (mp) mp.leave(); Boot.exit(); });
-    Array.prototype.forEach.call(document.querySelectorAll('.time-option'), function (btn) {
-      btn.addEventListener('click', function () {
-        if (connected && !isHost()) return;
-        selectedDuration = clampDuration(Number(btn.dataset.sec));
-        renderTimeButtons();
-        if (mp && connected) mp.broadcastTime(selectedDuration);
-      });
-    });
     $('retryBtn').addEventListener('click', function () {
       resultOverlay.classList.add('is-hidden');
       if (isMulti) {
@@ -1012,14 +1048,7 @@
     if (mp) {
       mp.on('players', function (list) {
         latestRoster = list || [];
-        if (connected) {
-          mp.broadcastChar(currentCharIdForRoom(), playerName());
-          if (isHost()) mp.broadcastTime(selectedDuration);
-        }
-        renderRoomPanel();
-      });
-      mp.on('time', function (p) {
-        selectedDuration = clampDuration(p && p.sec);
+        if (connected) mp.broadcastChar(currentCharIdForRoom(), playerName());
         renderRoomPanel();
       });
       mp.on('char', function (r) {
@@ -1053,7 +1082,6 @@
     applyTheme(0);
     buildCharPick();
     bind();
-    renderTimeButtons();
     syncSoundButton();
     if (isRoomEntry) {
       connectRoom();

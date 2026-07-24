@@ -18,17 +18,13 @@
           <div class="char-stage">
             <img id="setupCharImg" class="char-stage__img" src="" alt="" draggable="false" />
             <div class="char-stage__name" id="setupCharName">말랑 병아리</div>
-            <div class="char-stage__role" id="setupCharRole"></div>
-            <p class="char-stage__ability" id="setupCharAbility"></p>
+            <div class="char-stage__radar" id="setupCharRadar"></div>
           </div>
 
           <div class="char-pick" id="charPick" role="listbox" aria-label="캐릭터 선택"></div>
           <p id="pbNote" class="pb-note"></p>
           <section id="roomPanel" class="room-panel" aria-live="polite">
             <ol id="rosterList" class="roster-list is-hidden"></ol>
-            <div class="time-picker time-picker--single" aria-label="경기 시간">
-              <button type="button" class="time-option is-selected" data-sec="60">⏱ 1분 레이스</button>
-            </div>
             <p id="roomStatus" class="room-status is-hidden"></p>
           </section>
 
@@ -117,7 +113,6 @@
               <div class="result-grid__cell"><span>Perfect</span><strong id="resPerfect">0</strong></div>
             </div>
             <div class="result-card__char-name" id="resCharName"></div>
-            <p class="result-card__ability" id="resCharAbility"></p>
             <div id="resultRank" class="result-rank is-hidden"></div>
             <p id="retryHint" class="retry-hint"></p>
             <div class="result-card__actions">
