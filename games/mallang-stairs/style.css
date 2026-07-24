@@ -109,6 +109,9 @@ body {
 .gauge__fill { position: absolute; inset: 0; transform-origin: left center; width: 100%; transition: transform .08s linear; }
 .gauge--time .gauge__fill { background: linear-gradient(90deg, #ff8a5b, #ffd24d); }
 .gauge--fever .gauge__fill { background: linear-gradient(90deg, #7be0ff, #b98bff); }
+.gauge--shield .gauge__fill { background: linear-gradient(90deg, #5ec8ff, #7bffd0); }
+.gauge--shield.is-armed { box-shadow: 0 0 0 2px #7bffd0, 0 0 12px rgba(94,200,255,.8); animation: shieldPulse .6s infinite alternate; }
+@keyframes shieldPulse { from { filter: brightness(1); } to { filter: brightness(1.35); } }
 .gauge__tag {
   position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
   font-size: 9px; font-weight: 800; color: #fff; letter-spacing: 1px; text-shadow: 0 1px 2px rgba(0,0,0,.25);
@@ -261,6 +264,10 @@ body {
 .roster-list span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .roster-list b { color: #e7a900; flex: 0 0 auto; }
 .time-picker { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.time-picker--single { grid-template-columns: 1fr; }
+.pb-note { font-size: 12px; color: #7a6771; font-weight: 700; text-align: center; min-height: 16px; }
+.hud__stat--best.is-record strong { color: var(--pink); }
+.hud__stat--best.is-record::after { content: '신기록'; font-size: 9px; font-weight: 800; color: var(--pink); }
 .time-option {
   border: 2px solid rgba(255,126,168,.35); border-radius: 999px; background: #fff;
   color: #8a7682; font-family: inherit; font-weight: 900; font-size: 13px; padding: 8px 0;

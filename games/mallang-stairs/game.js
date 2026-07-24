@@ -9,10 +9,15 @@
   var STEP_DX = 72;
   var STEP_DY = 56;
   var POOL = 18;
-  var DURATIONS = [60, 120, 180];
-  var DEFAULT_DURATION = 180;
+  var DURATIONS = [60];
+  var DEFAULT_DURATION = 60;
   var FALL_RESTART_MS = 620;
   var CHECKPOINT_INTERVAL = 25;
+  // 점수 보호막: 점수를 모아 게이지를 채우면, 다음 사망 시 25층 세이브 대신
+  // 죽은 자리에서 가장 가까운 SHIELD_STEP_LINE 배수(더 위)에서 부활한다.
+  var SHIELD_GAIN_PER_POINT = 1 / 500; // 약 500점마다 보호막 1칸(가득)
+  var SHIELD_STEP_LINE = 10;           // 보호막 발동 시 부활 지점을 10층 단위로 끌어올림
+  var PB_KEY = 'mallang-stairs:pb';
   var THEME_STEPS = [
     { min: 0, bg: 'bg-sky-day.jpg', stair: 'stair-cloud.png' },
     { min: 60, bg: 'bg-sky-high.jpg', stair: 'stair-cloud.png' },
@@ -41,6 +46,7 @@
   var hudTime = $('hudTime'), hudStep = $('hudStep'), hudBest = $('hudBest'),
       hudScore = $('hudScore'), hudCombo = $('hudCombo');
   var timeFill = $('timeFill'), feverFill = $('feverFill'), timeGauge = timeFill.parentElement;
+  var shieldFill = $('shieldFill'), shieldGauge = $('shieldGauge'), hudBestStat = hudBest.parentElement;
   var rivalWrap = $('rivalWrap'), feverFx = $('feverFx'), floatLayer = $('floatLayer');
   var soundBtn = $('soundBtn'), gameAnnouncement = $('gameAnnouncement');
   var countdown = $('countdown'), countNum = $('countNum');
@@ -79,6 +85,8 @@
   var checkpointStep = 0;
   var checkpointScore = 0;
   var lifeScoreOffset = 0;
+  var shield = 0;               // 0~1 점수 보호막 게이지
+  var personalBest = { step: 0, score: 0 };
   var roundMaxCombo = 0;
   var roundPerfect = 0;
   var lastResult = null;
@@ -102,6 +110,29 @@
   }
   function announce(message) {
     if (gameAnnouncement) gameAnnouncement.textContent = message;
+  }
+
+  function loadPersonalBest() {
+    try {
+      var raw = JSON.parse(window.localStorage.getItem(PB_KEY) || 'null');
+      if (raw && typeof raw.step === 'number') {
+        personalBest = { step: raw.step | 0, score: raw.score | 0 };
+      }
+    } catch (e) { /* storage unavailable */ }
+  }
+  function savePersonalBest(step, score) {
+    var beat = step > personalBest.step || (step === personalBest.step && score > personalBest.score);
+    if (!beat) return false;
+    personalBest = { step: step | 0, score: score | 0 };
+    try { window.localStorage.setItem(PB_KEY, JSON.stringify(personalBest)); } catch (e) { /* ignore */ }
+    return true;
+  }
+  function renderPbNote() {
+    var note = $('pbNote');
+    if (!note) return;
+    note.textContent = personalBest.step > 0
+      ? ('내 최고 기록: ' + personalBest.step + '층 · ' + personalBest.score.toLocaleString() + '점')
+      : '아직 기록이 없어요 — 첫 도전을 남겨봐요!';
   }
 
   function safeChar(id) {
@@ -324,6 +355,7 @@
     checkpointStep = 0;
     checkpointScore = 0;
     lifeScoreOffset = 0;
+    shield = 0;
     rankByPlayerId = {};
     roundMaxCombo = 0;
     roundPerfect = 0;
@@ -407,6 +439,15 @@
       playSound('perfect');
     }
     if (ev.grade) popFloat(ev.grade, ev.gain);
+    if (ev.gain) {
+      var wasArmed = shield >= 1;
+      shield = Math.min(1, shield + ev.gain * SHIELD_GAIN_PER_POINT);
+      if (!wasArmed && shield >= 1) {
+        spawnFloat('보호막 완성!', 'checkpoint', 150);
+        announce('Shield ready');
+        playSound('booster', 'stable');
+      }
+    }
     if (ev.booster) {
       popBooster(ev.booster);
       playSound('booster', ev.booster);
@@ -545,11 +586,17 @@
   }
   function updateHud(s) {
     hudStep.textContent = s.pos;
-    hudBest.textContent = bestStep;
+    // "내 기록"은 이전 판까지의 개인 최고층을 목표로 보여주고,
+    // 이번 판이 그 기록을 넘어서면 함께 올라가며 신기록 표시를 켠다.
+    var beatingRecord = bestStep > personalBest.step;
+    hudBest.textContent = Math.max(personalBest.step, bestStep);
+    hudBestStat.classList.toggle('is-record', beatingRecord);
     hudScore.textContent = lifeScoreOffset + s.score;
     hudCombo.textContent = s.combo;
     timeFill.style.transform = 'scaleX(' + Math.max(0, s.gaugeRatio) + ')';
     feverFill.style.transform = 'scaleX(' + Math.min(1, s.feverRatio) + ')';
+    shieldFill.style.transform = 'scaleX(' + Math.min(1, shield) + ')';
+    shieldGauge.classList.toggle('is-armed', shield >= 1);
     timeGauge.classList.toggle('is-danger', s.gaugeRatio < 0.25);
     var left = remainingMs();
     if (Number.isFinite(left)) {
@@ -698,6 +745,16 @@
     lifeRestarting = true;
     cancelAnimationFrame(rafId);
     var s = engine.getState();
+    // 점수 보호막이 가득 찼다면 소모하고, 25층 세이브 대신 죽은 자리 바로 아래
+    // 10층 라인에서 부활 — 점수로 쌓은 만큼 손실을 줄여주는 혜택.
+    if (shield >= 1) {
+      var line = Math.floor(s.pos / SHIELD_STEP_LINE) * SHIELD_STEP_LINE;
+      if (line > checkpointStep) checkpointStep = line;
+      checkpointScore = lifeScoreOffset + s.score;
+      shield = 0;
+      spawnFloat('보호막 발동! ' + checkpointStep + '층에서 부활', 'overtake', 150);
+      announce('Shield saved you at step ' + checkpointStep);
+    }
     clearPlayerPoseTimer();
     playerImg.classList.remove('is-idle');
     playerImg.src = activeChar.assets.fall;
@@ -759,10 +816,13 @@
       maxCombo: result.maxCombo,
       duration: Number.isFinite(roundDurationMs) ? Math.round(roundDurationMs / 1000) : 0,
     });
+    var newRecord = savePersonalBest(result.best, result.score);
+    renderPbNote();
     $('resStep').textContent = result.best;
     $('resScore').textContent = result.score;
     $('resCombo').textContent = result.maxCombo;
     $('resPerfect').textContent = result.perfect;
+    if (newRecord) spawnFloat('🎉 자기 최고 기록!', 'overtake', 180);
     setResultCharacter(activeChar);
     $('resCharName').textContent = activeChar.name;
     $('resCharAbility').textContent = activeChar.desc;
@@ -985,6 +1045,9 @@
     });
   }
   function init() {
+    loadPersonalBest();
+    renderPbNote();
+    hudBest.textContent = personalBest.step;
     preloadArt();
     buildFxPools();
     applyTheme(0);
