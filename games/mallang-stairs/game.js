@@ -15,7 +15,7 @@
   var CHECKPOINT_INTERVAL = 25;
   // 점수 보호막: 점수를 모아 게이지를 채우면, 다음 사망 시 25층 세이브 대신
   // 죽은 자리에서 가장 가까운 SHIELD_STEP_LINE 배수(더 위)에서 부활한다.
-  var SHIELD_GAIN_PER_POINT = 1 / 500; // 약 500점마다 보호막 1칸(가득)
+  var SHIELD_GAIN_PER_POINT = 1 / 1000; // 약 1000점마다 보호막 1칸(가득) — 30초 레이스에 한 판 한 번꼴
   var SHIELD_STEP_LINE = 10;           // 보호막 발동 시 부활 지점을 10층 단위로 끌어올림
   var PB_KEY = 'mallang-stairs:pb';
   var THEME_STEPS = [
@@ -496,7 +496,7 @@
       var wasArmed = shield >= 1;
       shield = Math.min(1, shield + ev.gain * SHIELD_GAIN_PER_POINT);
       if (!wasArmed && shield >= 1) {
-        spawnFloat('보호막 완성!', 'checkpoint', 150);
+        spawnFloat('보호막 완성!', 'checkpoint', 150, 1400);
         announce('Shield ready');
         playSound('booster', 'stable');
       }
@@ -541,14 +541,16 @@
     z.classList.add('is-hit');
     setTimeout(function () { z.classList.remove('is-hit'); }, 90);
   }
-  function spawnFloat(text, cls, yOff) {
+  function spawnFloat(text, cls, yOff, holdMs) {
     var el = document.createElement('div');
     el.className = 'float-pop float-pop--' + cls;
     el.textContent = text;
     el.style.setProperty('--px', homeX() + 'px');
     el.style.setProperty('--py', (homeY() - yOff) + 'px');
+    var life = holdMs || 700;
+    el.style.animationDuration = (life / 1000) + 's';
     floatLayer.appendChild(el);
-    setTimeout(function () { el.remove(); }, 700);
+    setTimeout(function () { el.remove(); }, life);
   }
   function popFloat(grade, gain) {
     var label = grade === 'perfect' ? 'PERFECT' : grade === 'good' ? 'GOOD' : '+';
@@ -805,7 +807,7 @@
       if (line > checkpointStep) checkpointStep = line;
       checkpointScore = lifeScoreOffset + s.score;
       shield = 0;
-      spawnFloat('보호막 발동! ' + checkpointStep + '층에서 부활', 'overtake', 150);
+      spawnFloat('보호막 발동! ' + checkpointStep + '층에서 부활', 'overtake', 150, 1400);
       announce('Shield saved you at step ' + checkpointStep);
     }
     clearPlayerPoseTimer();
