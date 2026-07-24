@@ -192,6 +192,27 @@
     box.innerHTML = radarSvg(c.stats, c.accent);
   }
 
+  // 주간 리더보드에 이번 판 최고 계단(층)을 제출한다. 계단 레이스의 순위 기준은
+  // 층수이므로 리더보드도 층으로 겨룬다. 실패해도 게임 흐름엔 영향 없음(파이어&포겟).
+  function submitToLeaderboard(floor, character) {
+    if (!(floor > 0)) return;
+    var base = (window.WORKER_URL || '').replace(/\/+$/, '');
+    try {
+      fetch(base + '/api/leaderboard', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        keepalive: true,
+        body: JSON.stringify({
+          game: 'mallang-stairs',
+          name: playerName(),
+          score: floor,
+          characterId: character ? character.id : selectedId,
+          roomCode: Boot.code || null,
+        }),
+      }).catch(function () {});
+    } catch (e) { /* 네트워크 불가 — 무시 */ }
+  }
+
   function safeChar(id) {
     return Chars.get(id) || Chars.get('mochi-rabbit');
   }
@@ -871,6 +892,7 @@
       maxCombo: result.maxCombo,
       duration: Number.isFinite(roundDurationMs) ? Math.round(roundDurationMs / 1000) : 0,
     });
+    submitToLeaderboard(result.best, activeChar);
     var newRecord = savePersonalBest(result.best, result.score);
     renderPbNote();
     $('resStep').textContent = result.best;

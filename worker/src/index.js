@@ -1,4 +1,4 @@
-import { getWeekKey, getWeeklyLeaderboard } from './leaderboard.js';
+import { getWeekKey, getWeeklyLeaderboard, submitScore } from './leaderboard.js';
 
 export { GameRoom } from './room.js';
 export { WorldChannel } from './world.js';
@@ -64,6 +64,11 @@ async function ingestRunnerTelemetry(env, body) {
   return { ok: true, status: 204 };
 }
 
+// 클라이언트가 직접 점수를 제출할 수 있는 게임(서버 권위가 없는 relay/솔로 게임).
+// 서버 권위형 게임은 여기에 넣지 않는다 — GameRoom DO 가 직접 제출한다.
+const CLIENT_SUBMIT_GAMES = new Set(['mallang-stairs']);
+const SCORE_SUBMIT_MAX = 1_000_000;  // 비정상적으로 큰 점수 차단(스푸핑 완화)
+
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
@@ -97,6 +102,39 @@ export default {
 
       const entries = await getWeeklyLeaderboard(env.DB, game);
       return corsResponse(JSON.stringify({ game, week: getWeekKey(), entries }));
+    }
+
+    // POST /api/leaderboard - 클라이언트가 직접 점수를 제출한다.
+    // 서버 권위형 게임(jump-climber/sseuk-sseuk 등)은 GameRoom DO 가 자체 제출하므로
+    // 여기서는 허용하지 않는다(스푸핑·이중집계 방지). relay/솔로 게임처럼 서버가
+    // 점수를 알 수 없는 게임만 화이트리스트로 열어 둔다.
+    if (method === 'POST' && url.pathname === '/api/leaderboard') {
+      const clen = parseInt(request.headers.get('content-length') || '0', 10);
+      if (clen > 2048) {
+        return corsResponse(JSON.stringify({ error: 'Payload too large' }), { status: 413 });
+      }
+      let body = null;
+      try { body = await request.json(); } catch { /* malformed */ }
+      if (!body) return corsResponse(JSON.stringify({ error: 'Bad Request' }), { status: 400 });
+
+      const game = String(body.game || '');
+      if (!CLIENT_SUBMIT_GAMES.has(game)) {
+        return corsResponse(JSON.stringify({ error: 'Unsupported game' }), { status: 403 });
+      }
+      const playerName = String(body.name || '').trim().slice(0, 24);
+      const score = Math.trunc(Number(body.score));
+      if (!playerName || !Number.isFinite(score) || score < 0 || score > SCORE_SUBMIT_MAX) {
+        return corsResponse(JSON.stringify({ error: 'Invalid submission' }), { status: 400 });
+      }
+      const characterId = body.characterId ? String(body.characterId).slice(0, 40) : null;
+      const roomCode = body.roomCode ? String(body.roomCode).slice(0, 16) : null;
+      try {
+        const result = await submitScore(env.DB, { playerName, gameId: game, score, roomCode, characterId });
+        return corsResponse(JSON.stringify({ ok: true, ...result }));
+      } catch (err) {
+        console.error('[leaderboard] submit failed', err && err.stack ? err.stack : err);
+        return corsResponse(JSON.stringify({ error: 'Server error' }), { status: 500 });
+      }
     }
 
     // POST /api/telemetry/runner - 러너류 게임 플레이 텔레메트리 배치 적재.

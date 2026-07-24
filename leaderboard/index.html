@@ -70,7 +70,7 @@
     /* Tabs */
     .tabs {
       display: grid;
-      grid-template-columns: repeat(2, 1fr);
+      grid-template-columns: repeat(3, 1fr);
       gap: 6px;
       background: var(--primary-soft);
       padding: 5px;
@@ -203,6 +203,7 @@
     <div class="tabs">
       <button class="tab active" data-game="jump-climber">말랑프렌즈<br>점프</button>
       <button class="tab" data-game="mallang-quiz-battle">말랑프렌즈<br>퀴즈배틀</button>
+      <button class="tab" data-game="mallang-stairs">말랑<br>계단레이스</button>
     </div>
 
     <div class="table-wrap">
@@ -237,6 +238,7 @@
     const UNITS = {
       'jump-climber':       'm',
       'mallang-quiz-battle': '점',
+      'mallang-stairs':     '층',
     };
 
     // 최고 기록을 낸 판의 캐릭터 (worker characters.js 의 게임 캐릭터 ID 기준)
