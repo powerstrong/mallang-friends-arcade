@@ -271,9 +271,19 @@ export class GameRoom {
   }
 
   // ── 릴레이 룸 (서버 권위 없음 — 같은 방·게임 세션끼리 메시지 중계만) ──────────────
+  // 로스터 순서는 입장 순서(joinSeq 오름차순)로 고정한다. getWebSockets() 자체는
+  // 순서 보장이 없어(하이버네이션/재연결 시 뒤섞임) roster[0] 로 방장을 뽑는
+  // 릴레이 게임(계단 레이스 등)에서 인원이 합류할 때마다 방장이 뒤바뀌는 문제가
+  // 있었다. joinSeq 로 정렬하면 "먼저 들어온 사람이 방장"이 안정적으로 유지된다.
   _relayRoster(gameId) {
     return this._getGameSessions(gameId)
       .filter(({ player }) => player.mode === 'relay')
+      .sort((a, b) => {
+        const sa = a.player.joinSeq ?? Number.MAX_SAFE_INTEGER;
+        const sb = b.player.joinSeq ?? Number.MAX_SAFE_INTEGER;
+        if (sa !== sb) return sa - sb;
+        return String(a.player.id).localeCompare(String(b.player.id));
+      })
       .map(({ player }) => ({
         id: player.id,
         name: player.name,
@@ -312,7 +322,10 @@ export class GameRoom {
     const characterId = typeof msg.characterId === 'string' ? msg.characterId.slice(0, 40) : null;
     // 같은 게임에 이미 relay 로 합류한 연결이면 presence 재브로드캐스트 생략 (스팸 방지).
     const already = prev.role === 'game' && prev.mode === 'relay' && prev.gameId === gameId;
-    ws.serializeAttachment({ id, name, role: 'game', gameId, mode: 'relay', characterId });
+    // 입장 순서 도장 — 최초 relay 합류 시각을 보존해 로스터 정렬(방장 선정)을 안정화한다.
+    // 재합류(같은 ws 재전송)면 기존 seq 를 유지해 순서가 튀지 않게 한다.
+    const joinSeq = Number.isFinite(prev.joinSeq) ? prev.joinSeq : Date.now();
+    ws.serializeAttachment({ id, name, role: 'game', gameId, mode: 'relay', characterId, joinSeq });
     ws.send(JSON.stringify({ type: 'relay_joined', playerId: id, players: this._relayRoster(gameId) }));
     if (!already) this._broadcastRelayPresence(gameId);
   }
