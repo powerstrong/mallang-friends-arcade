@@ -9,8 +9,8 @@
   var STEP_DX = 72;
   var STEP_DY = 56;
   var POOL = 18;
-  var DURATIONS = [60];
-  var DEFAULT_DURATION = 60;
+  var DURATIONS = [30];
+  var DEFAULT_DURATION = 30;
   var FALL_RESTART_MS = 620;
   var CHECKPOINT_INTERVAL = 25;
   // 점수 보호막: 점수를 모아 게이지를 채우면, 다음 사망 시 25층 세이브 대신
