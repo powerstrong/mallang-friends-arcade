@@ -87,7 +87,7 @@
     {
       id: 'latte-puppy',
       name: '라떼 강아지',
-      secret: false,
+      secret: true,
       role: '콤보 폭발형',
       desc: '콤보 30마다 슈퍼 스텝! 잠깐 점수가 두 배가 돼요.',
       accent: '#e7c79a',

@@ -48,6 +48,7 @@
   var timeFill = $('timeFill'), feverFill = $('feverFill'), timeGauge = timeFill.parentElement;
   var shieldFill = $('shieldFill'), shieldGauge = $('shieldGauge'), hudBestStat = hudBest.parentElement;
   var rivalWrap = $('rivalWrap'), feverFx = $('feverFx'), floatLayer = $('floatLayer');
+  var rivalAbove = $('rivalAbove'), rivalBelow = $('rivalBelow');
   var soundBtn = $('soundBtn'), gameAnnouncement = $('gameAnnouncement');
   var countdown = $('countdown'), countNum = $('countNum');
   var resultOverlay = $('resultOverlay');
@@ -194,7 +195,7 @@
 
   // 주간 리더보드에 이번 판 최고 계단(층)을 제출한다. 계단 레이스의 순위 기준은
   // 층수이므로 리더보드도 층으로 겨룬다. 실패해도 게임 흐름엔 영향 없음(파이어&포겟).
-  function submitToLeaderboard(floor, character) {
+  function submitToLeaderboard(floor, points, character) {
     if (!(floor > 0)) return;
     var base = (window.WORKER_URL || '').replace(/\/+$/, '');
     try {
@@ -205,7 +206,8 @@
         body: JSON.stringify({
           game: 'mallang-stairs',
           name: playerName(),
-          score: floor,
+          score: floor,           // 리더보드 순위 기준: 층수
+          tiebreak: points,       // 같은 층이면 점수로 가른다
           characterId: character ? character.id : selectedId,
           roomCode: Boot.code || null,
         }),
@@ -439,6 +441,8 @@
     createLifeEngine(false);
     resultOverlay.classList.add('is-hidden');
     feverFx.classList.remove('is-on');
+    rivalAbove.classList.remove('is-on');
+    rivalBelow.classList.remove('is-on');
     show('play');
     placePlayer();
     camX = camTX = homeX() - stepX(0);
@@ -632,6 +636,7 @@
       sendSnapshot(s, false);
       renderRanking();
       renderShadows();
+      renderRivalMarkers(s.pos);
     }
     rafId = requestAnimationFrame(frame);
   }
@@ -708,13 +713,15 @@
   }
 
   function rankRowsByBest(rows) {
-    rows.sort(function (a, b) { return b.best - a.best; });
-    var lastBest = null;
+    // 순위는 층수 우선, 같은 층이면 점수로 가른다.
+    rows.sort(function (a, b) { return b.best - a.best || b.score - a.score; });
+    var lastBest = null, lastScore = null;
     var place = 0;
     rows.forEach(function (row, index) {
-      if (row.best !== lastBest) place = index + 1;
+      if (row.best !== lastBest || row.score !== lastScore) place = index + 1;
       row.place = place;
       lastBest = row.best;
+      lastScore = row.score;
     });
     return rows;
   }
@@ -814,6 +821,37 @@
     });
   }
 
+  // 카메라가 내 캐릭터를 화면 가운데 고정하므로, 화면 밖으로 벗어난 위/아래 라이벌은
+  // 안 보인다. 나보다 바로 위(더 높은 층)·바로 아래(더 낮은 층)의 가장 가까운 친구를
+  // 찾아 화면 위/아래 가장자리에 화살표 마커로 알려준다.
+  function nearestRival(myStep, dir) {
+    var best = null;
+    mp.remoteList().forEach(function (r) {
+      if (currentRunId && r.runId && r.runId !== currentRunId) return;
+      if (r.alive === false) return;
+      var d = Math.max(0, r.step || 0) - myStep;
+      if (dir > 0 ? d > 0 : d < 0) {
+        if (!best || Math.abs(d) < Math.abs(best.d)) best = { r: r, d: d };
+      }
+    });
+    return best;
+  }
+  function updateRivalMarker(el, info) {
+    if (!el) return;
+    if (!info) { el.classList.remove('is-on'); return; }
+    var c = safeChar(info.r.characterId || remoteChars[info.r.id] || 'mochi-rabbit');
+    var img = el.querySelector('.rival-marker__face');
+    if (img.getAttribute('src') !== c.assets.main) img.src = c.assets.main;
+    el.querySelector('.rival-marker__name').textContent = info.r.name || '친구';
+    el.querySelector('.rival-marker__gap').textContent = Math.abs(info.d) + '층';
+    el.classList.add('is-on');
+  }
+  function renderRivalMarkers(myStep) {
+    if (!isMulti || !mp) { rivalAbove.classList.remove('is-on'); rivalBelow.classList.remove('is-on'); return; }
+    updateRivalMarker(rivalAbove, nearestRival(myStep, 1));
+    updateRivalMarker(rivalBelow, nearestRival(myStep, -1));
+  }
+
   function onDeath() {
     if (!playing) return;
     updateRoundBest(engine.getState());
@@ -892,7 +930,7 @@
       maxCombo: result.maxCombo,
       duration: Number.isFinite(roundDurationMs) ? Math.round(roundDurationMs / 1000) : 0,
     });
-    submitToLeaderboard(result.best, activeChar);
+    submitToLeaderboard(result.best, result.score, activeChar);
     var newRecord = savePersonalBest(result.best, result.score);
     renderPbNote();
     $('resStep').textContent = result.best;

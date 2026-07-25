@@ -67,7 +67,10 @@ async function ingestRunnerTelemetry(env, body) {
 // 클라이언트가 직접 점수를 제출할 수 있는 게임(서버 권위가 없는 relay/솔로 게임).
 // 서버 권위형 게임은 여기에 넣지 않는다 — GameRoom DO 가 직접 제출한다.
 const CLIENT_SUBMIT_GAMES = new Set(['mallang-stairs']);
-const SCORE_SUBMIT_MAX = 1_000_000;  // 비정상적으로 큰 점수 차단(스푸핑 완화)
+const SCORE_SUBMIT_MAX = 1_000_000;  // 제출 원값(층/점수) 각각의 상한 — 스푸핑 완화
+// 층 순위를 우선하되 같은 층이면 점수로 가르기 위해, 저장 점수를 (층*BASE + 점수)
+// 복합값으로 인코딩한다. 리더보드 보기(leaderboard/index.html)가 층을 다시 디코드한다.
+const STAIRS_TIE_BASE = 100_000;
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -126,10 +129,14 @@ export default {
       if (!playerName || !Number.isFinite(score) || score < 0 || score > SCORE_SUBMIT_MAX) {
         return corsResponse(JSON.stringify({ error: 'Invalid submission' }), { status: 400 });
       }
+      // 같은 층이면 점수로 순위를 가르도록 (층*BASE + 점수) 복합값으로 저장한다.
+      const rawTiebreak = Math.trunc(Number(body.tiebreak) || 0);
+      const tiebreak = Math.max(0, Math.min(STAIRS_TIE_BASE - 1, rawTiebreak));
+      const storedScore = score * STAIRS_TIE_BASE + tiebreak;
       const characterId = body.characterId ? String(body.characterId).slice(0, 40) : null;
       const roomCode = body.roomCode ? String(body.roomCode).slice(0, 16) : null;
       try {
-        const result = await submitScore(env.DB, { playerName, gameId: game, score, roomCode, characterId });
+        const result = await submitScore(env.DB, { playerName, gameId: game, score: storedScore, roomCode, characterId });
         return corsResponse(JSON.stringify({ ok: true, ...result }));
       } catch (err) {
         console.error('[leaderboard] submit failed', err && err.stack ? err.stack : err);

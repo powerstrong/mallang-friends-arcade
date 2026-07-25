@@ -241,6 +241,15 @@
       'mallang-stairs':     '층',
     };
 
+    // 말랑 계단 레이스는 (층*BASE + 점수) 복합값으로 저장돼 있다(같은 층은 점수로 순위).
+    // 보기에선 층만 뽑아 표시한다. 구버전(원값 층)도 그대로 보이도록 BASE 미만은 통과.
+    const STAIRS_TIE_BASE = 100000;
+    function displayScore(game, raw) {
+      const v = Number(raw) || 0;
+      if (game === 'mallang-stairs' && v >= STAIRS_TIE_BASE) return Math.floor(v / STAIRS_TIE_BASE);
+      return v;
+    }
+
     // 최고 기록을 낸 판의 캐릭터 (worker characters.js 의 게임 캐릭터 ID 기준)
     const CHARACTER_BADGES = {
       'mochi-rabbit':    { emoji: '🐰', label: '토끼' },
@@ -313,7 +322,7 @@
           tr.innerHTML = `
             <td>${i + 1}</td>
             <td class="player-name">${badgeHtml}${escHtml(row.player_name)}</td>
-            <td><span class="score-cell">${row.best_score}</span><span class="score-unit">${unit}</span></td>
+            <td><span class="score-cell">${displayScore(currentGame, row.best_score)}</span><span class="score-unit">${unit}</span></td>
             <td>${row.games_played}판</td>
           `;
           tbody.appendChild(tr);
