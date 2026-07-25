@@ -605,6 +605,14 @@ h2 { margin: 4px 0 8px; font-size: 20px; color: #064e3b; }
   padding: 8px 6px;
   flex-wrap: wrap;
 }
+/* 출제자 레이아웃: 캔버스를 조금 줄이고 도구바를 압축해, 채팅창이 접히지 않고
+   항상 보이도록 세로 공간을 확보한다(정답자 화면은 그대로). */
+body.is-drawer .canvas-wrap { width: min(100%, 34dvh); }
+body.is-drawer .canvas-toolbar { padding: 5px 4px; gap: 6px; row-gap: 5px; }
+body.is-drawer .canvas-toolbar .color-btn,
+body.is-drawer .canvas-toolbar .thick-btn,
+body.is-drawer .canvas-toolbar .tool-btn { width: 25px; height: 25px; }
+
 .tool-group { display: flex; gap: 5px; align-items: center; }
 .color-btn {
   width: 28px; height: 28px; border-radius: 50%;
@@ -644,7 +652,8 @@ h2 { margin: 4px 0 8px; font-size: 20px; color: #064e3b; }
   /* flex:1 + min-height:0 으로 채팅 영역이 남은 공간을 채우고
    * 메시지가 많아지면 내부 스크롤. max-height 고정 제거. */
   flex: 1;
-  min-height: 0;
+  /* 출제자 화면에서 도구바에 밀려 채팅이 0높이로 접히지 않도록 최소 높이 확보. */
+  min-height: 60px;
   overflow-y: auto;
   font-size: 13px;
   display: flex;

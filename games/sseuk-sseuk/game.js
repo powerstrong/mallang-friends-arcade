@@ -633,6 +633,8 @@ function renderDrawingPhase(round) {
   allStrokes = [];
   clearCanvasVisual();
   canvasToolbar.classList.toggle('is-hidden', !amIDrawer);
+  // 출제자는 도구바가 추가돼 세로가 빠듯해 채팅이 안 보이던 문제 → 레이아웃을 별도 조정.
+  document.body.classList.toggle('is-drawer', amIDrawer);
   drawCanvas.style.cursor = amIDrawer ? 'crosshair' : 'not-allowed';
 
   // 채팅: 출제자도 자유 입력 (치팅 허용). 정답자는 사이드 채널만.
