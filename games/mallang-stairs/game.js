@@ -758,7 +758,7 @@
       if (!row) {
         row = document.createElement('div');
         row.className = 'live-rank__row';
-        row.innerHTML = '<span class="live-rank__place"></span><span class="live-rank__name"></span><span class="live-rank__score"></span>';
+        row.innerHTML = '<span class="live-rank__place"></span><span class="live-rank__name"></span>';
         rankRows[r.id] = row;
         rivalWrap.appendChild(row);
       }
@@ -767,7 +767,6 @@
       row.classList.toggle('is-dead', r.alive === false);
       row.children[0].textContent = r.place === 1 ? '★' : String(r.place);
       row.children[1].textContent = r.name;
-      row.children[2].textContent = r.best + '층';
       if (row.parentElement !== rivalWrap) rivalWrap.appendChild(row);
     });
     Object.keys(rankRows).forEach(function (id) {

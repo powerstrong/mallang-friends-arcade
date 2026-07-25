@@ -292,21 +292,22 @@ body {
 .hud__row--compact .hud__stat strong { font-size: 16px; }
 .hud__stat--time strong { color: #ff7a4d; font-size: 22px; }
 .hud__stat--time.is-danger strong { color: #ef4444; animation: dangerPulse .45s infinite alternate; }
+/* 순위바 — 왼쪽 끄트머리에 작게 이름만. 4명이 붙어도 플레이 화면을 안 가리도록. */
 .live-rank {
-  display: flex; flex-direction: column; gap: 3px; margin-top: 2px;
-  max-height: 116px; overflow: hidden;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px; margin-top: 2px;
+  max-height: 108px; overflow: hidden;
 }
 .live-rank__row {
-  display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; align-items: center; gap: 6px;
-  min-height: 24px; padding: 3px 7px; border-radius: 999px;
-  background: rgba(255,255,255,.72); font-size: 11px; font-weight: 900; box-shadow: 0 2px 8px rgba(120,80,110,.10);
+  display: inline-flex; align-items: center; gap: 4px; width: auto; max-width: 128px;
+  min-height: 17px; padding: 1px 8px 1px 5px; border-radius: 999px;
+  background: rgba(255,255,255,.5); font-size: 10px; font-weight: 800;
 }
-.live-rank__row.is-me { background: #fff0a8; }
-.live-rank__row.is-leader { background: linear-gradient(90deg, #fff7c8, #fff0a8); }
-.live-rank__row.is-dead { opacity: .58; }
-.live-rank__place { color: var(--pink); text-align: center; }
+.live-rank__row.is-me { background: rgba(255,224,120,.9); }
+.live-rank__row.is-leader { background: rgba(255,231,150,.9); }
+.live-rank__row.is-dead { opacity: .5; }
+.live-rank__place { color: var(--pink); flex: 0 0 auto; text-align: center; min-width: 10px; }
 .live-rank__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.live-rank__score { color: #6b5a64; }
+.live-rank__score { display: none; }
 .remote-layer { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
 .remote-player {
   position: absolute; width: 68px; height: 68px; margin-left: -34px; margin-top: -58px;
