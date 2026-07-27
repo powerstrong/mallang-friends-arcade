@@ -60,7 +60,7 @@ window.GameBoot = (function () {
     // to the lounge they came from. Also tag from=game so the world client
     // triggers a random spawn + landing effect instead of placing the player
     // at the fixed SPAWN_POINT.
-    if (from === 'world') {
+    if (from === 'world' || from === 'lab') {
       const worldId = params.get('worldId');
       const out = new URLSearchParams();
       if (worldId) out.set('worldId', worldId);
@@ -71,6 +71,31 @@ window.GameBoot = (function () {
     // Solo / direct-link sessions fall back to the brand landing page.
     window.location.href = '/';
   }
+
+  // ── 브라우저 뒤로가기 = "광장으로" 버튼과 동일 동작 ──────────────────────────
+  // 문제: 게임 중 브라우저 뒤로가기를 그대로 두면 목적지(광장) 페이지가 bfcache
+  // 에서 복원되면서, 이미 닫힌 WebSocket 을 문 채 되살아난다. 그 결과 광장에
+  // 유령 캐릭터(중복 세션)가 남고 연결이 반쯤 끊긴 상태가 된다.
+  // 해결: 뒤로가기를 가로채 exit() 로 라우팅한다. 그러면 "광장으로" 버튼과
+  // 똑같이 실제 네비게이션(from=game)이 일어나 현재 페이지가 언로드되며 소켓이
+  // 깔끔히 닫히고, 광장은 bfcache 가 아니라 새 로드로 auto-rejoin 한다.
+  let exiting = false;
+  function guardedExit() {
+    if (exiting) return;
+    exiting = true;
+    exit();
+  }
+  try {
+    // 센티넬 히스토리 항목을 하나 쌓아, 첫 뒤로가기가 이전 페이지로 곧장
+    // 넘어가지 않고 이 페이지에 머문 채 popstate 를 발생시키도록 한다.
+    history.pushState({ __mfaGameGuard: true }, '');
+    window.addEventListener('popstate', guardedExit);
+  } catch { /* history 미지원 — 무시 */ }
+  // 게임 페이지 자체가 bfcache 에서 복원되면(광장→앞으로가기 등) 소켓이 이미
+  // 죽어 있으므로 새로고침으로 깨끗한 상태를 다시 만든다.
+  window.addEventListener('pageshow', (e) => {
+    if (e.persisted) window.location.reload();
+  });
 
   return { code, name, gameId, gameType, playerId, characterId, isMultiplayer, from, submitResult, exit };
 })();
