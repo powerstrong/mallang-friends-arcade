@@ -1,0 +1,211 @@
+/* ════════════════════════════════════════════════════════
+   말랑 보드게임 타이머 — 기본 타이머 앱 스타일
+   외부 폰트·CDN 없이 순수 CSS. 라이트 톤 하나로 통일.
+   ════════════════════════════════════════════════════════ */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --bg: #14152b;
+  --card: rgba(255, 255, 255, 0.06);
+  --accent: #b08cff;
+  --accent-deep: #8a63f0;
+  --warn: #ff7676;
+  --text: #f3f1ff;
+  --muted: rgba(243, 241, 255, 0.55);
+}
+
+html, body {
+  height: 100%;
+  background: radial-gradient(120% 120% at 50% 0%, #23244a 0%, var(--bg) 60%);
+  color: var(--text);
+  -webkit-text-size-adjust: 100%;
+  font-family: 'Segoe UI', 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+  overscroll-behavior: none;
+}
+
+.timer-shell {
+  width: 100%;
+  min-height: 100vh;
+  min-height: 100dvh;
+  max-width: 480px;
+  margin: 0 auto;
+  padding: calc(env(safe-area-inset-top) + 12px) 20px calc(env(safe-area-inset-bottom) + 24px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 22px;
+}
+
+/* ── 상단 바 ── */
+.topbar {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.topbar__title {
+  font-weight: 800;
+  font-size: 1rem;
+  letter-spacing: 0.01em;
+}
+.topbar__spacer { width: 76px; }
+.ghost-btn {
+  width: 76px;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 6px 2px;
+  text-align: left;
+  -webkit-tap-highlight-color: transparent;
+}
+.ghost-btn:active { opacity: 0.6; }
+
+/* ── 프리셋 ── */
+.preset-row {
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+.chip {
+  flex: 0 0 auto;
+  padding: 9px 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: var(--card);
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.08s, background 0.15s, border-color 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.chip:active { transform: scale(0.94); }
+.chip.is-active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #221a3a;
+}
+
+/* ── 원형 다이얼 ── */
+.dial {
+  position: relative;
+  width: min(78vw, 320px);
+  aspect-ratio: 1 / 1;
+  margin-top: 4px;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  display: grid;
+  place-items: center;
+}
+.dial:active { transform: scale(0.985); }
+
+.dial__ring {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+.ring-track {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.08);
+  stroke-width: 14;
+}
+.ring-progress {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 14;
+  stroke-linecap: round;
+  /* 둘레 = 2πr = 2π·110 ≈ 691.15 */
+  stroke-dasharray: 691.15;
+  stroke-dashoffset: 0;
+  transition: stroke 0.2s;
+}
+
+.dial__center {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+}
+.dial__time {
+  font-size: clamp(3rem, 17vw, 4.6rem);
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+}
+.dial__hint {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--muted);
+  min-height: 1.1em;
+}
+
+/* 상태별 색상 */
+.dial.is-running .ring-progress { stroke: var(--accent); }
+.dial.is-paused  .ring-progress { stroke: #ffcf5c; }
+.dial.is-warning .ring-progress { stroke: var(--warn); }
+.dial.is-warning .dial__time { color: var(--warn); }
+.dial.is-done    .dial__time { color: var(--warn); }
+
+/* 마지막 5초 펄스 */
+.dial.is-warning .dial__center { animation: pulse 1s ease-in-out infinite; }
+@keyframes pulse {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.06); }
+}
+
+/* 타임아웃 플래시 */
+.dial.is-done { animation: flash 0.5s ease-out 3; }
+@keyframes flash {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.35; }
+}
+
+/* ── 미세 조정 ── */
+.adjust-row {
+  width: 100%;
+  max-width: 340px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.round-btn {
+  flex: 1;
+  padding: 14px 8px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: var(--card);
+  color: var(--text);
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.08s, opacity 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.round-btn:active { transform: scale(0.95); }
+.round-btn:disabled { opacity: 0.35; cursor: default; }
+.round-btn--reset {
+  flex: 0 0 auto;
+  min-width: 88px;
+  background: transparent;
+  color: var(--muted);
+}

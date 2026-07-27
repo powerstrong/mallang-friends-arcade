@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>말랑 보드게임 타이머</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <main class="timer-shell">
+      <!-- 상단 바 -->
+      <header class="topbar">
+        <button id="btnExit" class="ghost-btn" type="button" aria-label="광장으로">← 광장으로</button>
+        <span class="topbar__title">⏱️ 보드게임 타이머</span>
+        <span class="topbar__spacer" aria-hidden="true"></span>
+      </header>
+
+      <!-- 프리셋 시간 -->
+      <div id="presetRow" class="preset-row" role="group" aria-label="시간 프리셋">
+        <button class="chip" type="button" data-sec="30">30초</button>
+        <button class="chip is-active" type="button" data-sec="60">1분</button>
+        <button class="chip" type="button" data-sec="180">3분</button>
+        <button class="chip" type="button" data-sec="300">5분</button>
+        <button class="chip" type="button" data-sec="600">10분</button>
+      </div>
+
+      <!-- 원형 타이머 (탭하면 시작/일시정지) -->
+      <button id="dial" class="dial" type="button" aria-label="타이머 시작 또는 일시정지">
+        <svg class="dial__ring" viewBox="0 0 240 240" aria-hidden="true">
+          <circle class="ring-track" cx="120" cy="120" r="110" />
+          <circle id="ringProgress" class="ring-progress" cx="120" cy="120" r="110" />
+        </svg>
+        <span class="dial__center">
+          <span id="timeText" class="dial__time">01:00</span>
+          <span id="hintText" class="dial__hint">탭하면 시작</span>
+        </span>
+      </button>
+
+      <!-- 미세 조정 -->
+      <div id="adjustRow" class="adjust-row">
+        <button class="round-btn" type="button" data-delta="-10">−10초</button>
+        <button id="btnReset" class="round-btn round-btn--reset" type="button">리셋</button>
+        <button class="round-btn" type="button" data-delta="10">＋10초</button>
+      </div>
+    </main>
+
+    <script src="/games/registry.js"></script>
+    <script src="/shared/bootstrap.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>
