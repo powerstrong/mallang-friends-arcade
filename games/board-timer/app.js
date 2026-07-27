@@ -27,7 +27,7 @@
   const ring = document.getElementById('ringProgress');
   const presetRow = document.getElementById('presetRow');
   const adjustRow = document.getElementById('adjustRow');
-  const btnReset = document.getElementById('btnReset');
+  const btnPause = document.getElementById('btnPause');
   const btnExit = document.getElementById('btnExit');
 
   // ── 사운드 (Web Audio 합성) ──────────────────────────────
@@ -83,10 +83,16 @@
     dial.classList.toggle('is-done', state === 'done');
 
     if (state === 'idle') hintText.textContent = '탭하면 시작';
-    else if (state === 'running') hintText.textContent = '탭하면 일시정지';
-    else if (state === 'paused') hintText.textContent = '탭하면 계속';
-    else if (state === 'done') hintText.textContent = '탭하면 리셋';
+    else if (state === 'paused') hintText.textContent = '일시정지됨 · 탭하면 새로';
+    else hintText.textContent = '탭하면 다시 시작'; // running · done
 
+    // 일시정지 버튼: running/paused 일 때만 활성
+    const canPause = state === 'running' || state === 'paused';
+    btnPause.disabled = !canPause;
+    btnPause.classList.toggle('is-paused', state === 'paused');
+    btnPause.textContent = state === 'paused' ? '▶ 계속' : '⏸ 일시정지';
+
+    // 시간 조정: 카운트다운이 도는 중(running)에는 잠금
     const locked = state === 'running';
     presetRow.querySelectorAll('.chip').forEach((c) => (c.disabled = locked));
     adjustRow.querySelectorAll('.round-btn').forEach((b) => (b.disabled = locked));
@@ -113,8 +119,10 @@
     rafId = requestAnimationFrame(tick);
   }
 
-  function start() {
-    if (remainingMs <= 0) remainingMs = totalSec * 1000;
+  // 다이얼 탭 = 항상 전체 시간부터 새로 시작(턴마다 한 번씩 탭).
+  function restart() {
+    cancelAnimationFrame(rafId);
+    remainingMs = totalSec * 1000;
     state = 'running';
     lastBeepSec = -1;
     endAt = performance.now() + remainingMs;
@@ -184,10 +192,13 @@
   // ── 이벤트 ──────────────────────────────────────────────
   dial.addEventListener('click', () => {
     ensureAudio(); // 사용자 제스처에서 오디오 잠금 해제
-    if (state === 'idle') start();
-    else if (state === 'running') pause();
+    restart(); // idle·running·paused·done 어디서든 전체 시간부터 새로 시작
+  });
+
+  btnPause.addEventListener('click', () => {
+    ensureAudio();
+    if (state === 'running') pause();
     else if (state === 'paused') resume();
-    else if (state === 'done') reset();
   });
 
   presetRow.addEventListener('click', (e) => {
@@ -203,7 +214,6 @@
   adjustRow.addEventListener('click', (e) => {
     const btn = e.target.closest('.round-btn');
     if (!btn || btn.disabled) return;
-    if (btn === btnReset) { reset(); return; }
     const delta = parseInt(btn.dataset.delta, 10);
     if (!Number.isFinite(delta)) return;
     // 조정 시 프리셋 활성 표시는 일치하는 값만 유지

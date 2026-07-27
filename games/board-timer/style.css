@@ -179,13 +179,38 @@ html, body {
   50%      { opacity: 0.35; }
 }
 
+/* ── 일시정지 (작은 보조 버튼) ── */
+.pause-row {
+  display: flex;
+  justify-content: center;
+  min-height: 40px;
+}
+.pause-btn {
+  padding: 8px 18px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.08s, opacity 0.15s, color 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.pause-btn:active { transform: scale(0.95); }
+.pause-btn:disabled { opacity: 0; pointer-events: none; }
+.pause-btn.is-paused {
+  color: #ffcf5c;
+  border-color: rgba(255, 207, 92, 0.5);
+}
+
 /* ── 미세 조정 ── */
 .adjust-row {
   width: 100%;
   max-width: 340px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
   gap: 12px;
 }
 .round-btn {
