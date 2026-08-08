@@ -167,6 +167,9 @@
     .hpbar.low i { background: var(--coral); }
     .carrier-badge { position: absolute; top: -5px; right: -5px; z-index: 3; display: none; width: 19px; height: 19px; place-items: center; border-radius: 50%; background: #ffe067; font-size: 11px; }
     .unit.carrier .carrier-badge { display: grid; }
+    .shield-badge { position: absolute; top: -6px; left: -6px; z-index: 3; display: none; width: 20px; height: 20px; place-items: center; border: 1px solid #fff; border-radius: 50%; background: #65c9d5; font-size: 11px; box-shadow: 0 2px 4px rgba(45,33,70,.24); }
+    .unit.guarded .shield-badge { display: grid; }
+    .unit.guarded .unit-body { box-shadow: 0 0 0 3px rgba(87,197,211,.45), 0 3px 6px rgba(45,33,70,.35); }
     .float { position: absolute; z-index: 20; color: #c92f49; font-size: calc(var(--cell) * .45); font-weight: 950; pointer-events: none; animation: rise .75s ease-out forwards; text-shadow: 0 2px #fff; }
     @keyframes rise { to { transform: translateY(-30px); opacity: 0; } }
 
@@ -185,9 +188,9 @@
     .forecast { display: none; margin: 5px 0 8px; padding: 9px 11px; border: 1px solid #b9d7ee; border-radius: 12px; background: #eff8ff; color: #4e6474; font-size: 11px; line-height: 1.45; }
     .forecast.show { display: block; }
     .forecast b { color: var(--ink); }
-    .actions { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 7px; }
+    .actions { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 7px; }
     .actions .button { min-height: 48px; padding: 8px 5px; border-radius: 12px; font-size: 12px; box-shadow: 0 4px 0 var(--violet-dark); }
-    .actions .wide { grid-column: span 2; }
+    .actions .all { grid-column: 1 / -1; }
 
     dialog { width: min(360px, calc(100% - 32px)); padding: 0; border: 0; border-radius: 22px; color: var(--ink); background: var(--paper); box-shadow: 0 20px 55px rgba(27,20,46,.4); }
     dialog::backdrop { background: rgba(28,21,47,.72); backdrop-filter: blur(3px); }
@@ -264,11 +267,12 @@
         <div class="forecast" id="forecast" aria-live="polite"></div>
         <div class="actions">
           <button class="button secondary" id="btnThreat" type="button">위협 보기</button>
+          <button class="button secondary" id="btnSkill" type="button" disabled>특기</button>
+          <button class="button secondary" id="btnObjective" type="button">목표 설명</button>
           <button class="button secondary" id="btnCancel" type="button" disabled>취소</button>
           <button class="button" id="btnConfirm" type="button" disabled>확정</button>
           <button class="button secondary" id="btnWait" type="button" disabled>대기</button>
-          <button class="button secondary wide" id="btnObjective" type="button">목표 설명</button>
-          <button class="button wide" id="btnEnd" type="button">친구 차례 끝</button>
+          <button class="button all" id="btnEnd" type="button">친구 차례 끝</button>
         </div>
       </section>
     </section>

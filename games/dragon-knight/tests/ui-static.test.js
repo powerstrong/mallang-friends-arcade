@@ -19,7 +19,7 @@ test('mobile viewport keeps zoom enabled and touch targets large', function () {
   assert(html.includes('min-height: 48px'));
 });
 test('campaign, briefing, battle, result, pause, and help surfaces exist', function () {
-  ['homeScreen','briefScreen','battleScreen','resultScreen','missionList','objectiveText','objectiveProgress','forecast','btnThreat','btnCancel','btnConfirm','btnWait','btnObjective','btnEnd','pauseDialog','helpDialog'].forEach(function (id) {
+  ['homeScreen','briefScreen','battleScreen','resultScreen','missionList','objectiveText','objectiveProgress','forecast','btnThreat','btnSkill','btnCancel','btnConfirm','btnWait','btnObjective','btnEnd','pauseDialog','helpDialog'].forEach(function (id) {
     assert(html.includes('id="' + id + '"'), 'missing #' + id);
   });
 });

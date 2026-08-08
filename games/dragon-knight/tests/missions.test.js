@@ -66,6 +66,52 @@ test('all unit and prop coordinates fit inside 8x8 maps', function () {
   Missions.listMissions().forEach(everyCoordinateInBounds);
 });
 
+test('units and objectives start on walkable, non-overlapping cells', function () {
+  Missions.listMissions().forEach(function (mission) {
+    var occupied = {};
+    mission.units.forEach(function (unit) {
+      assert.strictEqual(mission.terrain[unit.y][unit.x], 0, unit.id + ' starts on blocked terrain');
+      var key = unit.x + ',' + unit.y;
+      assert(!occupied[key], 'units overlap at ' + key);
+      occupied[key] = unit.id;
+    });
+    (mission.props || []).forEach(function (prop) {
+      assert.strictEqual(mission.terrain[prop.y][prop.x], 0, prop.id + ' sits on blocked terrain');
+    });
+  });
+});
+
+test('battery route has enough turn budget before combat detours', function () {
+  var mission = Missions.createMission('battery-run');
+  function distance(from, to) {
+    var queue = [{ x: from.x, y: from.y, cost: 0 }];
+    var seen = {}; seen[from.x + ',' + from.y] = true;
+    for (var i = 0; i < queue.length; i += 1) {
+      var current = queue[i];
+      if (current.x === to.x && current.y === to.y) return current.cost;
+      [[1,0],[-1,0],[0,1],[0,-1]].forEach(function (dir) {
+        var x = current.x + dir[0], y = current.y + dir[1], key = x + ',' + y;
+        if (x < 0 || y < 0 || x >= mission.width || y >= mission.height || mission.terrain[y][x] !== 0 || seen[key]) return;
+        seen[key] = true; queue.push({ x: x, y: y, cost: current.cost + 1 });
+      });
+    }
+    return Infinity;
+  }
+  var carrier = mission.units.find(function (unit) { return unit.id === 'latte'; });
+  var route = distance(carrier, mission.objective.pickupAt) + distance(mission.objective.pickupAt, mission.objective.escapeAt);
+  assert(route <= carrier.mov * mission.objective.turnLimit, 'turn limit is below the shortest carrying route');
+});
+
+test('clocktower release balance keeps the split route readable', function () {
+  var mission = Missions.createMission('clocktower-core');
+  var boss = mission.units.find(function (unit) { return unit.id === 'boss-bear'; });
+  assert.strictEqual(mission.parTurns, 8);
+  assert.strictEqual(mission.objective.requiredActiveCount, 2);
+  assert.deepStrictEqual(mission.objective.controlStars.map(function (star) { return [star.x, star.y]; }), [[1, 1], [5, 1]]);
+  assert.strictEqual(mission.units.filter(function (unit) { return unit.team === 'foe'; }).length, 3);
+  assert.deepStrictEqual({ hp: boss.hp, atk: boss.atk, def: boss.def, mov: boss.mov }, { hp: 11, atk: 5, def: 2, mov: 1 });
+});
+
 var failed = 0;
 tests.forEach(function (item) {
   try {

@@ -13,13 +13,13 @@
   var cells = [];
   var unitEls = Object.create(null);
   var propEls = Object.create(null);
-  var ui = { selectedId: null, previewMove: null, pendingAction: null, threats: false, busy: false, hintText: '' };
+  var ui = { selectedId: null, previewMove: null, pendingAction: null, threats: false, busy: false, hintText: '', skillArmed: false };
   var audioContext = null;
   var ids = [
     'homeScreen','briefScreen','battleScreen','resultScreen','missionList','campaignProgress','continueButton','resumeButton','homeSound',
     'briefBack','briefEyebrow','briefLocation','briefTitle','briefCopy','briefDialogue','briefObjective','briefPractice','briefStart',
     'battleMenu','battleTitle','battleLocation','turnText','turnLimitText','objectiveText','objectiveProgress','board','phase','autosave',
-    'info','hint','forecast','btnThreat','btnCancel','btnConfirm','btnWait','btnObjective','btnEnd','resultEyebrow','resultTitle',
+    'info','hint','forecast','btnThreat','btnCancel','btnConfirm','btnWait','btnSkill','btnObjective','btnEnd','resultEyebrow','resultTitle',
     'resultStars','resultCopy','resultTurns','resultFriends','resultStopped','resultNext','resultRetry','resultHome','pauseDialog',
     'pauseContinue','pauseRestart','pauseQuit','helpDialog','helpClose','announcer'
   ];
@@ -169,7 +169,7 @@
     state.units.forEach(function (unit) {
       var node = document.createElement('button'); node.type = 'button'; node.className = 'unit ' + unit.team;
       node.setAttribute('aria-label', unit.name || unit.id);
-      node.innerHTML = '<span class="unit-body"><span class="token-fallback"></span><img alt=""><span class="carrier-badge">🔋</span><span class="hpbar"><i></i></span></span>';
+      node.innerHTML = '<span class="unit-body"><span class="token-fallback"></span><img alt=""><span class="carrier-badge">🔋</span><span class="shield-badge">🛡</span><span class="hpbar"><i></i></span></span>';
       node.querySelector('.token-fallback').textContent = unit.emoji || (unit.team === 'you' ? '🙂' : '🤖');
       var image = node.querySelector('img'); image.src = unit.asset || '';
       image.addEventListener('load', function () { node.querySelector('.token-fallback').hidden = true; });
@@ -208,6 +208,7 @@
       refs.bar.classList.toggle('low', ratio <= .34); refs.root.classList.toggle('acted', unit.team === 'you' && unit.acted);
       refs.root.classList.toggle('selected', unit.id === ui.selectedId); refs.root.classList.toggle('preview', Boolean(ui.previewMove && unit.id === ui.selectedId));
       refs.root.classList.toggle('carrier', unit.id === carrier);
+      refs.root.classList.toggle('guarded', Boolean(unit.guardBonus));
     });
   }
   function clearMarks() { cells.forEach(function (row) { row.forEach(function (cell) { cell.classList.remove('mv','atk','path','threat','interact'); }); }); }
@@ -215,7 +216,18 @@
   function same(a, b) { return a && b && a.x === b.x && a.y === b.y; }
   function fromHere(action, actor) { return action.from && same(action.from, actor); }
   function isObjectiveAction(action) { return action && ['pickup-item','escape-with-item','activate-device'].indexOf(action.type) >= 0; }
+  function isSkillAction(action) { return action && ['guard-stance','special-shot'].indexOf(action.type) >= 0; }
   function actionPoint(action) { return action.at || action.to || action.from; }
+  function currentActions(actor, predicate) {
+    if (!actor) return [];
+    return R.listLegalActions(state, actor.id).filter(function (action) { return fromHere(action, actor) && predicate(action); });
+  }
+  function skillLabel(actor) {
+    if (!actor) return '특기';
+    if (actor.role === 'guardian') return '든든막기';
+    if (actor.role === 'marksman') return '별빛콩';
+    return '특기';
+  }
   function renderMarks() {
     clearMarks();
     if (ui.threats) R.listThreatenedTiles(state, 'foe').forEach(function (tile) { mark(tile, 'threat'); });
@@ -225,38 +237,53 @@
     if (ui.previewMove) { (ui.previewMove.path || []).forEach(function (tile) { mark(tile, 'path'); }); mark(ui.previewMove.to, 'mv'); }
     else {
       actions.filter(function (a) { return a.type === 'move'; }).forEach(function (a) { mark(a.to, 'mv'); });
-      actions.filter(function (a) { return a.type === 'attack' && fromHere(a, actor); }).forEach(function (a) { mark(R.getUnit(state, a.targetId), 'atk'); });
+      if (ui.skillArmed) {
+        actions.filter(function (a) { return isSkillAction(a) && fromHere(a, actor); }).forEach(function (a) {
+          mark(a.targetId ? R.getUnit(state, a.targetId) : actionPoint(a), a.type === 'special-shot' ? 'atk' : 'interact');
+        });
+      } else {
+        actions.filter(function (a) { return a.type === 'attack' && fromHere(a, actor); }).forEach(function (a) { mark(R.getUnit(state, a.targetId), 'atk'); });
+      }
       actions.filter(function (a) { return isObjectiveAction(a) && fromHere(a, actor); }).forEach(function (a) { mark(actionPoint(a), 'interact'); });
     }
-    if (ui.pendingAction) mark(ui.pendingAction.type === 'attack' ? R.getUnit(state, ui.pendingAction.targetId) : actionPoint(ui.pendingAction), ui.pendingAction.type === 'attack' ? 'atk' : 'interact');
+    if (ui.pendingAction) mark(ui.pendingAction.targetId ? R.getUnit(state, ui.pendingAction.targetId) : actionPoint(ui.pendingAction), (ui.pendingAction.type === 'attack' || ui.pendingAction.type === 'special-shot') ? 'atk' : 'interact');
   }
 
   function renderInfo(unit) {
     if (!unit) { el.info.innerHTML = '<div class="unit-avatar">⭐</div><div><div class="unit-name">친구를 선택하세요</div><div class="unit-stats">친구를 탭하면 이동할 수 있는 칸이 나타납니다.</div></div>'; return; }
+    var roleText = unit.role === 'guardian' ? ' · 특기 <b>든든막기</b>' : unit.role === 'marksman' ? ' · 특기 <b>별빛콩</b>' : '';
+    var guardText = unit.guardBonus ? ' · 보호막 <b>+' + unit.guardBonus + '</b>' : '';
     el.info.innerHTML = '<div class="unit-avatar"><img src="' + unit.asset + '" alt=""></div><div><div class="unit-name">' + unit.name + '</div>' +
       '<div class="unit-stats">기운 <b>' + Math.max(0,unit.hp) + '/' + unit.maxHp + '</b> · 해결 <b>' + unit.atk + '</b> · 버팀 <b>' + unit.def +
-      '</b> · 이동 <b>' + unit.mov + '</b> · 거리 <b>' + unit.range + '</b></div></div>';
+      '</b> · 이동 <b>' + unit.mov + '</b> · 거리 <b>' + unit.range + '</b>' + guardText + roleText + '</div></div>';
   }
-  function objectiveLabel(action) {
-    if (!action) return '목표 설명';
+  function actionLabel(action, actor) {
+    if (!action) return actor ? skillLabel(actor) : '목표 설명';
     if (action.type === 'pickup-item') return '배터리 줍기';
     if (action.type === 'escape-with-item') return '배터리 전달';
     if (action.type === 'activate-device') return '제어별 켜기';
+    if (action.type === 'guard-stance') return '든든막기';
+    if (action.type === 'special-shot') return '별빛콩';
     return '목표 행동';
   }
   function currentObjectiveAction(actor) {
     if (!actor) return null;
     return R.listLegalActions(state, actor.id).find(function (action) { return isObjectiveAction(action) && fromHere(action, actor); }) || null;
   }
+  function currentSkillActions(actor) { return currentActions(actor, isSkillAction); }
   function renderForecast() {
     if (!ui.pendingAction) { el.forecast.classList.remove('show'); el.forecast.textContent = ''; return; }
-    if (ui.pendingAction.type !== 'attack') {
-      el.forecast.innerHTML = '<b>' + objectiveLabel(ui.pendingAction) + '</b><br>확정 전에는 작전 상태가 바뀌지 않습니다.'; el.forecast.classList.add('show'); return;
+    if (ui.pendingAction.type === 'guard-stance') {
+      el.forecast.innerHTML = '<b>든든막기</b><br>라떼와 인접 친구에게 적 페이즈 동안 보호막 +2를 줍니다.'; el.forecast.classList.add('show'); return;
+    }
+    if (ui.pendingAction.type !== 'attack' && ui.pendingAction.type !== 'special-shot') {
+      el.forecast.innerHTML = '<b>' + actionLabel(ui.pendingAction) + '</b><br>확정 전에는 작전 상태가 바뀌지 않습니다.'; el.forecast.classList.add('show'); return;
     }
     var f = R.forecastAction(state, ui.pendingAction); if (!f) return;
     var attacker = R.getUnit(state, f.actorId), target = R.getUnit(state, f.targetId);
     var counter = f.counterDamage ? ' · 맞대응 <b>' + f.counterDamage + '</b> (내 기운 ' + f.actorHpBefore + '→' + f.actorHpAfter + ')' : ' · 맞대응 없음';
-    el.forecast.innerHTML = '<b>' + attacker.name + ' → ' + target.name + '</b><br>기운 피해 <b>' + f.damage + '</b> (' + f.targetHpBefore + '→' + f.targetHpAfter + ')' + counter + (f.targetStopped ? ' · <b>작동 정지</b>' : '');
+    var title = f.type === 'special-shot' ? '별빛콩' : attacker.name + ' → ' + target.name;
+    el.forecast.innerHTML = '<b>' + title + '</b><br>기운 피해 <b>' + f.damage + '</b> (' + f.targetHpBefore + '→' + f.targetHpAfter + ')' + counter + (f.targetStopped ? ' · <b>작동 정지</b>' : '');
     el.forecast.classList.add('show');
   }
   function progressText() {
@@ -267,12 +294,17 @@
   }
   function renderControls() {
     var actor = ui.selectedId ? R.getUnit(state, ui.selectedId) : null;
-    var pending = Boolean(ui.previewMove || ui.pendingAction); var objectiveAction = actor && !pending ? currentObjectiveAction(actor) : null;
+    var pending = Boolean(ui.previewMove || ui.pendingAction);
+    var objectiveAction = actor && !pending ? currentObjectiveAction(actor) : null;
+    var skillActions = actor && !pending ? currentSkillActions(actor) : [];
     el.btnThreat.textContent = ui.threats ? '위협 숨기기' : '위협 보기'; el.btnThreat.setAttribute('aria-pressed', ui.threats ? 'true' : 'false');
     el.btnCancel.disabled = !pending || ui.busy; el.btnConfirm.disabled = !pending || ui.busy;
-    el.btnConfirm.textContent = ui.pendingAction ? (ui.pendingAction.type === 'attack' ? '멈추기 확정' : '목표 행동 확정') : '이동 확정';
+    el.btnConfirm.textContent = ui.pendingAction ? ((ui.pendingAction.type === 'attack' || ui.pendingAction.type === 'special-shot') ? '멈추기 확정' : '행동 확정') : '이동 확정';
     el.btnWait.disabled = !actor || actor.acted || state.phase !== 'you' || pending || ui.busy;
-    el.btnObjective.textContent = objectiveAction ? objectiveLabel(objectiveAction) : '목표 설명'; el.btnObjective.disabled = ui.busy;
+    el.btnSkill.textContent = actor ? skillLabel(actor) : '특기';
+    el.btnSkill.disabled = !actor || actor.acted || state.phase !== 'you' || pending || ui.busy || skillActions.length === 0;
+    el.btnSkill.setAttribute('aria-pressed', ui.skillArmed ? 'true' : 'false');
+    el.btnObjective.textContent = objectiveAction ? actionLabel(objectiveAction) : '목표 설명'; el.btnObjective.disabled = ui.busy;
     el.btnEnd.disabled = state.phase !== 'you' || ui.busy;
   }
   function renderHeader() {
@@ -283,10 +315,10 @@
   function hint(text) { ui.hintText = text; el.hint.textContent = text; }
 
   function select(unit) {
-    ui.selectedId = unit.id; ui.previewMove = null; ui.pendingAction = null;
+    ui.selectedId = unit.id; ui.previewMove = null; ui.pendingAction = null; ui.skillArmed = false;
     hint(unit.moved ? '장난감이나 목표 행동을 고른 뒤 확정하세요.' : '파란 칸을 눌러 이동을 미리 보세요.'); beep('tap'); render();
   }
-  function clearPending() { ui.previewMove = null; ui.pendingAction = null; hint(ui.selectedId ? '이동할 칸이나 행동을 다시 고르세요.' : '움직일 친구를 고르세요.'); render(); }
+  function clearPending() { ui.previewMove = null; ui.pendingAction = null; ui.skillArmed = false; hint(ui.selectedId ? '이동할 칸이나 행동을 다시 고르세요.' : '움직일 친구를 고르세요.'); render(); }
   function objectiveAt(actions, actor, x, y) {
     return actions.find(function (action) { var point = actionPoint(action); return isObjectiveAction(action) && fromHere(action, actor) && point && point.x === x && point.y === y; });
   }
@@ -303,14 +335,17 @@
     var actions = R.listLegalActions(state, actor.id);
     if (tapped && tapped.team === 'foe') {
       var attack = actions.find(function (a) { return a.type === 'attack' && a.targetId === tapped.id && fromHere(a, actor); });
-      if (attack) { ui.pendingAction = attack; hint('결과를 확인한 뒤 멈추기를 확정하세요.'); beep('tap'); render(); }
+      var special = actions.find(function (a) { return a.type === 'special-shot' && a.targetId === tapped.id && fromHere(a, actor); });
+      if (ui.skillArmed && special) { ui.skillArmed = false; ui.pendingAction = special; hint('별빛콩 결과를 확인하고 확정하세요.'); beep('tap'); render(); }
+      else if (attack) { ui.pendingAction = attack; hint('결과를 확인한 뒤 멈추기를 확정하세요.'); beep('tap'); render(); }
+      else if (special) { ui.pendingAction = special; hint('별빛콩 결과를 확인하고 확정하세요.'); beep('tap'); render(); }
       else { renderInfo(tapped); hint('현재 위치에서는 닿지 않아요. 먼저 이동해 주세요.'); }
       return;
     }
     var interaction = objectiveAt(actions, actor, x, y);
     if (interaction) { ui.pendingAction = interaction; hint('목표 행동을 확인하고 확정하세요.'); render(); return; }
     var move = actions.find(function (a) { return a.type === 'move' && a.to.x === x && a.to.y === y; });
-    if (move) { ui.previewMove = move; hint('이동 미리보기입니다. 확정하거나 취소하세요.'); beep('tap'); render(); }
+    if (move) { ui.skillArmed = false; ui.previewMove = move; hint('이동 미리보기입니다. 확정하거나 취소하세요.'); beep('tap'); render(); }
   }
 
   function floatEvent(event) {
@@ -323,14 +358,14 @@
   function syncStatus() { var result = R.evaluateObjective(state); if (result.status !== 'active') state.status = result.status; return result; }
   function committed(result) {
     if (!result || !result.ok) return;
-    state = result.state; ui.previewMove = null; ui.pendingAction = null; (result.events || []).forEach(floatEvent); syncStatus(); saveBattle(true); render();
+    state = result.state; ui.previewMove = null; ui.pendingAction = null; ui.skillArmed = false; (result.events || []).forEach(floatEvent); syncStatus(); saveBattle(true); render();
     if (state.status !== 'active') return window.setTimeout(outcome, 320);
     if (R.aliveUnits(state, 'you').every(function (unit) { return unit.acted; })) return window.setTimeout(enemyPhase, 260);
     ui.selectedId = null; hint('다음에 움직일 친구를 고르세요.'); render();
   }
   function enemyPhase() {
     if (ui.busy || state.status !== 'active') return;
-    ui.busy = true; ui.selectedId = null; ui.previewMove = null; ui.pendingAction = null;
+    ui.busy = true; ui.selectedId = null; ui.previewMove = null; ui.pendingAction = null; ui.skillArmed = false;
     state = R.endPhase(state); syncStatus(); if (state.status !== 'active') return outcome();
     hint('장난감의 움직임을 확인하세요…'); saveBattle(true); render();
     var foes = R.aliveUnits(state, 'foe').map(function (unit) { return unit.id; });
@@ -399,10 +434,23 @@
     var wait = R.listLegalActions(state, actor.id).find(function (action) { return action.type === 'wait' && fromHere(action, actor); });
     if (wait) committed(R.applyAction(state, wait));
   });
+  el.btnSkill.addEventListener('click', function () {
+    var actor = ui.selectedId ? R.getUnit(state, ui.selectedId) : null;
+    var actions = actor ? currentSkillActions(actor) : [];
+    if (!actor || ui.busy || !actions.length) return;
+    if (actions.length === 1 && actions[0].type === 'guard-stance') {
+      ui.pendingAction = actions[0];
+      hint('든든막기 결과를 확인하고 확정하세요.');
+    } else {
+      ui.skillArmed = !ui.skillArmed;
+      hint(ui.skillArmed ? '별빛콩을 쓸 장난감을 탭하세요.' : '특기 선택을 취소했습니다.');
+    }
+    render();
+  });
   el.btnObjective.addEventListener('click', function () {
     var actor = ui.selectedId ? R.getUnit(state, ui.selectedId) : null; var action = actor ? currentObjectiveAction(actor) : null;
     if (action) { ui.pendingAction = action; hint('목표 행동을 확인하고 확정하세요.'); render(); }
-    else showHelp(mission.title, '<b>목표</b><br>' + mission.objective.text + '<br><br><b>작전 팁</b><br>' + mission.hint);
+    else showHelp(mission.title, '<b>목표</b><br>' + mission.objective.text + '<br><br><b>작전 팁</b><br>' + mission.hint + '<br><br><b>특기</b><br>라떼의 <b>든든막기</b>는 자신과 인접 친구를 적 페이즈 동안 단단하게 지켜 줍니다. 민트의 <b>별빛콩</b>은 기본 사거리보다 1칸 더 멀리 정확하게 멈춥니다.');
   });
   el.btnEnd.addEventListener('click', function () { if (!ui.busy && state.phase === 'you') enemyPhase(); });
   el.resultNext.addEventListener('click', function () { openBrief(M.listMissionIds()[mission.order]); });

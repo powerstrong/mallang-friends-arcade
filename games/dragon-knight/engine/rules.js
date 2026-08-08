@@ -95,6 +95,8 @@
       unit.acted = Boolean(unit.acted);
       unit.moved = Boolean(unit.moved);
       unit.carrying = Array.isArray(unit.carrying) ? unit.carrying.slice() : [];
+      unit.guardBonus = Number(unit.guardBonus) || 0;
+      unit.guardedBy = unit.guardedBy || null;
     });
     var verdict = evaluateObjective(state);
     state.status = verdict.status;
@@ -164,6 +166,24 @@
   function itemCarriedBy(state, itemId) {
     return state.units.find(function (unit) { return unit.hp > 0 && unit.carrying && unit.carrying.indexOf(itemId) >= 0; }) || null;
   }
+  function extraRangeFor(actor) {
+    return actor && actor.role === 'marksman' ? 1 : 0;
+  }
+  function canUseSpecialShotFrom(state, actor, target, from) {
+    if (!actor || actor.role !== 'marksman') return false;
+    if (!target || target.hp <= 0 || target.team === actor.team) return false;
+    var origin = from || actor;
+    var distance = manhattan(origin, target);
+    return distance > actor.range && distance <= actor.range + extraRangeFor(actor) && hasLineOfSight(state, origin, target);
+  }
+  function adjacentAllies(state, actor, from) {
+    return aliveUnits(state, actor.team).filter(function (unit) {
+      return unit.id !== actor.id && manhattan(from, unit) === 1;
+    });
+  }
+  function guardMitigation(unit) {
+    return Math.max(0, Number(unit && unit.guardBonus) || 0);
+  }
 
   function specialActionsAt(state, actor, from, path) {
     var objective = state.objective || {};
@@ -182,6 +202,16 @@
         var prop = getProp(state, star.id);
         if (prop && !prop.active && from.x === star.x && from.y === star.y) {
           actions.push({ type: 'activate-device', actorId: actor.id, deviceId: star.id, from: clone(from), at: clone(from), path: clone(path || []) });
+        }
+      });
+    }
+    if (actor.role === 'guardian') {
+      actions.push({ type: 'guard-stance', actorId: actor.id, from: clone(from), path: clone(path || []) });
+    }
+    if (actor.role === 'marksman') {
+      aliveUnits(state).forEach(function (target) {
+        if (canUseSpecialShotFrom(state, actor, target, from)) {
+          actions.push({ type: 'special-shot', actorId: actor.id, targetId: target.id, from: clone(from), path: clone(path || []) });
         }
       });
     }
@@ -217,28 +247,29 @@
     return Object.keys(unique).sort().map(function (id) { return unique[id]; });
   }
 
-  function fixedDamage(attacker, defender) { return Math.max(1, attacker.atk - defender.def); }
+  function fixedDamage(attacker, defender) { return Math.max(1, attacker.atk - defender.def - guardMitigation(defender)); }
+  function specialShotDamage(attacker, defender) { return Math.max(1, attacker.atk + 1 - defender.def - guardMitigation(defender)); }
 
   function forecastAction(state, action) {
     if (!action) return null;
     if (action.type === 'move' || action.type === 'wait') {
       return { type: action.type, actorId: action.actorId, from: clone(action.to || action.from), consumesAction: action.type === 'wait' };
     }
-    if (action.type === 'pickup-item' || action.type === 'escape-with-item' || action.type === 'activate-device') {
+    if (action.type === 'pickup-item' || action.type === 'escape-with-item' || action.type === 'activate-device' || action.type === 'guard-stance') {
       return { type: action.type, actorId: action.actorId, from: clone(action.from || action.at), itemId: action.itemId || null, deviceId: action.deviceId || null };
     }
-    if (action.type !== 'attack') return null;
+    if (action.type !== 'attack' && action.type !== 'special-shot') return null;
     var sim = clone(state);
     var attacker = getUnit(sim, action.actorId), defender = getUnit(sim, action.targetId);
     if (!attacker || !defender) return null;
     attacker.x = action.from.x;
     attacker.y = action.from.y;
-    var damage = fixedDamage(attacker, defender);
+    var damage = action.type === 'special-shot' ? specialShotDamage(attacker, defender) : fixedDamage(attacker, defender);
     var defenderAfter = Math.max(0, defender.hp - damage);
     var counter = 0;
-    if (defenderAfter > 0 && canAttackFrom(sim, defender, attacker, defender)) counter = fixedDamage(defender, attacker);
+    if (action.type === 'attack' && defenderAfter > 0 && canAttackFrom(sim, defender, attacker, defender)) counter = fixedDamage(defender, attacker);
     return {
-      type: 'attack',
+      type: action.type,
       actorId: attacker.id,
       targetId: defender.id,
       damage: damage,
@@ -280,6 +311,11 @@
     }
     return { status: 'active', reason: '' };
   }
+  function consumeGuard(unit) {
+    if (!unit || !guardMitigation(unit)) return;
+    unit.guardBonus = 0;
+    unit.guardedBy = null;
+  }
 
   function applyAction(state, action, randomSource) {
     var legal = listLegalActions(state, action.actorId).some(function (candidate) { return equivalentAction(candidate, action); });
@@ -301,22 +337,36 @@
       actor.acted = true;
       events.push({ type: 'unit-moved', unitId: actor.id, to: clone(action.from), path: clone(action.path || []) });
       events.push({ type: 'unit-waited', unitId: actor.id });
-    } else if (action.type === 'attack') {
+    } else if (action.type === 'attack' || action.type === 'special-shot') {
       actor.x = action.from.x;
       actor.y = action.from.y;
       actor.moved = true;
       var defender = getUnit(next, action.targetId);
       var forecast = forecastAction(next, action);
       defender.hp = forecast.targetHpAfter;
+      consumeGuard(defender);
       events.push({ type: 'unit-moved', unitId: actor.id, to: clone(action.from), path: clone(action.path || []) });
-      events.push({ type: 'unit-hit', sourceId: actor.id, targetId: defender.id, amount: forecast.damage });
+      events.push({ type: 'unit-hit', sourceId: actor.id, targetId: defender.id, amount: forecast.damage, special: action.type === 'special-shot' });
       if (defender.hp === 0) events.push({ type: 'unit-stopped', unitId: defender.id });
       if (forecast.counterDamage > 0) {
         actor.hp = forecast.actorHpAfter;
+        consumeGuard(actor);
         events.push({ type: 'unit-hit', sourceId: defender.id, targetId: actor.id, amount: forecast.counterDamage, counter: true });
         if (actor.hp === 0) events.push({ type: 'unit-stopped', unitId: actor.id });
       }
       actor.acted = true;
+    } else if (action.type === 'guard-stance') {
+      actor.x = action.from.x;
+      actor.y = action.from.y;
+      actor.moved = true;
+      actor.acted = true;
+      actor.guardBonus = Math.max(actor.guardBonus || 0, 2);
+      adjacentAllies(next, actor, actor).forEach(function (ally) {
+        ally.guardBonus = Math.max(ally.guardBonus || 0, 2);
+        ally.guardedBy = actor.id;
+      });
+      events.push({ type: 'unit-moved', unitId: actor.id, to: clone(action.from), path: clone(action.path || []) });
+      events.push({ type: 'guard-applied', unitId: actor.id });
     } else if (action.type === 'pickup-item') {
       actor.x = action.from.x;
       actor.y = action.from.y;
@@ -402,6 +452,12 @@
     else {
       next.phase = 'you';
       next.turn += 1;
+    }
+    if (next.phase === 'you') {
+      next.units.forEach(function (unit) {
+        unit.guardBonus = 0;
+        unit.guardedBy = null;
+      });
     }
     next.units.forEach(function (unit) {
       if (unit.team === next.phase) {

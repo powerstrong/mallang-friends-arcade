@@ -278,10 +278,10 @@
       location: '시계탑 제어실',
       eyebrow: '작전 3 · 마지막 점검',
       brief: '시계탑 제어실에서 제어별 2개를 켠 뒤 덩치곰 로봇을 안전하게 멈춰야 합니다.',
-      hint: '포탑 시야를 피하며 제어별을 먼저 밟고, 곰 로봇은 마지막에 둘이 함께 마무리하세요.',
+      hint: '왼쪽과 오른쪽 제어별을 빠르게 나눠 밝힌 뒤, 가운데로 다시 모여 곰 로봇을 마무리하세요.',
       victoryText: '제어별이 안정화되고 덩치곰 로봇이 멈췄습니다. 시계탑이 다시 평온해졌습니다.',
       defeatText: '아군 기운이 먼저 바닥나면 제어실이 잠겨 작전이 종료됩니다.',
-      parTurns: 7,
+      parTurns: 8,
       story: [
         { speaker: '민트', text: '덩치곰은 제어별이 꺼진 동안 보호막으로 둘러싸여 있어.' },
         { speaker: '라떼', text: '양쪽 별부터 켜고 합류하자. 서두르되 위험 범위는 꼭 확인해!' }
@@ -305,18 +305,18 @@
         requiredActiveCount: 2,
         controlStars: [
           { id: 'star-a', x: 1, y: 1 },
-          { id: 'star-b', x: 6, y: 1 }
+          { id: 'star-b', x: 5, y: 1 }
         ],
         bossId: 'boss-bear',
         actions: [
           { type: 'activate-device', deviceKind: 'control-star', id: 'star-a', at: { x: 1, y: 1 } },
-          { type: 'activate-device', deviceKind: 'control-star', id: 'star-b', at: { x: 6, y: 1 } },
+          { type: 'activate-device', deviceKind: 'control-star', id: 'star-b', at: { x: 5, y: 1 } },
           { type: 'defeat-boss', bossId: 'boss-bear' }
         ]
       },
       props: [
         { id: 'star-a', kind: 'control-star', x: 1, y: 1, activeAsset: 'assets/runtime/props/star-on.webp', inactiveAsset: 'assets/runtime/props/star-off.webp' },
-        { id: 'star-b', kind: 'control-star', x: 6, y: 1, activeAsset: 'assets/runtime/props/star-on.webp', inactiveAsset: 'assets/runtime/props/star-off.webp' }
+        { id: 'star-b', kind: 'control-star', x: 5, y: 1, activeAsset: 'assets/runtime/props/star-on.webp', inactiveAsset: 'assets/runtime/props/star-off.webp' }
       ],
       units: [
         {
@@ -343,7 +343,7 @@
           team: 'you',
           role: 'marksman',
           ai: 'player',
-          x: 2,
+          x: 3,
           y: 6,
           hp: 8,
           maxHp: 8,
@@ -371,30 +371,13 @@
           asset: 'assets/runtime/tokens/enemy-turret.webp'
         },
         {
-          id: 'turret-2',
-          name: '반짝포탑',
-          emoji: '📡',
-          team: 'foe',
-          role: 'spark-turret',
-          ai: 'turret',
-          x: 5,
-          y: 3,
-          hp: 7,
-          maxHp: 7,
-          atk: 5,
-          def: 2,
-          mov: 0,
-          range: 2,
-          asset: 'assets/runtime/tokens/enemy-turret.webp'
-        },
-        {
           id: 'spring-1',
           name: '콩콩봇',
           emoji: '🪀',
           team: 'foe',
           role: 'spring-bot',
           ai: 'jumper',
-          x: 4,
+          x: 5,
           y: 5,
           hp: 7,
           maxHp: 7,
@@ -413,11 +396,11 @@
           ai: 'boss-anchor',
           x: 4,
           y: 1,
-          hp: 14,
-          maxHp: 14,
-          atk: 6,
-          def: 3,
-          mov: 2,
+          hp: 11,
+          maxHp: 11,
+          atk: 5,
+          def: 2,
+          mov: 1,
           range: 1,
           asset: 'assets/runtime/tokens/boss-bear.webp'
         }

@@ -1,6 +1,7 @@
 'use strict';
 var assert = require('assert');
 var R = require('../engine/rules.js');
+var Missions = require('../data/missions.js');
 
 function fixture(overrides) {
   var base = {
@@ -207,6 +208,49 @@ test('ai choice is always one of the legal actions', function () {
   assert(legal.includes(R.actionKey(choice)));
 });
 
+test('mint special shot reaches one tile beyond basic range without a counter', function () {
+  var state = fixture({
+    units: [
+      { id: 'mint', team: 'you', role: 'marksman', x: 0, y: 0, hp: 8, maxHp: 8, atk: 5, def: 1, mov: 0, range: 2 },
+      { id: 'bot', team: 'foe', x: 3, y: 0, hp: 7, maxHp: 7, atk: 5, def: 1, mov: 0, range: 3 }
+    ]
+  });
+  var actions = R.listLegalActions(state, 'mint');
+  assert(!actions.some(function (action) { return action.type === 'attack'; }));
+  var special = actions.find(function (action) { return action.type === 'special-shot'; });
+  assert(special);
+  var forecast = R.forecastAction(state, special);
+  assert.strictEqual(forecast.damage, 5);
+  assert.strictEqual(forecast.counterDamage, 0);
+  var result = R.applyAction(state, special);
+  assert.strictEqual(R.getUnit(result.state, 'bot').hp, 2);
+  assert.strictEqual(R.getUnit(result.state, 'mint').acted, true);
+});
+
+test('latte guard protects adjacent friends for one hit and expires next friend phase', function () {
+  var state = fixture({
+    units: [
+      { id: 'latte', team: 'you', role: 'guardian', x: 1, y: 1, hp: 10, maxHp: 10, atk: 5, def: 1, mov: 0, range: 1 },
+      { id: 'mint', team: 'you', role: 'marksman', x: 1, y: 2, hp: 8, maxHp: 8, atk: 5, def: 1, mov: 0, range: 2 },
+      { id: 'bot', team: 'foe', x: 2, y: 1, hp: 8, maxHp: 8, atk: 6, def: 1, mov: 0, range: 1 }
+    ]
+  });
+  var guard = R.listLegalActions(state, 'latte').find(function (action) { return action.type === 'guard-stance'; });
+  var guarded = R.applyAction(state, guard).state;
+  assert.strictEqual(R.getUnit(guarded, 'latte').guardBonus, 2);
+  assert.strictEqual(R.getUnit(guarded, 'mint').guardBonus, 2);
+  guarded = R.endPhase(guarded);
+  var attack = R.listLegalActions(guarded, 'bot').find(function (action) {
+    return action.type === 'attack' && action.targetId === 'latte' && action.from.x === 2 && action.from.y === 1;
+  });
+  assert.strictEqual(R.forecastAction(guarded, attack).damage, 3);
+  var hit = R.applyAction(guarded, attack).state;
+  assert.strictEqual(R.getUnit(hit, 'latte').guardBonus, 0);
+  assert.strictEqual(R.getUnit(hit, 'latte').hp, 7);
+  hit = R.endPhase(hit);
+  assert.strictEqual(R.getUnit(hit, 'mint').guardBonus, 0);
+});
+
 test('pickup action is generated from the shared legal action list and remains serializable', function () {
   var state = fixture({
     objective: {
@@ -330,6 +374,49 @@ test('turn limit defeat is enforced on phase advancement', function () {
   var next = R.endPhase(state);
   assert.strictEqual(next.turn, 2);
   assert.strictEqual(next.status, 'defeat');
+});
+
+test('clocktower mission keeps a full-party victory route after balance changes', function () {
+  var state = R.createState(Missions.createMission('clocktower-core'));
+  var steps = [
+    { actorId: 'latte', type: 'wait', from: { x: 1, y: 3 } },
+    { actorId: 'mint', type: 'attack', targetId: 'spring-1', from: { x: 4, y: 6 } },
+    { actorId: 'latte', type: 'activate-device', deviceId: 'star-a', from: { x: 1, y: 1 } },
+    { actorId: 'mint', type: 'wait', from: { x: 5, y: 4 } },
+    { actorId: 'latte', type: 'attack', targetId: 'boss-bear', from: { x: 1, y: 1 } },
+    { actorId: 'mint', type: 'activate-device', deviceId: 'star-b', from: { x: 5, y: 1 } },
+    { actorId: 'latte', type: 'attack', targetId: 'boss-bear', from: { x: 1, y: 1 } }
+  ];
+
+  function findAction(currentState, step) {
+    return R.listLegalActions(currentState, step.actorId).find(function (action) {
+      if (action.type !== step.type) return false;
+      if (step.targetId && action.targetId !== step.targetId) return false;
+      if (step.deviceId && action.deviceId !== step.deviceId) return false;
+      if (step.from && (!action.from || action.from.x !== step.from.x || action.from.y !== step.from.y)) return false;
+      return true;
+    });
+  }
+
+  steps.forEach(function (step, index) {
+    var action = findAction(state, step);
+    assert(action, 'missing scripted action at step ' + index + ': ' + JSON.stringify(step));
+    state = R.applyAction(state, action).state;
+    if ((index === 1 || index === 3 || index === 5) && state.status === 'active') {
+      state = R.endPhase(state);
+      R.aliveUnits(state, 'foe').forEach(function (enemy) {
+        var foeAction = R.chooseAiAction(state, enemy.id);
+        if (foeAction) state = R.applyAction(state, foeAction).state;
+      });
+      if (state.status === 'active') state = R.endPhase(state);
+    }
+  });
+
+  assert.strictEqual(state.status, 'victory');
+  assert.deepStrictEqual(
+    R.aliveUnits(state, 'you').map(function (unit) { return unit.id; }).sort(),
+    ['latte', 'mint']
+  );
 });
 
 var failed = 0;
