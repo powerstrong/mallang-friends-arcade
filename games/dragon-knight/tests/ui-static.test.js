@@ -39,6 +39,14 @@ test('serializable autosave and DOM-free rules boundary are preserved', function
   assert(ui.includes('localStorage.setItem'));
   assert(ui.includes('var unitEls = Object.create(null)'));
 });
+test('autosave never strands a resumed battle inside an inert enemy phase', function () {
+  assert(ui.includes("state.status !== 'active' || state.phase !== 'you'"));
+  assert(ui.includes("if (state.phase === 'foe') window.setTimeout(enemyPhase, 0)"));
+  var enemyPhaseBody = ui.slice(ui.indexOf('function enemyPhase()'), ui.indexOf('function endEnemyPhase()'));
+  assert(enemyPhaseBody.includes("if (state.phase === 'you') state = R.endPhase(state)"));
+  assert(enemyPhaseBody.includes("if (state.phase !== 'foe')"));
+  assert(!enemyPhaseBody.includes('saveBattle('));
+});
 test('optimized runtime art is wired through html and mission data', function () {
   ['./assets/runtime/ui/hub-bg.webp','./assets/runtime/ui/result-sticker.webp','./assets/runtime/ui/icon-192.png'].forEach(function (asset) {
     assert(html.includes(asset), 'missing ' + asset);

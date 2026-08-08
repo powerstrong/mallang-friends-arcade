@@ -51,7 +51,9 @@
     }
   }
   function saveBattle(feedback) {
-    if (!state || !mission || state.status !== 'active') return;
+    // 적 행동 도중의 중간 상태는 저장하지 않는다. 모바일 탭이 닫혀도
+    // 마지막 친구 조작 시점으로 되돌아가 안전하게 적 페이즈를 다시 시작한다.
+    if (!state || !mission || state.status !== 'active' || state.phase !== 'you') return;
     save.activeBattle = { missionId: mission.id, state: R.clone(state), savedAt: Date.now() };
     persist(feedback);
   }
@@ -121,7 +123,7 @@
     }).join('');
     screens(el.briefScreen); beep('tap');
   }
-  function resetUi() { ui = { selectedId: null, previewMove: null, pendingAction: null, threats: false, busy: false, hintText: '' }; }
+  function resetUi() { ui = { selectedId: null, previewMove: null, pendingAction: null, threats: false, busy: false, hintText: '', skillArmed: false }; }
   function startMission(id) {
     mission = M.createMission(id); selectedMissionId = id;
     state = R.createState(mission); state.missionId = id; resetUi();
@@ -139,6 +141,8 @@
       ui.hintText = '진행 중이던 작전을 이어갑니다.';
       hint(ui.hintText);
       say(mission.title + ' 작전을 이어갑니다.');
+      // 이전 버전이 적 페이즈 시작 직후 남긴 세이브도 소프트락 없이 이어 간다.
+      if (state.phase === 'foe') window.setTimeout(enemyPhase, 0);
     } catch (error) { save.activeBattle = null; persist(false); renderHome(); }
   }
 
@@ -366,8 +370,11 @@
   function enemyPhase() {
     if (ui.busy || state.status !== 'active') return;
     ui.busy = true; ui.selectedId = null; ui.previewMove = null; ui.pendingAction = null; ui.skillArmed = false;
-    state = R.endPhase(state); syncStatus(); if (state.status !== 'active') return outcome();
-    hint('장난감의 움직임을 확인하세요…'); saveBattle(true); render();
+    // 정상 진입은 친구→장난감으로 넘기고, 구버전에서 복원한 장난감 페이즈는 그대로 재개한다.
+    if (state.phase === 'you') state = R.endPhase(state);
+    if (state.phase !== 'foe') { ui.busy = false; return; }
+    syncStatus(); if (state.status !== 'active') return outcome();
+    hint('장난감의 움직임을 확인하세요…'); render();
     var foes = R.aliveUnits(state, 'foe').map(function (unit) { return unit.id; });
     function act(index) {
       if (index >= foes.length || state.status !== 'active') return endEnemyPhase();
