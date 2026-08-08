@@ -27,7 +27,7 @@
   var el = {};
   ids.forEach(function (id) { el[id] = document.getElementById(id); });
 
-  function newSave() { return { version: SAVE_VERSION, unlocked: 1, missions: {}, activeBattle: null, sound: true }; }
+  function newSave() { return { version: SAVE_VERSION, unlocked: 1, missions: {}, activeBattle: null, sound: true, seenGuide: false }; }
   function readSave() {
     try {
       var parsed = JSON.parse(localStorage.getItem(SAVE_KEY));
@@ -35,6 +35,7 @@
       parsed.missions = parsed.missions || {};
       parsed.unlocked = Math.max(1, Number(parsed.unlocked) || 1);
       if (typeof parsed.sound !== 'boolean') parsed.sound = true;
+      if (typeof parsed.seenGuide !== 'boolean') parsed.seenGuide = false;
       return parsed;
     } catch (error) { return newSave(); }
   }
@@ -234,10 +235,11 @@
   function startMission(id) {
     mission = M.createMission(id); selectedMissionId = id;
     state = R.createState(mission); state.missionId = id; resetUi();
-    ui.hintText = mission.hint || '친구를 탭하면 이동할 수 있는 칸이 나타납니다.';
+    ui.hintText = '① 움직일 친구를 탭하세요.';
     buildBoard(); saveBattle(false); screens(el.battleScreen); setBgm('battle');
     hint(ui.hintText);
     say(mission.title + '. ' + mission.objective.text); beep('move');
+    if (!save.seenGuide) { save.seenGuide = true; persist(false); window.setTimeout(function () { showHelp('조작 방법', controlsGuide()); }, 260); }
   }
   function resumeMission() {
     var active = save.activeBattle;
@@ -339,10 +341,10 @@
     return R.listLegalActions(state, actor.id).filter(function (action) { return fromHere(action, actor) && predicate(action); });
   }
   function skillLabel(actor) {
-    if (!actor) return '특기';
+    if (!actor) return '스킬';
     if (actor.role === 'guardian') return '든든막기';
     if (actor.role === 'marksman') return '별빛콩';
-    return '특기';
+    return '스킬';
   }
   function renderMarks() {
     clearMarks();
@@ -370,12 +372,12 @@
   }
 
   function renderInfo(unit) {
-    if (!unit) { el.info.innerHTML = '<div class="unit-avatar">⭐</div><div><div class="unit-name">친구를 선택하세요</div><div class="unit-stats">친구를 탭하면 이동할 수 있는 칸이 나타납니다.</div></div>'; return; }
-    var roleText = unit.role === 'guardian' ? ' · 특기 <b>든든막기</b>' : unit.role === 'marksman' ? ' · 특기 <b>별빛콩</b>' : '';
+    if (!unit) { el.info.innerHTML = '<div class="unit-avatar">⭐</div><div><div class="unit-name">움직일 친구를 탭하세요</div><div class="unit-stats">친구를 탭하면 갈 수 있는 파란 칸이 나타나요.</div></div>'; return; }
+    var roleText = unit.role === 'guardian' ? ' · 스킬 <b>든든막기</b>' : unit.role === 'marksman' ? ' · 스킬 <b>별빛콩</b>' : '';
     var guardText = unit.guardBonus ? ' · 보호막 <b>+' + unit.guardBonus + '</b>' : '';
     el.info.innerHTML = '<div class="unit-avatar"><img src="' + unit.asset + '" alt=""></div><div><div class="unit-name">' + unit.name + '</div>' +
-      '<div class="unit-stats">기운 <b>' + Math.max(0,unit.hp) + '/' + unit.maxHp + '</b> · 해결 <b>' + unit.atk + '</b> · 버팀 <b>' + unit.def +
-      '</b> · 이동 <b>' + unit.mov + '</b> · 거리 <b>' + unit.range + '</b>' + guardText + roleText + '</div></div>';
+      '<div class="unit-stats">체력 <b>' + Math.max(0,unit.hp) + '/' + unit.maxHp + '</b> · 공격 <b>' + unit.atk + '</b> · 방어 <b>' + unit.def +
+      '</b> · 이동 <b>' + unit.mov + '</b> · 사거리 <b>' + unit.range + '</b>' + guardText + roleText + '</div></div>';
   }
   function actionLabel(action, actor) {
     if (!action) return actor ? skillLabel(actor) : '목표 설명';
@@ -407,9 +409,9 @@
     }
     var f = R.forecastAction(state, ui.pendingAction); if (!f) return;
     var attacker = R.getUnit(state, f.actorId), target = R.getUnit(state, f.targetId);
-    var counter = f.counterDamage ? ' · 맞대응 <b>' + f.counterDamage + '</b> (내 기운 ' + f.actorHpBefore + '→' + f.actorHpAfter + ')' : ' · 맞대응 없음';
+    var counter = f.counterDamage ? ' · 반격 <b>' + f.counterDamage + '</b> (내 체력 ' + f.actorHpBefore + '→' + f.actorHpAfter + ')' : ' · 반격 없음';
     var title = f.type === 'special-shot' ? '별빛콩' : attacker.name + ' → ' + target.name;
-    el.forecast.innerHTML = '<b>' + title + '</b><br>기운 피해 <b>' + f.damage + '</b> (' + f.targetHpBefore + '→' + f.targetHpAfter + ')' + counter + (f.targetStopped ? ' · <b>작동 정지</b>' : '');
+    el.forecast.innerHTML = '<b>' + title + '</b><br>피해 <b>' + f.damage + '</b> (' + f.targetHpBefore + '→' + f.targetHpAfter + ')' + counter + (f.targetStopped ? ' · <b>쓰러뜨림!</b>' : '');
     el.forecast.classList.add('show');
   }
   function progressText() {
@@ -425,9 +427,9 @@
     var skillActions = actor && !pending ? currentSkillActions(actor) : [];
     el.btnThreat.textContent = ui.threats ? '미리보기 끄기' : '적 미리보기'; el.btnThreat.setAttribute('aria-pressed', ui.threats ? 'true' : 'false');
     el.btnCancel.disabled = !pending || ui.busy; el.btnConfirm.disabled = !pending || ui.busy;
-    el.btnConfirm.textContent = ui.pendingAction ? ((ui.pendingAction.type === 'attack' || ui.pendingAction.type === 'special-shot') ? '멈추기 확정' : '행동 확정') : '이동 확정';
+    el.btnConfirm.textContent = ui.pendingAction ? ((ui.pendingAction.type === 'attack' || ui.pendingAction.type === 'special-shot') ? '공격 확정' : '행동 확정') : '이동 확정';
     el.btnWait.disabled = !actor || actor.acted || state.phase !== 'you' || pending || ui.busy;
-    el.btnSkill.textContent = actor ? skillLabel(actor) : '특기';
+    el.btnSkill.textContent = actor ? skillLabel(actor) : '스킬';
     el.btnSkill.disabled = !actor || actor.acted || state.phase !== 'you' || pending || ui.busy || skillActions.length === 0;
     el.btnSkill.setAttribute('aria-pressed', ui.skillArmed ? 'true' : 'false');
     el.btnObjective.textContent = objectiveAction ? actionLabel(objectiveAction) : '목표 설명'; el.btnObjective.disabled = ui.busy;
@@ -443,7 +445,7 @@
     var parts = R.aliveUnits(state, 'you').map(function (unit) {
       var dmg = intel.damageTo[unit.id] || 0;
       if (!dmg) return null;
-      return firstName(unit) + ' −' + dmg + (intel.stopped.indexOf(unit.id) >= 0 ? '(정지 위험!)' : '');
+      return firstName(unit) + ' −' + dmg + (intel.stopped.indexOf(unit.id) >= 0 ? '(쓰러질 위험!)' : '');
     }).filter(Boolean);
     return parts.length ? '이대로 넘기면 · ' + parts.join(' · ') : '이대로 넘기면 아무도 다치지 않아요.';
   }
@@ -461,9 +463,9 @@
 
   function select(unit) {
     ui.selectedId = unit.id; ui.previewMove = null; ui.pendingAction = null; ui.skillArmed = false;
-    hint(unit.moved ? '장난감이나 목표 행동을 고른 뒤 확정하세요.' : '파란 칸을 눌러 이동을 미리 보세요.'); beep('select'); render();
+    hint(unit.moved ? '③ 빨간 적을 탭해 공격하거나 [대기]를 누르세요.' : '② 파란 칸을 탭해 이동해요.'); beep('select'); render();
   }
-  function clearPending() { ui.previewMove = null; ui.pendingAction = null; ui.skillArmed = false; hint(ui.selectedId ? '이동할 칸이나 행동을 다시 고르세요.' : '움직일 친구를 고르세요.'); render(); }
+  function clearPending() { ui.previewMove = null; ui.pendingAction = null; ui.skillArmed = false; hint(ui.selectedId ? '이동할 칸이나 행동을 다시 고르세요.' : '① 움직일 친구를 탭하세요.'); render(); }
   function objectiveAt(actions, actor, x, y) {
     return actions.find(function (action) { var point = actionPoint(action); return isObjectiveAction(action) && fromHere(action, actor) && point && point.x === x && point.y === y; });
   }
@@ -474,7 +476,7 @@
     if (!intent) return '';
     if (intent.targetId) {
       var target = R.getUnit(state, intent.targetId);
-      return ' 다음 차례에 ' + firstName(target) + '를 노려요 (−' + intent.damage + (intent.stops ? ', 정지 위험!' : '') + ').';
+      return ' 다음 차례에 ' + firstName(target) + '를 노려요 (−' + intent.damage + (intent.stops ? ', 쓰러질 위험!' : '') + ').';
     }
     return ' 다음 차례에는 다가오기만 해요.';
   }
@@ -483,7 +485,7 @@
     var tapped = R.getUnitAt(state, x, y);
     if (!ui.selectedId) {
       if (tapped && tapped.team === 'you' && !tapped.acted) select(tapped);
-      else if (tapped) { renderInfo(tapped); hint((tapped.team === 'foe' ? '장난감의 기운과 거리를 확인했습니다.' + describeEnemyIntent(tapped.id) : '장난감의 기운과 거리를 확인했습니다.')); }
+      else if (tapped) { renderInfo(tapped); hint((tapped.team === 'foe' ? '장난감의 체력과 사거리를 확인했어요.' + describeEnemyIntent(tapped.id) : '장난감의 체력과 사거리를 확인했어요.')); }
       return;
     }
     var actor = R.getUnit(state, ui.selectedId);
@@ -492,16 +494,16 @@
     if (tapped && tapped.team === 'foe') {
       var attack = actions.find(function (a) { return a.type === 'attack' && a.targetId === tapped.id && fromHere(a, actor); });
       var special = actions.find(function (a) { return a.type === 'special-shot' && a.targetId === tapped.id && fromHere(a, actor); });
-      if (ui.skillArmed && special) { ui.skillArmed = false; ui.pendingAction = special; hint('별빛콩 결과를 확인하고 확정하세요.'); beep('tap'); render(); }
-      else if (attack) { ui.pendingAction = attack; hint('결과를 확인한 뒤 멈추기를 확정하세요.'); beep('tap'); render(); }
-      else if (special) { ui.pendingAction = special; hint('별빛콩 결과를 확인하고 확정하세요.'); beep('tap'); render(); }
+      if (ui.skillArmed && special) { ui.skillArmed = false; ui.pendingAction = special; hint('별빛콩 예상 피해를 확인하고 [공격 확정]을 누르세요.'); beep('tap'); render(); }
+      else if (attack) { ui.pendingAction = attack; hint('예상 피해를 확인하고 [공격 확정]을 누르세요.'); beep('tap'); render(); }
+      else if (special) { ui.pendingAction = special; hint('별빛콩 예상 피해를 확인하고 [공격 확정]을 누르세요.'); beep('tap'); render(); }
       else { renderInfo(tapped); hint('현재 위치에서는 닿지 않아요. 먼저 이동해 주세요.' + describeEnemyIntent(tapped.id)); }
       return;
     }
     var interaction = objectiveAt(actions, actor, x, y);
-    if (interaction) { ui.pendingAction = interaction; hint('목표 행동을 확인하고 확정하세요.'); render(); return; }
+    if (interaction) { ui.pendingAction = interaction; hint('내용을 확인하고 [행동 확정]을 누르세요.'); render(); return; }
     var move = actions.find(function (a) { return a.type === 'move' && a.to.x === x && a.to.y === y; });
-    if (move) { ui.skillArmed = false; ui.previewMove = move; hint('이동 미리보기입니다. 확정하거나 취소하세요.'); beep('tap'); render(); }
+    if (move) { ui.skillArmed = false; ui.previewMove = move; hint('미리보기예요. [이동 확정] 또는 [취소]를 누르세요.'); beep('tap'); render(); }
   }
 
   function floatEvent(event) {
@@ -521,7 +523,7 @@
     state = result.state; ui.previewMove = null; ui.pendingAction = null; ui.skillArmed = false; (result.events || []).forEach(floatEvent); syncStatus(); saveBattle(true); render();
     if (state.status !== 'active') return window.setTimeout(outcome, 320);
     if (R.aliveUnits(state, 'you').every(function (unit) { return unit.acted; })) return window.setTimeout(enemyPhase, 260);
-    ui.selectedId = null; hint('다음에 움직일 친구를 고르세요.'); render();
+    ui.selectedId = null; hint('다음 친구를 탭해 움직여요.'); render();
   }
   function enemyPhase() {
     if (ui.busy || state.status !== 'active') return;
@@ -545,7 +547,7 @@
   function endEnemyPhase() {
     state = R.endPhase(state); syncStatus(); ui.busy = false; saveBattle(true);
     if (state.status !== 'active') return outcome();
-    hint('내 차례예요. 움직일 친구를 고르세요.'); say(state.turn + '턴, 내 차례'); render();
+    hint('내 차례예요. ① 움직일 친구를 탭하세요.'); say(state.turn + '턴, 내 차례'); render();
   }
   function scoreStars() {
     if (state.status !== 'victory') return 0;
@@ -573,10 +575,23 @@
     if (window.GameBoot && window.GameBoot.submitResult) window.GameBoot.submitResult({ score: earned * 100 + stopped * 10, won: won });
   }
 
+  function controlsGuide() {
+    return '<b>내 차례에 친구를 한 명씩 움직여요.</b><br><br>' +
+      '① <b>친구</b>를 탭하면 갈 수 있는 <b>파란 칸</b>이 보여요.<br>' +
+      '② <b>파란 칸</b>을 탭해 위치를 미리 보고 <b>[이동 확정]</b>.<br>' +
+      '③ 이동한 자리에서 <b>빨간 적</b>을 탭해 예상 피해를 보고 <b>[공격 확정]</b>.<br>' +
+      '두 친구가 모두 행동하면 자동으로 적 차례로 넘어가요.<br><br>' +
+      '<b>칸 색깔</b><br>🟦 이동할 수 있는 칸　🟥 공격할 수 있는 적　🟨 목표 행동(줍기·전달·스위치)<br><br>' +
+      '<b>버튼</b><br>' +
+      '· <b>스킬</b> — 라떼: 든든막기(주변 보호), 민트: 별빛콩(먼 적 공격)<br>' +
+      '· <b>대기</b> — 그 자리에서 이번 차례를 마쳐요<br>' +
+      '· <b>적 미리보기</b> — 적이 다음에 누구를 −몇 만큼 때릴지 미리 표시<br>' +
+      '· <b>내 차례 끝내기</b> — 남은 친구를 두고 바로 적 차례로';
+  }
   function showHelp(title, copy) { el.helpDialog.querySelector('h2').textContent = title; el.helpDialog.querySelector('p').innerHTML = copy; el.helpDialog.showModal(); }
   el.homeSound.addEventListener('click', function () { save.sound = !save.sound; persist(false); renderHome(); beep('tap'); });
   el.resumeButton.addEventListener('click', resumeMission); el.briefBack.addEventListener('click', renderHome);
-  el.briefPractice.addEventListener('click', function () { showHelp('세 번 탭하면 준비 끝!', '<b>1.</b> 친구와 파란 칸을 고릅니다.<br><b>2.</b> 위치를 미리 본 뒤 확정합니다.<br><b>3.</b> 빨간 장난감이나 노란 목표 행동을 고르고 다시 확정합니다.<br><br><b>적 미리보기</b>를 켜면 각 장난감이 다음에 누구를 얼마나 아프게 하는지 <b>−숫자</b>로 미리 보여 줍니다. 든든막기로 막으면 예상 피해가 바로 줄어드는 것도 확인할 수 있어요.'); });
+  el.briefPractice.addEventListener('click', function () { showHelp('조작 방법', controlsGuide()); });
   el.briefStart.addEventListener('click', function () { startMission(selectedMissionId); });
   el.battleMenu.addEventListener('click', function () { if (!ui.busy) el.pauseDialog.showModal(); });
   el.pauseContinue.addEventListener('click', function () { el.pauseDialog.close(); });
@@ -606,14 +621,14 @@
       hint('든든막기 결과를 확인하고 확정하세요.');
     } else {
       ui.skillArmed = !ui.skillArmed;
-      hint(ui.skillArmed ? '별빛콩을 쓸 장난감을 탭하세요.' : '특기 선택을 취소했습니다.');
+      hint(ui.skillArmed ? '별빛콩으로 공격할 적을 탭하세요.' : '스킬 선택을 취소했어요.');
     }
     render();
   });
   el.btnObjective.addEventListener('click', function () {
     var actor = ui.selectedId ? R.getUnit(state, ui.selectedId) : null; var action = actor ? currentObjectiveAction(actor) : null;
     if (action) { ui.pendingAction = action; hint('목표 행동을 확인하고 확정하세요.'); render(); }
-    else showHelp(mission.title, '<b>목표</b><br>' + mission.objective.text + '<br><br><b>작전 팁</b><br>' + mission.hint + '<br><br><b>특기</b><br>라떼의 <b>든든막기</b>는 자신과 인접 친구를 장난감이 움직이는 동안 단단하게 지켜 줍니다. 민트의 <b>별빛콩</b>은 기본 거리보다 1칸 더 멀리 정확하게 멈춥니다.');
+    else showHelp(mission.title, '<b>목표</b><br>' + mission.objective.text + '<br><br><b>작전 팁</b><br>' + mission.hint + '<br><br><b>스킬</b><br>라떼의 <b>든든막기</b>는 자신과 옆 친구를 장난감 차례 동안 단단하게 지켜 줘요. 민트의 <b>별빛콩</b>은 기본 사거리보다 1칸 더 멀리 반격 없이 공격해요.<br><br><b>조작</b><br>' + controlsGuide());
   });
   el.btnEnd.addEventListener('click', function () { if (!ui.busy && state.phase === 'you') enemyPhase(); });
   el.resultNext.addEventListener('click', function () { openBrief(M.listMissionIds()[mission.order]); });

@@ -190,6 +190,12 @@
     .unit-name { font-size: 14px; font-weight: 950; }
     .unit-stats { margin-top: 2px; color: var(--muted); font-size: 11px; line-height: 1.45; }
     .hint { min-height: 33px; color: var(--muted); font-size: 12px; line-height: 1.42; }
+    .legend { display: flex; flex-wrap: wrap; gap: 12px; margin: 1px 0 5px; color: var(--muted); font-size: 11px; font-weight: 800; }
+    .legend .lg { display: inline-flex; align-items: center; gap: 5px; }
+    .legend .lg::before { content: ""; width: 12px; height: 12px; border-radius: 3px; }
+    .legend .lg.mv::before { background: rgba(82,139,235,.42); box-shadow: inset 0 0 0 2px rgba(37,93,180,.7); }
+    .legend .lg.atk::before { background: rgba(235,93,112,.4); box-shadow: inset 0 0 0 2px rgba(176,47,66,.68); }
+    .legend .lg.interact::before { background: rgba(255,210,66,.42); box-shadow: inset 0 0 0 2px rgba(173,125,0,.72); }
     .forecast { display: none; margin: 5px 0 8px; padding: 9px 11px; border: 1px solid #b9d7ee; border-radius: 12px; background: #eff8ff; color: #4e6474; font-size: 11px; line-height: 1.45; }
     .forecast.show { display: block; }
     .forecast b { color: var(--ink); }
@@ -269,6 +275,7 @@
         <div class="phase-line"><div class="phase you" id="phase">● 내 차례</div><div class="autosave" id="autosave">자동 저장 켜짐</div></div>
         <div class="unit-info" id="info"></div>
         <div class="hint" id="hint" aria-live="polite"></div>
+        <div class="legend" aria-hidden="true"><span class="lg mv">이동</span><span class="lg atk">공격</span><span class="lg interact">목표</span></div>
         <div class="forecast" id="forecast" aria-live="polite"></div>
         <div class="actions">
           <button class="button secondary" id="btnThreat" type="button">적 미리보기</button>
