@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>말랑프렌즈 별빛작전 · 메커닉 프로토타입</title>
+<style>
+  :root{
+    --bg:#f5f0ff; --panel:#fffaff; --panel2:#ebe4ff; --ink:#352d4f; --muted:#7b7095;
+    --line:#ddd2f2; --accent:#5f8ff7; --good:#65cfa8; --bad:#ff7f8f;
+    --floor:#e9f5e5; --floor2:#f1faed; --wall:#9e8cbc; --water:#83d5ef; --cell:clamp(44px,11vw,46px);
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans KR",sans-serif;
+    overscroll-behavior:none;user-select:none}
+  .app{max-width:460px;margin:0 auto;min-height:100%;display:flex;flex-direction:column}
+  /* ── top bar ── */
+  .topbar{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;
+    background:var(--panel);border-bottom:1px solid var(--line)}
+  .phase{font-weight:800;font-size:15px;letter-spacing:.3px}
+  .phase .p-you{color:var(--accent)} .phase .p-foe{color:var(--bad)}
+  .turn{font-size:12px;color:var(--muted)}
+  /* ── board ── */
+  .board-wrap{flex:0 0 auto;display:flex;justify-content:center;padding:14px 8px 6px;
+    overflow-x:auto;scrollbar-width:thin}
+  .board{position:relative;display:grid;
+    grid-template-columns:repeat(8,var(--cell));grid-template-rows:repeat(8,var(--cell));
+    gap:2px;background:var(--line);padding:2px;border-radius:10px;
+    box-shadow:0 8px 30px rgba(0,0,0,.4)}
+  .cell{background:var(--floor);border-radius:4px;position:relative}
+  .cell.alt{background:var(--floor2)}
+  .cell.wall{background:var(--wall);box-shadow:inset 0 0 0 1px #000}
+  .cell.water{background:var(--water)}
+  .cell.mv::after{content:"";position:absolute;inset:0;border-radius:4px;
+    background:rgba(124,92,255,.42);box-shadow:inset 0 0 0 1px rgba(160,140,255,.8)}
+  .cell.atk::after{content:"";position:absolute;inset:0;border-radius:4px;
+    background:rgba(255,107,107,.40);box-shadow:inset 0 0 0 1px rgba(255,140,140,.9)}
+  .cell.path::before{content:"";position:absolute;inset:35%;border-radius:50%;
+    background:rgba(255,255,255,.55)}
+  .cell.threat::after{content:"";position:absolute;inset:0;border-radius:4px;
+    background:repeating-linear-gradient(135deg,rgba(255,127,143,.26) 0 6px,rgba(255,127,143,.08) 6px 12px);
+    box-shadow:inset 0 0 0 1px rgba(255,90,112,.72)}
+  .cell.goal::before{content:"★";position:absolute;inset:0;display:grid;place-items:center;
+    color:#ffd75a;font-size:22px;text-shadow:0 1px 2px #705b00;z-index:2}
+  /* ── units ── */
+  .unit{position:absolute;width:var(--cell);height:var(--cell);
+    display:flex;align-items:center;justify-content:center;font-size:calc(var(--cell)*.62);
+    transition:left .22s ease,top .22s ease;z-index:5;cursor:pointer}
+  .unit .body{width:82%;height:82%;border-radius:9px;display:flex;align-items:center;
+    justify-content:center;position:relative;box-shadow:0 2px 6px rgba(0,0,0,.45)}
+  .unit .sprite{position:absolute;inset:-12%;width:124%;height:124%;object-fit:contain;
+    pointer-events:none;filter:drop-shadow(0 2px 2px rgba(53,45,79,.28))}
+  .unit .token-fallback{line-height:1}
+  .unit.you .body{background:linear-gradient(160deg,#9dd8ff,#5f8ff7)}
+  .unit.foe .body{background:linear-gradient(160deg,#ffb3bd,#ff7185)}
+  .unit.acted{filter:grayscale(.7) brightness(.7)}
+  .unit.sel .body{outline:3px solid #fff;outline-offset:1px}
+  .unit.preview{opacity:.58;filter:saturate(.65)}
+  .hpbar{position:absolute;left:6%;right:6%;bottom:-1px;height:5px;border-radius:3px;
+    background:rgba(0,0,0,.55);overflow:hidden}
+  .hpbar>i{display:block;height:100%;background:var(--good);transition:width .2s}
+  .hpbar.low>i{background:var(--bad)}
+  .float{position:absolute;z-index:20;font-weight:900;font-size:calc(var(--cell)*.5);
+    pointer-events:none;animation:rise .8s ease-out forwards;text-shadow:0 1px 2px #000}
+  @keyframes rise{0%{transform:translateY(0);opacity:1}100%{transform:translateY(-26px);opacity:0}}
+  /* ── info panel ── */
+  .panel{flex:1 1 auto;background:var(--panel);border-top:1px solid var(--line);
+    padding:12px 14px 18px;display:flex;flex-direction:column;gap:10px;min-height:150px}
+  .info{display:flex;align-items:center;gap:12px;min-height:56px}
+  .info .ava{width:52px;height:52px;border-radius:12px;display:flex;align-items:center;
+    justify-content:center;font-size:30px;flex:0 0 auto}
+  .info .ava.you{background:linear-gradient(160deg,#c5ecff,#8db8ff)}
+  .info .ava.foe{background:linear-gradient(160deg,#ffd5db,#ff9baa)}
+  .info .meta{flex:1;min-width:0}
+  .info .nm{font-weight:800;font-size:15px}
+  .info .st{font-size:12px;color:var(--muted);margin-top:3px;line-height:1.5}
+  .info .st b{color:var(--ink);font-weight:700}
+  .hint{color:var(--muted);font-size:13px;line-height:1.4}
+  .forecast{display:none;padding:9px 11px;border:1px solid var(--line);border-radius:10px;
+    background:#f8f5ff;font-size:12px;line-height:1.45;color:var(--muted)}
+  .forecast.show{display:block}.forecast b{color:var(--ink)}
+  .actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+  .btn{flex:1;padding:13px;border:none;border-radius:11px;font-size:15px;font-weight:800;
+    color:#fff;background:var(--panel2);cursor:pointer;transition:transform .08s,opacity .15s}
+  .btn:active{transform:scale(.96)}
+  .btn.primary{background:var(--accent)}
+  .btn.warn{background:#e99562}.btn.secondary{background:#7b7095}
+  .btn:disabled{opacity:.35;cursor:default}
+  .objective{padding:7px 14px;background:#fff7cf;border-bottom:1px solid #eadb91;
+    color:#655522;font-size:12px;font-weight:800;text-align:center}
+  /* ── overlay ── */
+  .overlay{position:fixed;inset:0;background:rgba(12,8,22,.86);display:none;
+    align-items:center;justify-content:center;z-index:50;padding:24px}
+  .overlay.show{display:flex}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:18px;
+    padding:28px 26px;text-align:center;max-width:320px;width:100%}
+  .card h2{margin:0 0 8px;font-size:26px}
+  .card p{margin:0 0 20px;color:var(--muted);font-size:14px}
+  .card .btn{width:100%}
+  @media (max-width:380px){.board-wrap{justify-content:flex-start}}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <div class="phase" id="phase">내 턴</div>
+    <div class="turn">턴 <span id="turnNo">1</span></div>
+  </div>
+  <div class="objective">⭐ <span id="objectiveText">목표: 오작동 장난감을 모두 멈추세요</span></div>
+
+  <div class="board-wrap">
+    <div class="board" id="board"></div>
+  </div>
+
+  <div class="panel">
+    <div class="info" id="info">
+      <div class="ava you">🐶</div>
+      <div class="meta">
+        <div class="nm">친구를 선택하세요</div>
+        <div class="st">말랑프렌즈를 탭하면 이동 범위가 표시됩니다.</div>
+      </div>
+    </div>
+    <div class="hint" id="hint">내 턴입니다. 움직일 친구를 고르세요.</div>
+    <div class="forecast" id="forecast" aria-live="polite"></div>
+    <div class="actions">
+      <button class="btn secondary" id="btnThreat">위협 보기</button>
+      <button class="btn secondary" id="btnCancel" disabled>취소</button>
+      <button class="btn primary" id="btnConfirm" disabled>이동 확정</button>
+      <button class="btn warn" id="btnWait" disabled>대기</button>
+      <button class="btn primary" id="btnEnd" style="grid-column:span 2">턴 종료</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="overlay">
+  <div class="card">
+    <h2 id="ovTitle">작전 성공!</h2>
+    <p id="ovDesc">오작동 장난감을 모두 안전하게 멈췄어요.</p>
+    <button class="btn primary" onclick="location.reload()">다시 하기</button>
+  </div>
+</div>
+
+<script src="./engine/rules.js"></script>
+<script src="./engine/ui.js"></script>
+</body>
+</html>
