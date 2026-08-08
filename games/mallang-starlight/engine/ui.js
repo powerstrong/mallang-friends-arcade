@@ -394,13 +394,13 @@
   function renderForecast() {
     if (!ui.pendingAction) {
       if (intel && state.phase === 'you') {
-        el.forecast.innerHTML = '<b>장난감 예고</b> · ' + intentSummary();
+        el.forecast.innerHTML = '<b>장난감 미리보기</b> · ' + intentSummary();
         el.forecast.classList.add('show'); return;
       }
       el.forecast.classList.remove('show'); el.forecast.textContent = ''; return;
     }
     if (ui.pendingAction.type === 'guard-stance') {
-      el.forecast.innerHTML = '<b>든든막기</b><br>라떼와 인접 친구에게 적 페이즈 동안 보호막 +2를 줍니다.'; el.forecast.classList.add('show'); return;
+      el.forecast.innerHTML = '<b>든든막기</b><br>라떼와 옆에 붙은 친구가 장난감 차례 동안 덜 아프게 버텨요 (보호막 +2).'; el.forecast.classList.add('show'); return;
     }
     if (ui.pendingAction.type !== 'attack' && ui.pendingAction.type !== 'special-shot') {
       el.forecast.innerHTML = '<b>' + actionLabel(ui.pendingAction) + '</b><br>확정 전에는 작전 상태가 바뀌지 않습니다.'; el.forecast.classList.add('show'); return;
@@ -423,7 +423,7 @@
     var pending = Boolean(ui.previewMove || ui.pendingAction);
     var objectiveAction = actor && !pending ? currentObjectiveAction(actor) : null;
     var skillActions = actor && !pending ? currentSkillActions(actor) : [];
-    el.btnThreat.textContent = ui.threats ? '예고 끄기' : '위협 예고'; el.btnThreat.setAttribute('aria-pressed', ui.threats ? 'true' : 'false');
+    el.btnThreat.textContent = ui.threats ? '미리보기 끄기' : '적 미리보기'; el.btnThreat.setAttribute('aria-pressed', ui.threats ? 'true' : 'false');
     el.btnCancel.disabled = !pending || ui.busy; el.btnConfirm.disabled = !pending || ui.busy;
     el.btnConfirm.textContent = ui.pendingAction ? ((ui.pendingAction.type === 'attack' || ui.pendingAction.type === 'special-shot') ? '멈추기 확정' : '행동 확정') : '이동 확정';
     el.btnWait.disabled = !actor || actor.acted || state.phase !== 'you' || pending || ui.busy;
@@ -435,7 +435,7 @@
   }
   function renderHeader() {
     el.turnText.textContent = state.turn + '턴'; el.turnLimitText.textContent = state.objective.turnLimit ? '제한 ' + state.objective.turnLimit + '턴' : '천천히 생각해요';
-    el.objectiveProgress.textContent = progressText(); el.phase.textContent = state.phase === 'you' ? '● 친구 차례' : '● 장난감 차례'; el.phase.className = 'phase ' + state.phase;
+    el.objectiveProgress.textContent = progressText(); el.phase.textContent = state.phase === 'you' ? '● 내 차례' : '● 장난감 차례'; el.phase.className = 'phase ' + state.phase;
   }
   function firstName(unit) { return unit && unit.name ? unit.name.split(' ')[0] : ''; }
   function intentSummary() {
@@ -530,7 +530,7 @@
     if (state.phase === 'you') state = R.endPhase(state);
     if (state.phase !== 'foe') { ui.busy = false; return; }
     syncStatus(); if (state.status !== 'active') return outcome();
-    hint('장난감의 움직임을 확인하세요…'); render();
+    hint('장난감이 움직이는 중이에요…'); render();
     var foes = R.aliveUnits(state, 'foe').map(function (unit) { return unit.id; });
     function act(index) {
       if (index >= foes.length || state.status !== 'active') return endEnemyPhase();
@@ -545,7 +545,7 @@
   function endEnemyPhase() {
     state = R.endPhase(state); syncStatus(); ui.busy = false; saveBattle(true);
     if (state.status !== 'active') return outcome();
-    hint('친구 차례입니다. 움직일 친구를 고르세요.'); say(state.turn + '턴 친구 차례'); render();
+    hint('내 차례예요. 움직일 친구를 고르세요.'); say(state.turn + '턴, 내 차례'); render();
   }
   function scoreStars() {
     if (state.status !== 'victory') return 0;
@@ -576,7 +576,7 @@
   function showHelp(title, copy) { el.helpDialog.querySelector('h2').textContent = title; el.helpDialog.querySelector('p').innerHTML = copy; el.helpDialog.showModal(); }
   el.homeSound.addEventListener('click', function () { save.sound = !save.sound; persist(false); renderHome(); beep('tap'); });
   el.resumeButton.addEventListener('click', resumeMission); el.briefBack.addEventListener('click', renderHome);
-  el.briefPractice.addEventListener('click', function () { showHelp('세 번 탭하면 준비 끝!', '<b>1.</b> 친구와 파란 칸을 고릅니다.<br><b>2.</b> 위치를 미리 본 뒤 확정합니다.<br><b>3.</b> 빨간 장난감이나 노란 목표 행동을 고르고 다시 확정합니다.<br><br><b>위협 예고</b>를 켜면 각 장난감이 이번에 누구를 노리고 얼마나 아프게 하는지 <b>−숫자</b>로 미리 보여 줍니다. 든든막기로 막으면 예상 피해가 바로 줄어드는 것도 확인할 수 있어요.'); });
+  el.briefPractice.addEventListener('click', function () { showHelp('세 번 탭하면 준비 끝!', '<b>1.</b> 친구와 파란 칸을 고릅니다.<br><b>2.</b> 위치를 미리 본 뒤 확정합니다.<br><b>3.</b> 빨간 장난감이나 노란 목표 행동을 고르고 다시 확정합니다.<br><br><b>적 미리보기</b>를 켜면 각 장난감이 다음에 누구를 얼마나 아프게 하는지 <b>−숫자</b>로 미리 보여 줍니다. 든든막기로 막으면 예상 피해가 바로 줄어드는 것도 확인할 수 있어요.'); });
   el.briefStart.addEventListener('click', function () { startMission(selectedMissionId); });
   el.battleMenu.addEventListener('click', function () { if (!ui.busy) el.pauseDialog.showModal(); });
   el.pauseContinue.addEventListener('click', function () { el.pauseDialog.close(); });
@@ -613,7 +613,7 @@
   el.btnObjective.addEventListener('click', function () {
     var actor = ui.selectedId ? R.getUnit(state, ui.selectedId) : null; var action = actor ? currentObjectiveAction(actor) : null;
     if (action) { ui.pendingAction = action; hint('목표 행동을 확인하고 확정하세요.'); render(); }
-    else showHelp(mission.title, '<b>목표</b><br>' + mission.objective.text + '<br><br><b>작전 팁</b><br>' + mission.hint + '<br><br><b>특기</b><br>라떼의 <b>든든막기</b>는 자신과 인접 친구를 적 페이즈 동안 단단하게 지켜 줍니다. 민트의 <b>별빛콩</b>은 기본 사거리보다 1칸 더 멀리 정확하게 멈춥니다.');
+    else showHelp(mission.title, '<b>목표</b><br>' + mission.objective.text + '<br><br><b>작전 팁</b><br>' + mission.hint + '<br><br><b>특기</b><br>라떼의 <b>든든막기</b>는 자신과 인접 친구를 장난감이 움직이는 동안 단단하게 지켜 줍니다. 민트의 <b>별빛콩</b>은 기본 거리보다 1칸 더 멀리 정확하게 멈춥니다.');
   });
   el.btnEnd.addEventListener('click', function () { if (!ui.busy && state.phase === 'you') enemyPhase(); });
   el.resultNext.addEventListener('click', function () { openBrief(M.listMissionIds()[mission.order]); });

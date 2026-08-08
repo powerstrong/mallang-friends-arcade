@@ -266,18 +266,18 @@
         <div class="board" id="board" role="grid" aria-label="8 × 8 전술 보드"></div>
       </div>
       <section class="battle-panel" aria-label="행동 패널">
-        <div class="phase-line"><div class="phase you" id="phase">● 친구 차례</div><div class="autosave" id="autosave">자동 저장 켜짐</div></div>
+        <div class="phase-line"><div class="phase you" id="phase">● 내 차례</div><div class="autosave" id="autosave">자동 저장 켜짐</div></div>
         <div class="unit-info" id="info"></div>
         <div class="hint" id="hint" aria-live="polite"></div>
         <div class="forecast" id="forecast" aria-live="polite"></div>
         <div class="actions">
-          <button class="button secondary" id="btnThreat" type="button">위협 보기</button>
+          <button class="button secondary" id="btnThreat" type="button">적 미리보기</button>
           <button class="button secondary" id="btnSkill" type="button" disabled>특기</button>
           <button class="button secondary" id="btnObjective" type="button">목표 설명</button>
           <button class="button secondary" id="btnCancel" type="button" disabled>취소</button>
           <button class="button" id="btnConfirm" type="button" disabled>확정</button>
           <button class="button secondary" id="btnWait" type="button" disabled>대기</button>
-          <button class="button all" id="btnEnd" type="button">친구 차례 끝</button>
+          <button class="button all" id="btnEnd" type="button">내 차례 끝내기</button>
         </div>
       </section>
     </section>
@@ -312,7 +312,7 @@
   <dialog id="helpDialog">
     <div class="dialog-card">
       <h2>세 번 탭하면 준비 끝!</h2>
-      <p><b>1.</b> 친구를 탭하고 파란 칸을 고릅니다.<br><b>2.</b> 미리 본 위치가 좋으면 확정합니다.<br><b>3.</b> 빨간 장난감을 탭해 결과를 확인한 뒤 확정합니다.<br><br><b>위협 예고</b>는 장난감이 이번 차례에 노리는 친구를 <b>−숫자</b>로, 이동할 칸을 빗금으로 보여 줍니다. 장난감을 탭하면 그 하나가 누구를 노리는지도 알려 줘요.</p>
+      <p><b>1.</b> 친구를 탭하고 파란 칸을 고릅니다.<br><b>2.</b> 미리 본 위치가 좋으면 확정합니다.<br><b>3.</b> 빨간 장난감을 탭해 결과를 확인한 뒤 확정합니다.<br><br><b>적 미리보기</b>를 켜면 장난감이 다음에 노리는 친구가 <b>−숫자</b>로, 장난감이 갈 칸이 빗금으로 표시됩니다. 장난감 하나를 탭하면 그 장난감이 누구를 노리는지 따로 알려 줘요.</p>
       <button class="button" id="helpClose" type="button">알겠어요</button>
     </div>
   </dialog>
