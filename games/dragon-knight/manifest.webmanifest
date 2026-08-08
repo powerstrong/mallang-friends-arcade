@@ -1,0 +1,24 @@
+{
+  "name": "말랑프렌즈 별빛작전",
+  "short_name": "별빛작전",
+  "description": "라떼와 민트가 오작동 장난감을 진정시키는 모바일 전술 SRPG",
+  "lang": "ko",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#fffdf8",
+  "theme_color": "#7766d8",
+  "icons": [
+    {
+      "src": "./assets/runtime/ui/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "./assets/runtime/ui/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

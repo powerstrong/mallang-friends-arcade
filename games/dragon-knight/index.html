@@ -1,147 +1,318 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ko">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-<title>말랑프렌즈 별빛작전 · 메커닉 프로토타입</title>
-<style>
-  :root{
-    --bg:#f5f0ff; --panel:#fffaff; --panel2:#ebe4ff; --ink:#352d4f; --muted:#7b7095;
-    --line:#ddd2f2; --accent:#5f8ff7; --good:#65cfa8; --bad:#ff7f8f;
-    --floor:#e9f5e5; --floor2:#f1faed; --wall:#9e8cbc; --water:#83d5ef; --cell:clamp(44px,11vw,46px);
-  }
-  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);
-    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans KR",sans-serif;
-    overscroll-behavior:none;user-select:none}
-  .app{max-width:460px;margin:0 auto;min-height:100%;display:flex;flex-direction:column}
-  /* ── top bar ── */
-  .topbar{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;
-    background:var(--panel);border-bottom:1px solid var(--line)}
-  .phase{font-weight:800;font-size:15px;letter-spacing:.3px}
-  .phase .p-you{color:var(--accent)} .phase .p-foe{color:var(--bad)}
-  .turn{font-size:12px;color:var(--muted)}
-  /* ── board ── */
-  .board-wrap{flex:0 0 auto;display:flex;justify-content:center;padding:14px 8px 6px;
-    overflow-x:auto;scrollbar-width:thin}
-  .board{position:relative;display:grid;
-    grid-template-columns:repeat(8,var(--cell));grid-template-rows:repeat(8,var(--cell));
-    gap:2px;background:var(--line);padding:2px;border-radius:10px;
-    box-shadow:0 8px 30px rgba(0,0,0,.4)}
-  .cell{background:var(--floor);border-radius:4px;position:relative}
-  .cell.alt{background:var(--floor2)}
-  .cell.wall{background:var(--wall);box-shadow:inset 0 0 0 1px #000}
-  .cell.water{background:var(--water)}
-  .cell.mv::after{content:"";position:absolute;inset:0;border-radius:4px;
-    background:rgba(124,92,255,.42);box-shadow:inset 0 0 0 1px rgba(160,140,255,.8)}
-  .cell.atk::after{content:"";position:absolute;inset:0;border-radius:4px;
-    background:rgba(255,107,107,.40);box-shadow:inset 0 0 0 1px rgba(255,140,140,.9)}
-  .cell.path::before{content:"";position:absolute;inset:35%;border-radius:50%;
-    background:rgba(255,255,255,.55)}
-  .cell.threat::after{content:"";position:absolute;inset:0;border-radius:4px;
-    background:repeating-linear-gradient(135deg,rgba(255,127,143,.26) 0 6px,rgba(255,127,143,.08) 6px 12px);
-    box-shadow:inset 0 0 0 1px rgba(255,90,112,.72)}
-  .cell.goal::before{content:"★";position:absolute;inset:0;display:grid;place-items:center;
-    color:#ffd75a;font-size:22px;text-shadow:0 1px 2px #705b00;z-index:2}
-  /* ── units ── */
-  .unit{position:absolute;width:var(--cell);height:var(--cell);
-    display:flex;align-items:center;justify-content:center;font-size:calc(var(--cell)*.62);
-    transition:left .22s ease,top .22s ease;z-index:5;cursor:pointer}
-  .unit .body{width:82%;height:82%;border-radius:9px;display:flex;align-items:center;
-    justify-content:center;position:relative;box-shadow:0 2px 6px rgba(0,0,0,.45)}
-  .unit .sprite{position:absolute;inset:-12%;width:124%;height:124%;object-fit:contain;
-    pointer-events:none;filter:drop-shadow(0 2px 2px rgba(53,45,79,.28))}
-  .unit .token-fallback{line-height:1}
-  .unit.you .body{background:linear-gradient(160deg,#9dd8ff,#5f8ff7)}
-  .unit.foe .body{background:linear-gradient(160deg,#ffb3bd,#ff7185)}
-  .unit.acted{filter:grayscale(.7) brightness(.7)}
-  .unit.sel .body{outline:3px solid #fff;outline-offset:1px}
-  .unit.preview{opacity:.58;filter:saturate(.65)}
-  .hpbar{position:absolute;left:6%;right:6%;bottom:-1px;height:5px;border-radius:3px;
-    background:rgba(0,0,0,.55);overflow:hidden}
-  .hpbar>i{display:block;height:100%;background:var(--good);transition:width .2s}
-  .hpbar.low>i{background:var(--bad)}
-  .float{position:absolute;z-index:20;font-weight:900;font-size:calc(var(--cell)*.5);
-    pointer-events:none;animation:rise .8s ease-out forwards;text-shadow:0 1px 2px #000}
-  @keyframes rise{0%{transform:translateY(0);opacity:1}100%{transform:translateY(-26px);opacity:0}}
-  /* ── info panel ── */
-  .panel{flex:1 1 auto;background:var(--panel);border-top:1px solid var(--line);
-    padding:12px 14px 18px;display:flex;flex-direction:column;gap:10px;min-height:150px}
-  .info{display:flex;align-items:center;gap:12px;min-height:56px}
-  .info .ava{width:52px;height:52px;border-radius:12px;display:flex;align-items:center;
-    justify-content:center;font-size:30px;flex:0 0 auto}
-  .info .ava.you{background:linear-gradient(160deg,#c5ecff,#8db8ff)}
-  .info .ava.foe{background:linear-gradient(160deg,#ffd5db,#ff9baa)}
-  .info .meta{flex:1;min-width:0}
-  .info .nm{font-weight:800;font-size:15px}
-  .info .st{font-size:12px;color:var(--muted);margin-top:3px;line-height:1.5}
-  .info .st b{color:var(--ink);font-weight:700}
-  .hint{color:var(--muted);font-size:13px;line-height:1.4}
-  .forecast{display:none;padding:9px 11px;border:1px solid var(--line);border-radius:10px;
-    background:#f8f5ff;font-size:12px;line-height:1.45;color:var(--muted)}
-  .forecast.show{display:block}.forecast b{color:var(--ink)}
-  .actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
-  .btn{flex:1;padding:13px;border:none;border-radius:11px;font-size:15px;font-weight:800;
-    color:#fff;background:var(--panel2);cursor:pointer;transition:transform .08s,opacity .15s}
-  .btn:active{transform:scale(.96)}
-  .btn.primary{background:var(--accent)}
-  .btn.warn{background:#e99562}.btn.secondary{background:#7b7095}
-  .btn:disabled{opacity:.35;cursor:default}
-  .objective{padding:7px 14px;background:#fff7cf;border-bottom:1px solid #eadb91;
-    color:#655522;font-size:12px;font-weight:800;text-align:center}
-  /* ── overlay ── */
-  .overlay{position:fixed;inset:0;background:rgba(12,8,22,.86);display:none;
-    align-items:center;justify-content:center;z-index:50;padding:24px}
-  .overlay.show{display:flex}
-  .card{background:var(--panel);border:1px solid var(--line);border-radius:18px;
-    padding:28px 26px;text-align:center;max-width:320px;width:100%}
-  .card h2{margin:0 0 8px;font-size:26px}
-  .card p{margin:0 0 20px;color:var(--muted);font-size:14px}
-  .card .btn{width:100%}
-  @media (max-width:380px){.board-wrap{justify-content:flex-start}}
-</style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#7766d8">
+  <meta name="description" content="라떼와 민트가 오작동 장난감을 진정시키는 모바일 전술 SRPG">
+  <title>말랑프렌즈 별빛작전</title>
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" href="./assets/runtime/ui/icon-192.png">
+  <style>
+    :root {
+      --ink: #332b4c;
+      --muted: #716987;
+      --paper: #fffdf8;
+      --cream: #fff5d9;
+      --line: #d9d0ea;
+      --violet: #7766d8;
+      --violet-dark: #51449e;
+      --sky: #70b9f1;
+      --mint: #4fbd98;
+      --coral: #e96d7e;
+      --amber: #d98937;
+      --floor-a: #eaf5df;
+      --floor-b: #f4f9e9;
+      --wall: #8f82ac;
+      --cell: clamp(44px, 11vw, 50px);
+      --shadow: 0 12px 36px rgba(66, 49, 103, .18);
+    }
+
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html { min-height: 100%; background: #ece6fa; }
+    body {
+      min-height: 100%; margin: 0; color: var(--ink); background:
+        radial-gradient(circle at 15% 4%, #fff8cf 0 8%, transparent 28%),
+        linear-gradient(165deg, #eee8ff, #e1f5ef);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans KR", sans-serif;
+      overscroll-behavior: none;
+    }
+    button { font: inherit; }
+    button, [role="button"] { touch-action: manipulation; }
+    button:focus-visible, [tabindex]:focus-visible { outline: 3px solid #2e6bb1; outline-offset: 3px; }
+    .hidden, [hidden] { display: none !important; }
+    .app { width: min(100%, 520px); min-height: 100dvh; margin: 0 auto; background: rgba(255,253,248,.94); box-shadow: var(--shadow); }
+    .screen { display: none; min-height: 100dvh; }
+    .screen.active { display: flex; flex-direction: column; }
+
+    .pill {
+      display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 5px 11px;
+      border: 1px solid rgba(81,68,158,.18); border-radius: 999px; color: var(--violet-dark);
+      background: rgba(255,255,255,.8); font-size: 12px; font-weight: 800;
+    }
+    .button {
+      min-height: 48px; padding: 11px 16px; border: 0; border-radius: 14px; color: #fff;
+      background: var(--violet); box-shadow: 0 5px 0 var(--violet-dark); font-weight: 900;
+      letter-spacing: -.01em; cursor: pointer; transition: transform .1s ease, filter .15s ease;
+    }
+    .button:active { transform: translateY(3px); box-shadow: 0 2px 0 var(--violet-dark); }
+    .button:disabled { opacity: .42; cursor: default; filter: grayscale(.2); }
+    .button.secondary { color: var(--violet-dark); background: #eee9fa; box-shadow: 0 4px 0 #cfc4e8; }
+    .button.danger { background: var(--coral); box-shadow: 0 4px 0 #aa485b; }
+    .icon-button {
+      display: inline-grid; place-items: center; width: 48px; min-width: 48px; height: 48px;
+      border: 1px solid var(--line); border-radius: 14px; color: var(--ink); background: var(--paper);
+      font-size: 20px; cursor: pointer;
+    }
+
+    /* 작전판 */
+    .home-hero {
+      position: relative; min-height: 300px; padding: max(22px, env(safe-area-inset-top)) 22px 26px;
+      overflow: hidden; color: #fff; background: #7060ce url("./assets/runtime/ui/hub-bg.webp") center 36%/cover no-repeat;
+    }
+    .home-hero::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(61,43,119,.08), rgba(46,35,91,.72)); }
+    .home-hero > * { position: relative; z-index: 1; }
+    .brand-row { display: flex; justify-content: space-between; align-items: flex-start; }
+    .brand-kicker { margin: 0 0 4px; font-size: 13px; font-weight: 900; letter-spacing: .08em; }
+    .brand-title { margin: 0; font-size: clamp(31px, 9vw, 43px); line-height: 1.02; letter-spacing: -.055em; text-shadow: 0 3px 0 rgba(55,39,108,.35); }
+    .brand-sub { max-width: 290px; margin: 12px 0 0; font-size: 14px; line-height: 1.55; font-weight: 700; }
+    .hero-spacer { min-height: 98px; }
+    .home-body { flex: 1; padding: 20px 18px max(26px, env(safe-area-inset-bottom)); }
+    .section-title { display: flex; align-items: end; justify-content: space-between; margin-bottom: 12px; }
+    .section-title h2 { margin: 0; font-size: 20px; }
+    .section-title small { color: var(--muted); font-weight: 700; }
+    .mission-list { display: grid; gap: 11px; }
+    .mission-card {
+      display: grid; grid-template-columns: 56px 1fr auto; align-items: center; gap: 12px; width: 100%;
+      min-height: 82px; padding: 12px; border: 1px solid var(--line); border-radius: 18px; color: var(--ink);
+      text-align: left; background: var(--paper); box-shadow: 0 5px 14px rgba(61,48,92,.08); cursor: pointer;
+    }
+    .mission-card.locked { opacity: .56; filter: grayscale(.65); }
+    .mission-no { display: grid; place-items: center; width: 56px; height: 56px; border-radius: 16px; color: #fff; background: var(--violet); font-size: 22px; font-weight: 950; }
+    .mission-card:nth-child(2) .mission-no { background: var(--sky); }
+    .mission-card:nth-child(3) .mission-no { background: var(--coral); }
+    .mission-copy b { display: block; font-size: 15px; }
+    .mission-copy span { display: block; margin-top: 4px; color: var(--muted); font-size: 12px; line-height: 1.35; }
+    .mission-stars { min-width: 62px; color: #d39b17; font-size: 14px; text-align: right; letter-spacing: -2px; }
+    .continue-area { display: grid; gap: 10px; margin-top: 16px; }
+
+    /* 브리핑 / 결과 */
+    .story-screen { position: relative; justify-content: flex-end; padding: max(22px, env(safe-area-inset-top)) 18px max(24px, env(safe-area-inset-bottom)); overflow: hidden; background: #7060ce url("./assets/runtime/ui/hub-bg.webp") center/cover no-repeat; }
+    .story-screen::before { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(45,32,91,.12), rgba(38,29,71,.84)); }
+    .story-screen > * { position: relative; z-index: 1; }
+    .brief-top { position: absolute; top: max(16px, env(safe-area-inset-top)); left: 16px; right: 16px; display: flex; justify-content: space-between; }
+    .brief-card { padding: 22px; border-radius: 24px; background: rgba(255,253,248,.96); box-shadow: var(--shadow); }
+    .brief-card h1 { margin: 8px 0 6px; font-size: 27px; line-height: 1.15; letter-spacing: -.035em; }
+    .brief-location { color: var(--violet-dark); font-size: 13px; font-weight: 900; }
+    .brief-copy { margin: 13px 0; color: var(--muted); line-height: 1.65; font-size: 14px; }
+    .dialogue { margin: 13px 0; padding: 12px 14px; border-left: 4px solid var(--sky); border-radius: 0 12px 12px 0; background: #edf7ff; font-size: 13px; line-height: 1.55; }
+    .dialogue b { color: #2e6b94; }
+    .brief-actions { display: grid; grid-template-columns: 1fr 2fr; gap: 10px; margin-top: 18px; }
+
+    .result-screen { align-items: center; justify-content: center; padding: max(24px, env(safe-area-inset-top)) 20px max(24px, env(safe-area-inset-bottom)); text-align: center; background: linear-gradient(155deg, #eee9ff, #fff9d9 58%, #dff6ec); }
+    .result-art { width: min(230px, 58vw); aspect-ratio: 1; object-fit: contain; filter: drop-shadow(0 12px 18px rgba(74,54,109,.18)); }
+    .result-screen h1 { margin: 5px 0 2px; font-size: 31px; letter-spacing: -.04em; }
+    .result-stars { margin: 8px 0; color: #d89a11; font-size: 38px; letter-spacing: 2px; text-shadow: 0 3px 0 #fff; }
+    .result-copy { max-width: 340px; margin: 0 auto 16px; color: var(--muted); line-height: 1.6; }
+    .result-stats { display: flex; justify-content: center; gap: 18px; margin: 0 0 20px; }
+    .result-stats b { display: block; font-size: 20px; }
+    .result-stats span { color: var(--muted); font-size: 11px; font-weight: 800; }
+    .result-actions { display: grid; gap: 10px; width: min(340px, 100%); }
+
+    /* 전투 */
+    .battle-screen { background: linear-gradient(#eee9fb, #f9f5e9); }
+    .battle-bar { display: grid; grid-template-columns: 48px 1fr auto; align-items: center; gap: 10px; padding: max(8px, env(safe-area-inset-top)) 10px 8px; background: var(--paper); border-bottom: 1px solid var(--line); }
+    .battle-heading { min-width: 0; }
+    .battle-heading b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
+    .battle-heading span { color: var(--muted); font-size: 11px; font-weight: 700; }
+    .turn-badge { min-width: 68px; padding: 7px 9px; border-radius: 12px; color: #fff; text-align: center; background: var(--violet); }
+    .turn-badge b { display: block; font-size: 14px; }
+    .turn-badge small { font-size: 10px; opacity: .88; }
+    .objective-bar { display: grid; grid-template-columns: 32px 1fr auto; align-items: center; gap: 8px; min-height: 50px; padding: 7px 12px; color: #55481f; background: #fff3bd; border-bottom: 1px solid #dfcc75; }
+    .objective-icon { display: grid; place-items: center; font-size: 22px; }
+    .objective-bar b { display: block; font-size: 12px; }
+    .objective-bar span { display: block; font-size: 11px; line-height: 1.3; }
+    .objective-progress { color: #6e5b13; font-size: 12px; font-weight: 950; white-space: nowrap; }
+    .board-scroll { flex: 0 0 auto; padding: 12px 4px 8px; overflow-x: auto; scrollbar-width: thin; }
+    .board {
+      position: relative; display: grid; grid-template-columns: repeat(8, var(--cell)); grid-template-rows: repeat(8, var(--cell));
+      gap: 2px; width: max-content; margin: 0 auto; padding: 3px; border: 2px solid #6e618e; border-radius: 15px;
+      background: #cfc5df; box-shadow: 0 9px 20px rgba(62,46,92,.24); overflow: hidden;
+    }
+    .cell { position: relative; border: 0; border-radius: 5px; background: var(--floor-a); }
+    .cell.alt { background: var(--floor-b); }
+    .cell.wall { background: linear-gradient(145deg, #a597be, #81739f); box-shadow: inset 0 0 0 1px rgba(56,43,87,.25); }
+    .cell.water { background: repeating-linear-gradient(165deg, #85d2e9 0 8px, #a5e1ee 8px 15px); }
+    .cell.mv::after, .cell.atk::after, .cell.threat::after, .cell.interact::after { content: ""; position: absolute; inset: 1px; z-index: 2; border-radius: 4px; }
+    .cell.mv::after { background: rgba(82,139,235,.42); box-shadow: inset 0 0 0 2px rgba(37,93,180,.7); }
+    .cell.atk::after { background: rgba(235,93,112,.4); box-shadow: inset 0 0 0 2px rgba(176,47,66,.68); }
+    .cell.interact::after { background: rgba(255,210,66,.42); box-shadow: inset 0 0 0 2px rgba(173,125,0,.72); }
+    .cell.threat::after { background: repeating-linear-gradient(135deg, rgba(224,75,97,.25) 0 6px, rgba(224,75,97,.06) 6px 12px); box-shadow: inset 0 0 0 2px rgba(196,51,73,.66); }
+    .cell.threat::before { content: "!"; position: absolute; top: 2px; right: 4px; z-index: 3; color: #a9283d; font-size: 12px; font-weight: 950; }
+    .cell.path::before { content: ""; position: absolute; inset: 38%; z-index: 4; border-radius: 50%; background: rgba(255,255,255,.86); }
+    .prop { position: absolute; z-index: 3; width: var(--cell); height: var(--cell); display: grid; place-items: center; pointer-events: none; }
+    .prop img { width: 78%; height: 78%; object-fit: contain; filter: drop-shadow(0 2px 2px rgba(70,52,93,.26)); }
+    .prop-label { position: absolute; left: 4px; right: 4px; bottom: 2px; overflow: hidden; color: #3e3550; font-size: 8px; font-weight: 950; text-align: center; text-overflow: ellipsis; white-space: nowrap; text-shadow: 0 1px #fff; }
+    .unit { position: absolute; z-index: 5; display: grid; place-items: center; width: var(--cell); height: var(--cell); border: 0; background: transparent; cursor: pointer; transition: left .2s ease, top .2s ease; }
+    .unit-body { position: relative; width: 86%; height: 86%; border: 2px solid #fff; border-radius: 13px; box-shadow: 0 3px 6px rgba(45,33,70,.35); }
+    .unit.you .unit-body { background: linear-gradient(150deg, #b8e5ff, #6da9ef); }
+    .unit.foe .unit-body { background: linear-gradient(150deg, #ffd1d7, #ec7c8b); }
+    .unit img { position: absolute; inset: -13%; width: 126%; height: 126%; object-fit: contain; pointer-events: none; filter: drop-shadow(0 2px 1px rgba(52,41,75,.25)); }
+    .token-fallback { position: absolute; inset: 0; display: grid; place-items: center; font-size: calc(var(--cell) * .55); }
+    .unit.acted { filter: grayscale(.75) brightness(.8); }
+    .unit.selected .unit-body { outline: 3px solid #ffe36a; outline-offset: 1px; }
+    .unit.preview { opacity: .62; }
+    .hpbar { position: absolute; left: 5%; right: 5%; bottom: -3px; height: 6px; overflow: hidden; border: 1px solid #fff; border-radius: 6px; background: #4a405b; }
+    .hpbar i { display: block; height: 100%; background: #46bf8e; transition: width .2s ease; }
+    .hpbar.low i { background: var(--coral); }
+    .carrier-badge { position: absolute; top: -5px; right: -5px; z-index: 3; display: none; width: 19px; height: 19px; place-items: center; border-radius: 50%; background: #ffe067; font-size: 11px; }
+    .unit.carrier .carrier-badge { display: grid; }
+    .float { position: absolute; z-index: 20; color: #c92f49; font-size: calc(var(--cell) * .45); font-weight: 950; pointer-events: none; animation: rise .75s ease-out forwards; text-shadow: 0 2px #fff; }
+    @keyframes rise { to { transform: translateY(-30px); opacity: 0; } }
+
+    .battle-panel { flex: 1 1 auto; min-height: 188px; padding: 10px 12px max(14px, env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: var(--paper); }
+    .phase-line { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 25px; }
+    .phase { font-size: 13px; font-weight: 950; }
+    .phase.you { color: #316fb4; }
+    .phase.foe { color: #b73d52; }
+    .autosave { color: var(--muted); font-size: 10px; font-weight: 750; }
+    .unit-info { display: grid; grid-template-columns: 48px 1fr; gap: 10px; align-items: center; min-height: 58px; margin: 5px 0; }
+    .unit-avatar { display: grid; place-items: center; width: 48px; height: 48px; overflow: hidden; border-radius: 14px; background: #e9e3f7; }
+    .unit-avatar img { width: 118%; height: 118%; object-fit: contain; }
+    .unit-name { font-size: 14px; font-weight: 950; }
+    .unit-stats { margin-top: 2px; color: var(--muted); font-size: 11px; line-height: 1.45; }
+    .hint { min-height: 33px; color: var(--muted); font-size: 12px; line-height: 1.42; }
+    .forecast { display: none; margin: 5px 0 8px; padding: 9px 11px; border: 1px solid #b9d7ee; border-radius: 12px; background: #eff8ff; color: #4e6474; font-size: 11px; line-height: 1.45; }
+    .forecast.show { display: block; }
+    .forecast b { color: var(--ink); }
+    .actions { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 7px; }
+    .actions .button { min-height: 48px; padding: 8px 5px; border-radius: 12px; font-size: 12px; box-shadow: 0 4px 0 var(--violet-dark); }
+    .actions .wide { grid-column: span 2; }
+
+    dialog { width: min(360px, calc(100% - 32px)); padding: 0; border: 0; border-radius: 22px; color: var(--ink); background: var(--paper); box-shadow: 0 20px 55px rgba(27,20,46,.4); }
+    dialog::backdrop { background: rgba(28,21,47,.72); backdrop-filter: blur(3px); }
+    .dialog-card { padding: 23px; }
+    .dialog-card h2 { margin: 0 0 6px; font-size: 23px; }
+    .dialog-card p { margin: 0 0 18px; color: var(--muted); font-size: 13px; line-height: 1.55; }
+    .dialog-actions { display: grid; gap: 9px; }
+
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+    @media (max-width: 390px) { .board { margin-left: 0; margin-right: 0; } .battle-panel { padding-inline: 9px; } }
+    @media (min-width: 700px) and (orientation: landscape) { .app { width: min(100%, 940px); } .battle-screen.active { display: grid; grid-template-columns: minmax(390px, 1.25fr) minmax(330px, .75fr); grid-template-rows: auto auto 1fr; } .battle-bar, .objective-bar { grid-column: 1 / -1; } .board-scroll { grid-column: 1; grid-row: 3; align-self: center; } .battle-panel { grid-column: 2; grid-row: 3; border-top: 0; border-left: 1px solid var(--line); padding: 18px; } }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; } }
+  </style>
 </head>
 <body>
-<div class="app">
-  <div class="topbar">
-    <div class="phase" id="phase">내 턴</div>
-    <div class="turn">턴 <span id="turnNo">1</span></div>
-  </div>
-  <div class="objective">⭐ <span id="objectiveText">목표: 오작동 장난감을 모두 멈추세요</span></div>
+  <main class="app" id="app">
+    <section class="screen active" id="homeScreen" aria-labelledby="gameTitle">
+      <header class="home-hero">
+        <div class="brand-row">
+          <span class="pill">⭐ 말랑광장 구조대</span>
+          <button class="icon-button" id="homeSound" type="button" aria-label="소리 켜기 또는 끄기">🔊</button>
+        </div>
+        <div class="hero-spacer"></div>
+        <p class="brand-kicker">MALLANG FRIENDS</p>
+        <h1 class="brand-title" id="gameTitle">별빛작전</h1>
+        <p class="brand-sub">위험한 칸을 읽고, 친구의 장점을 이어서 고장 난 장난감을 안전하게 멈춰 주세요.</p>
+      </header>
+      <div class="home-body">
+        <div class="section-title"><h2>작전판</h2><small id="campaignProgress">0 / 3 완료</small></div>
+        <div class="mission-list" id="missionList" aria-label="작전 목록"></div>
+        <div class="continue-area">
+          <button class="button" id="continueButton" type="button">첫 작전 시작</button>
+          <button class="button secondary hidden" id="resumeButton" type="button">진행 중인 작전 이어하기</button>
+        </div>
+      </div>
+    </section>
 
-  <div class="board-wrap">
-    <div class="board" id="board"></div>
-  </div>
+    <section class="screen story-screen" id="briefScreen" aria-labelledby="briefTitle">
+      <div class="brief-top">
+        <button class="icon-button" id="briefBack" type="button" aria-label="작전판으로 돌아가기">←</button>
+        <span class="pill" id="briefEyebrow">작전 1</span>
+      </div>
+      <article class="brief-card">
+        <div class="brief-location" id="briefLocation">장난감 공방 골목</div>
+        <h1 id="briefTitle">공방 골목 길 열기</h1>
+        <p class="brief-copy" id="briefCopy"></p>
+        <div class="dialogue" id="briefDialogue"></div>
+        <div class="pill">🎯 <span id="briefObjective"></span></div>
+        <div class="brief-actions">
+          <button class="button secondary" id="briefPractice" type="button">설명 보기</button>
+          <button class="button" id="briefStart" type="button">출동하기</button>
+        </div>
+      </article>
+    </section>
 
-  <div class="panel">
-    <div class="info" id="info">
-      <div class="ava you">🐶</div>
-      <div class="meta">
-        <div class="nm">친구를 선택하세요</div>
-        <div class="st">말랑프렌즈를 탭하면 이동 범위가 표시됩니다.</div>
+    <section class="screen battle-screen" id="battleScreen" aria-label="전술 작전">
+      <header class="battle-bar">
+        <button class="icon-button" id="battleMenu" type="button" aria-label="일시정지 메뉴">☰</button>
+        <div class="battle-heading"><b id="battleTitle">작전</b><span id="battleLocation">말랑광장</span></div>
+        <div class="turn-badge"><b id="turnText">1턴</b><small id="turnLimitText">제한 없음</small></div>
+      </header>
+      <div class="objective-bar">
+        <div class="objective-icon" aria-hidden="true">⭐</div>
+        <div><b>현재 목표</b><span id="objectiveText"></span></div>
+        <div class="objective-progress" id="objectiveProgress"></div>
+      </div>
+      <div class="board-scroll" id="boardScroll">
+        <div class="board" id="board" role="grid" aria-label="8 × 8 전술 보드"></div>
+      </div>
+      <section class="battle-panel" aria-label="행동 패널">
+        <div class="phase-line"><div class="phase you" id="phase">● 친구 차례</div><div class="autosave" id="autosave">자동 저장 켜짐</div></div>
+        <div class="unit-info" id="info"></div>
+        <div class="hint" id="hint" aria-live="polite"></div>
+        <div class="forecast" id="forecast" aria-live="polite"></div>
+        <div class="actions">
+          <button class="button secondary" id="btnThreat" type="button">위협 보기</button>
+          <button class="button secondary" id="btnCancel" type="button" disabled>취소</button>
+          <button class="button" id="btnConfirm" type="button" disabled>확정</button>
+          <button class="button secondary" id="btnWait" type="button" disabled>대기</button>
+          <button class="button secondary wide" id="btnObjective" type="button">목표 설명</button>
+          <button class="button wide" id="btnEnd" type="button">친구 차례 끝</button>
+        </div>
+      </section>
+    </section>
+
+    <section class="screen result-screen" id="resultScreen" aria-labelledby="resultTitle">
+      <img class="result-art" src="./assets/runtime/ui/result-sticker.webp" alt="별 스티커를 든 말랑프렌즈">
+      <span class="pill" id="resultEyebrow">작전 결과</span>
+      <h1 id="resultTitle">작전 성공!</h1>
+      <div class="result-stars" id="resultStars" aria-label="별 3개">★★★</div>
+      <p class="result-copy" id="resultCopy"></p>
+      <div class="result-stats"><div><b id="resultTurns">0</b><span>완료 턴</span></div><div><b id="resultFriends">0</b><span>활동 친구</span></div><div><b id="resultStopped">0</b><span>멈춘 장난감</span></div></div>
+      <div class="result-actions">
+        <button class="button" id="resultNext" type="button">다음 작전</button>
+        <button class="button secondary" id="resultRetry" type="button">다시 도전</button>
+        <button class="button secondary" id="resultHome" type="button">작전판으로</button>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="pauseDialog">
+    <div class="dialog-card">
+      <h2>잠시 쉬어갈까요?</h2>
+      <p>확정한 행동은 자동으로 저장됩니다. 언제든 같은 작전을 이어갈 수 있어요.</p>
+      <div class="dialog-actions">
+        <button class="button" id="pauseContinue" type="button">계속하기</button>
+        <button class="button secondary" id="pauseRestart" type="button">작전 처음부터</button>
+        <button class="button danger" id="pauseQuit" type="button">작전판으로 나가기</button>
       </div>
     </div>
-    <div class="hint" id="hint">내 턴입니다. 움직일 친구를 고르세요.</div>
-    <div class="forecast" id="forecast" aria-live="polite"></div>
-    <div class="actions">
-      <button class="btn secondary" id="btnThreat">위협 보기</button>
-      <button class="btn secondary" id="btnCancel" disabled>취소</button>
-      <button class="btn primary" id="btnConfirm" disabled>이동 확정</button>
-      <button class="btn warn" id="btnWait" disabled>대기</button>
-      <button class="btn primary" id="btnEnd" style="grid-column:span 2">턴 종료</button>
+  </dialog>
+
+  <dialog id="helpDialog">
+    <div class="dialog-card">
+      <h2>세 번 탭하면 준비 끝!</h2>
+      <p><b>1.</b> 친구를 탭하고 파란 칸을 고릅니다.<br><b>2.</b> 미리 본 위치가 좋으면 확정합니다.<br><b>3.</b> 빨간 장난감을 탭해 결과를 확인한 뒤 확정합니다.<br><br>위협 보기는 장난감이 다음 차례에 닿을 수 있는 칸을 <b>!</b>와 빗금으로 보여 줍니다.</p>
+      <button class="button" id="helpClose" type="button">알겠어요</button>
     </div>
-  </div>
-</div>
+  </dialog>
 
-<div class="overlay" id="overlay">
-  <div class="card">
-    <h2 id="ovTitle">작전 성공!</h2>
-    <p id="ovDesc">오작동 장난감을 모두 안전하게 멈췄어요.</p>
-    <button class="btn primary" onclick="location.reload()">다시 하기</button>
-  </div>
-</div>
-
-<script src="./engine/rules.js"></script>
-<script src="./engine/ui.js"></script>
+  <div class="sr-only" id="announcer" aria-live="assertive"></div>
+  <script src="../../games/registry.js"></script>
+  <script src="../../shared/bootstrap.js"></script>
+  <script src="./data/missions.js"></script>
+  <script src="./engine/rules.js"></script>
+  <script src="./engine/ui.js"></script>
 </body>
 </html>

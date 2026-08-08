@@ -9,23 +9,38 @@
 
   function clone(value) { return JSON.parse(JSON.stringify(value)); }
   function key(x, y) { return x + ',' + y; }
-  function actionKey(a) {
-    return [a.type, a.actorId, a.targetId || '', a.from ? key(a.from.x, a.from.y) : '',
-      a.to ? key(a.to.x, a.to.y) : ''].join('|');
+  function actionKey(action) {
+    var objectId = action.targetId || action.itemId || action.deviceId || action.objectId || '';
+    return [
+      action.type,
+      action.actorId,
+      objectId,
+      action.from ? key(action.from.x, action.from.y) : '',
+      action.to ? key(action.to.x, action.to.y) : '',
+      action.at ? key(action.at.x, action.at.y) : ''
+    ].join('|');
   }
   function inBounds(state, x, y) {
     return x >= 0 && y >= 0 && x < state.width && y < state.height;
   }
   function getUnit(state, id) {
-    return state.units.find(function (u) { return u.id === id; }) || null;
+    return state.units.find(function (unit) { return unit.id === id; }) || null;
   }
   function getUnitAt(state, x, y, exceptId) {
-    return state.units.find(function (u) {
-      return u.hp > 0 && u.id !== exceptId && u.x === x && u.y === y;
+    return state.units.find(function (unit) {
+      return unit.hp > 0 && unit.id !== exceptId && unit.x === x && unit.y === y;
+    }) || null;
+  }
+  function getProp(state, id) {
+    return (state.props || []).find(function (prop) { return prop.id === id; }) || null;
+  }
+  function getPropAt(state, x, y) {
+    return (state.props || []).find(function (prop) {
+      return !prop.delivered && !prop.carriedBy && prop.x === x && prop.y === y;
     }) || null;
   }
   function aliveUnits(state, team) {
-    return state.units.filter(function (u) { return u.hp > 0 && (!team || u.team === team); });
+    return state.units.filter(function (unit) { return unit.hp > 0 && (!team || unit.team === team); });
   }
   function isPassableTerrain(state, x, y) {
     return inBounds(state, x, y) && state.terrain[y][x] === 0;
@@ -47,13 +62,10 @@
   function advanceRng(state, randomSource) {
     var source = randomSource || nextRandom;
     var roll = source(clone(state.rng));
-    if (!roll || typeof roll.value !== 'number' || !roll.state) {
-      throw new Error('randomSource must return { value, state }');
-    }
+    if (!roll || typeof roll.value !== 'number' || !roll.state) throw new Error('randomSource must return { value, state }');
     state.rng = clone(roll.state);
     return roll;
   }
-
   function drawRandom(state, randomSource) {
     var next = clone(state);
     var draw = advanceRng(next, randomSource);
@@ -70,13 +82,22 @@
     state.status = state.status || 'active';
     state.rng = { seed: normalizeSeed(state.rng && state.rng.seed) };
     state.objective = state.objective || { type: 'eliminate', targetTeam: 'foe', text: '오작동 장난감을 모두 멈추세요' };
-    state.units.forEach(function (u) {
-      if (u.maxHp == null) u.maxHp = u.hp;
-      if (u.range == null) u.range = u.rng == null ? 1 : u.rng;
-      delete u.rng;
-      u.acted = Boolean(u.acted);
-      u.moved = Boolean(u.moved);
+    state.props = (state.props || []).map(function (prop) {
+      if (prop.active == null) prop.active = false;
+      if (prop.delivered == null) prop.delivered = false;
+      if (prop.carriedBy == null) prop.carriedBy = null;
+      return prop;
     });
+    state.units.forEach(function (unit) {
+      if (unit.maxHp == null) unit.maxHp = unit.hp;
+      if (unit.range == null) unit.range = unit.rng == null ? 1 : unit.rng;
+      delete unit.rng;
+      unit.acted = Boolean(unit.acted);
+      unit.moved = Boolean(unit.moved);
+      unit.carrying = Array.isArray(unit.carrying) ? unit.carrying.slice() : [];
+    });
+    var verdict = evaluateObjective(state);
+    state.status = verdict.status;
     return state;
   }
 
@@ -102,12 +123,14 @@
       });
     }
     return Object.keys(nodes).map(function (nodeKey) { return nodes[nodeKey]; })
-      .filter(function (node) {
-        var occupied = getUnitAt(state, node.x, node.y, actor.id);
-        return !occupied;
-      }).sort(function (a, b) { return a.cost - b.cost || a.y - b.y || a.x - b.x; });
+      .filter(function (node) { return !getUnitAt(state, node.x, node.y, actor.id); })
+      .sort(function (a, b) { return a.cost - b.cost || a.y - b.y || a.x - b.x; });
   }
 
+  function greatestCommonDivisor(a, b) {
+    while (b) { var next = a % b; a = b; b = next; }
+    return a;
+  }
   function hasLineOfSight(state, from, to) {
     var dx = to.x - from.x, dy = to.y - from.y;
     var distance = Math.abs(dx) + Math.abs(dy);
@@ -121,10 +144,6 @@
     }
     return true;
   }
-  function greatestCommonDivisor(a, b) {
-    while (b) { var next = a % b; a = b; b = next; }
-    return a;
-  }
   function canAttackFrom(state, actor, target, from) {
     if (!actor || !target || actor.hp <= 0 || target.hp <= 0 || actor.team === target.team) return false;
     var origin = from || actor;
@@ -137,9 +156,36 @@
     for (var y = 0; y < state.height; y += 1) for (var x = 0; x < state.width; x += 1) {
       var tile = { x: x, y: y };
       var distance = manhattan(from, tile);
-      if (distance > 0 && distance <= actor.range && hasLineOfSight(state, from, tile)) out.push(tile);
+      if (isPassableTerrain(state, x, y) && distance > 0 && distance <= actor.range && hasLineOfSight(state, from, tile)) out.push(tile);
     }
     return out;
+  }
+
+  function itemCarriedBy(state, itemId) {
+    return state.units.find(function (unit) { return unit.hp > 0 && unit.carrying && unit.carrying.indexOf(itemId) >= 0; }) || null;
+  }
+
+  function specialActionsAt(state, actor, from, path) {
+    var objective = state.objective || {};
+    var actions = [];
+    if (objective.type === 'deliver-and-escape') {
+      var item = getProp(state, objective.itemId);
+      if (item && !item.delivered && !item.carriedBy && from.x === objective.pickupAt.x && from.y === objective.pickupAt.y && actor.team === (objective.carrierTeam || 'you')) {
+        actions.push({ type: 'pickup-item', actorId: actor.id, itemId: objective.itemId, from: clone(from), at: clone(from), path: clone(path || []) });
+      }
+      if (actor.carrying && actor.carrying.indexOf(objective.itemId) >= 0 && from.x === objective.escapeAt.x && from.y === objective.escapeAt.y) {
+        actions.push({ type: 'escape-with-item', actorId: actor.id, itemId: objective.itemId, from: clone(from), at: clone(from), path: clone(path || []) });
+      }
+    }
+    if (objective.type === 'activate-then-defeat-boss') {
+      (objective.controlStars || []).forEach(function (star) {
+        var prop = getProp(state, star.id);
+        if (prop && !prop.active && from.x === star.x && from.y === star.y) {
+          actions.push({ type: 'activate-device', actorId: actor.id, deviceId: star.id, from: clone(from), at: clone(from), path: clone(path || []) });
+        }
+      });
+    }
+    return actions;
   }
 
   function listLegalActions(state, actorId, options) {
@@ -158,6 +204,7 @@
           actions.push({ type: 'attack', actorId: actor.id, targetId: target.id, from: from, path: clone(node.path) });
         }
       });
+      specialActionsAt(state, actor, from, node.path).forEach(function (action) { actions.push(action); });
       actions.push({ type: 'wait', actorId: actor.id, from: from, path: clone(node.path) });
       if (options.includeThreatTiles) {
         threatTilesFrom(state, actor, from).forEach(function (tile) {
@@ -177,43 +224,86 @@
     if (action.type === 'move' || action.type === 'wait') {
       return { type: action.type, actorId: action.actorId, from: clone(action.to || action.from), consumesAction: action.type === 'wait' };
     }
+    if (action.type === 'pickup-item' || action.type === 'escape-with-item' || action.type === 'activate-device') {
+      return { type: action.type, actorId: action.actorId, from: clone(action.from || action.at), itemId: action.itemId || null, deviceId: action.deviceId || null };
+    }
     if (action.type !== 'attack') return null;
     var sim = clone(state);
     var attacker = getUnit(sim, action.actorId), defender = getUnit(sim, action.targetId);
     if (!attacker || !defender) return null;
-    attacker.x = action.from.x; attacker.y = action.from.y;
+    attacker.x = action.from.x;
+    attacker.y = action.from.y;
     var damage = fixedDamage(attacker, defender);
     var defenderAfter = Math.max(0, defender.hp - damage);
     var counter = 0;
     if (defenderAfter > 0 && canAttackFrom(sim, defender, attacker, defender)) counter = fixedDamage(defender, attacker);
     return {
-      type: 'attack', actorId: attacker.id, targetId: defender.id, damage: damage,
-      targetHpBefore: defender.hp, targetHpAfter: defenderAfter, targetStopped: defenderAfter === 0,
-      counterDamage: counter, actorHpBefore: attacker.hp, actorHpAfter: Math.max(0, attacker.hp - counter),
+      type: 'attack',
+      actorId: attacker.id,
+      targetId: defender.id,
+      damage: damage,
+      targetHpBefore: defender.hp,
+      targetHpAfter: defenderAfter,
+      targetStopped: defenderAfter === 0,
+      counterDamage: counter,
+      actorHpBefore: attacker.hp,
+      actorHpAfter: Math.max(0, attacker.hp - counter),
       actorStopped: counter >= attacker.hp
     };
   }
 
   function equivalentAction(a, b) { return actionKey(a) === actionKey(b); }
+
+  function evaluateObjective(state) {
+    if (aliveUnits(state, 'you').length === 0) return { status: 'defeat', reason: '친구들의 기운이 모두 소진됐어요.' };
+    var objective = state.objective || {};
+    if (objective.turnLimit && state.turn > objective.turnLimit) {
+      return { status: 'defeat', reason: (objective.turnLimit || 0) + '턴 안에 목표를 끝내지 못했어요.' };
+    }
+    if (objective.type === 'eliminate' && aliveUnits(state, objective.targetTeam || 'foe').length === 0) {
+      return { status: 'victory', reason: '오작동 장난감을 모두 멈췄어요.' };
+    }
+    if (objective.type === 'deliver-and-escape') {
+      var item = getProp(state, objective.itemId);
+      var carrier = itemCarriedBy(state, objective.itemId);
+      if (item && item.delivered) return { status: 'victory', reason: '별빛 배터리를 무사히 전달했어요.' };
+      if (objective.failOnCarrierDown && item && item.carriedBy && !carrier) return { status: 'defeat', reason: '배터리를 들고 있던 친구가 쓰러졌어요.' };
+      return { status: 'active', reason: '' };
+    }
+    if (objective.type === 'activate-then-defeat-boss') {
+      var activeCount = (state.props || []).filter(function (prop) { return prop.kind === 'control-star' && prop.active; }).length;
+      var boss = getUnit(state, objective.bossId);
+      if (activeCount >= (objective.requiredActiveCount || 0) && (!boss || boss.hp <= 0)) {
+        return { status: 'victory', reason: '제어별을 켜고 보스를 멈췄어요.' };
+      }
+      return { status: 'active', reason: '' };
+    }
+    return { status: 'active', reason: '' };
+  }
+
   function applyAction(state, action, randomSource) {
     var legal = listLegalActions(state, action.actorId).some(function (candidate) { return equivalentAction(candidate, action); });
     if (!legal) return { ok: false, state: clone(state), events: [{ type: 'invalid-action', action: clone(action) }] };
-    var next = clone(state), events = [];
-    // Every committed action advances the injected RNG stream, even if the current
-    // resolution is fixed-damage. This keeps replay/input logs deterministic and
-    // preserves one explicit randomness channel for future mechanics.
+    var next = clone(state);
+    var events = [];
     advanceRng(next, randomSource);
     var actor = getUnit(next, action.actorId);
+    if (!actor) return { ok: false, state: clone(state), events: [{ type: 'invalid-action', action: clone(action) }] };
     if (action.type === 'move') {
-      actor.x = action.to.x; actor.y = action.to.y;
+      actor.x = action.to.x;
+      actor.y = action.to.y;
       actor.moved = true;
       events.push({ type: 'unit-moved', unitId: actor.id, to: clone(action.to), path: clone(action.path || []) });
     } else if (action.type === 'wait') {
-      actor.x = action.from.x; actor.y = action.from.y; actor.moved = true; actor.acted = true;
+      actor.x = action.from.x;
+      actor.y = action.from.y;
+      actor.moved = true;
+      actor.acted = true;
       events.push({ type: 'unit-moved', unitId: actor.id, to: clone(action.from), path: clone(action.path || []) });
       events.push({ type: 'unit-waited', unitId: actor.id });
     } else if (action.type === 'attack') {
-      actor.x = action.from.x; actor.y = action.from.y;
+      actor.x = action.from.x;
+      actor.y = action.from.y;
       actor.moved = true;
       var defender = getUnit(next, action.targetId);
       var forecast = forecastAction(next, action);
@@ -227,26 +317,51 @@
         if (actor.hp === 0) events.push({ type: 'unit-stopped', unitId: actor.id });
       }
       actor.acted = true;
+    } else if (action.type === 'pickup-item') {
+      actor.x = action.from.x;
+      actor.y = action.from.y;
+      actor.moved = true;
+      actor.acted = true;
+      if (actor.carrying.indexOf(action.itemId) === -1) actor.carrying.push(action.itemId);
+      var item = getProp(next, action.itemId);
+      if (item) item.carriedBy = actor.id;
+      events.push({ type: 'unit-moved', unitId: actor.id, to: clone(action.from), path: clone(action.path || []) });
+      events.push({ type: 'item-picked', unitId: actor.id, itemId: action.itemId });
+    } else if (action.type === 'escape-with-item') {
+      actor.x = action.from.x;
+      actor.y = action.from.y;
+      actor.moved = true;
+      actor.acted = true;
+      actor.carrying = actor.carrying.filter(function (itemId) { return itemId !== action.itemId; });
+      var delivered = getProp(next, action.itemId);
+      if (delivered) {
+        delivered.carriedBy = null;
+        delivered.delivered = true;
+        delivered.x = action.from.x;
+        delivered.y = action.from.y;
+      }
+      events.push({ type: 'unit-moved', unitId: actor.id, to: clone(action.from), path: clone(action.path || []) });
+      events.push({ type: 'item-delivered', unitId: actor.id, itemId: action.itemId });
+    } else if (action.type === 'activate-device') {
+      actor.x = action.from.x;
+      actor.y = action.from.y;
+      actor.moved = true;
+      actor.acted = true;
+      var prop = getProp(next, action.deviceId);
+      if (prop) prop.active = true;
+      events.push({ type: 'unit-moved', unitId: actor.id, to: clone(action.from), path: clone(action.path || []) });
+      events.push({ type: 'device-activated', unitId: actor.id, deviceId: action.deviceId });
     }
     var result = evaluateObjective(next);
-    if (result.status !== 'active') { next.status = result.status; events.push({ type: 'objective-ended', result: result.status }); }
+    next.status = result.status;
+    if (result.status !== 'active') events.push({ type: 'objective-ended', result: result.status });
     return { ok: true, state: next, events: events, objective: result };
-  }
-
-  function evaluateObjective(state) {
-    if (aliveUnits(state, 'you').length === 0) return { status: 'defeat', reason: '친구들의 기운이 모두 소진됐어요.' };
-    if (state.objective.type === 'eliminate' && aliveUnits(state, state.objective.targetTeam || 'foe').length === 0) {
-      return { status: 'victory', reason: '오작동 장난감을 모두 멈췄어요.' };
-    }
-    return { status: 'active', reason: '' };
   }
 
   function listThreatenedTiles(state, team) {
     var projected = clone(state);
     var tiles = {};
     aliveUnits(projected, team).forEach(function (unit) {
-      // Threats describe the unit's next available activation, not flags left over
-      // from its previous phase. The actual tiles still come from the shared action generator.
       unit.acted = false;
       unit.moved = false;
       listLegalActions(projected, unit.id, { includeThreatTiles: true, ignorePhase: true }).forEach(function (action) {
@@ -260,7 +375,7 @@
     var actor = getUnit(state, actorId);
     var actions = listLegalActions(state, actorId);
     if (!actor || actions.length === 0) return null;
-    var attacks = actions.filter(function (a) { return a.type === 'attack'; });
+    var attacks = actions.filter(function (action) { return action.type === 'attack'; });
     if (attacks.length) {
       attacks.sort(function (a, b) {
         var fa = forecastAction(state, a), fb = forecastAction(state, b);
@@ -271,7 +386,7 @@
       return attacks[0];
     }
     var targets = aliveUnits(state, actor.team === 'you' ? 'foe' : 'you');
-    var waits = actions.filter(function (a) { return a.type === 'wait'; });
+    var waits = actions.filter(function (action) { return action.type === 'wait'; });
     waits.sort(function (a, b) {
       function nearest(action) {
         return targets.reduce(function (best, target) { return Math.min(best, manhattan(action.from, target)); }, Infinity);
@@ -284,17 +399,43 @@
   function endPhase(state) {
     var next = clone(state);
     if (next.phase === 'you') next.phase = 'foe';
-    else { next.phase = 'you'; next.turn += 1; }
-    next.units.forEach(function (unit) { if (unit.team === next.phase) { unit.acted = false; unit.moved = false; } });
+    else {
+      next.phase = 'you';
+      next.turn += 1;
+    }
+    next.units.forEach(function (unit) {
+      if (unit.team === next.phase) {
+        unit.acted = false;
+        unit.moved = false;
+      }
+    });
+    var result = evaluateObjective(next);
+    next.status = result.status;
     return next;
   }
 
   return {
-    clone: clone, key: key, createState: createState, nextRandom: nextRandom, drawRandom: drawRandom,
-    getUnit: getUnit, getUnitAt: getUnitAt, aliveUnits: aliveUnits, computeReachable: computeReachable,
-    hasLineOfSight: hasLineOfSight, canAttackFrom: canAttackFrom, listLegalActions: listLegalActions,
-    fixedDamage: fixedDamage, forecastAction: forecastAction, applyAction: applyAction,
-    evaluateObjective: evaluateObjective, listThreatenedTiles: listThreatenedTiles,
-    chooseAiAction: chooseAiAction, endPhase: endPhase, actionKey: actionKey
+    clone: clone,
+    key: key,
+    createState: createState,
+    nextRandom: nextRandom,
+    drawRandom: drawRandom,
+    getUnit: getUnit,
+    getUnitAt: getUnitAt,
+    getProp: getProp,
+    getPropAt: getPropAt,
+    aliveUnits: aliveUnits,
+    computeReachable: computeReachable,
+    hasLineOfSight: hasLineOfSight,
+    canAttackFrom: canAttackFrom,
+    listLegalActions: listLegalActions,
+    fixedDamage: fixedDamage,
+    forecastAction: forecastAction,
+    applyAction: applyAction,
+    evaluateObjective: evaluateObjective,
+    listThreatenedTiles: listThreatenedTiles,
+    chooseAiAction: chooseAiAction,
+    endPhase: endPhase,
+    actionKey: actionKey
   };
 });

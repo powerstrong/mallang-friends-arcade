@@ -7,47 +7,61 @@ var root = path.join(__dirname, '..');
 var html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
 var rules = fs.readFileSync(path.join(root, 'engine', 'rules.js'), 'utf8');
 var ui = fs.readFileSync(path.join(root, 'engine', 'ui.js'), 'utf8');
-
+var missions = fs.readFileSync(path.join(root, 'data', 'missions.js'), 'utf8');
+var manifest = JSON.parse(fs.readFileSync(path.join(root, 'manifest.webmanifest'), 'utf8'));
 var tests = [];
-function test(name, fn) { tests.push({ name:name, fn:fn }); }
+function test(name, fn) { tests.push({ name: name, fn: fn }); }
 
-test('index keeps zoom enabled and 44px-class board cells', function () {
-  assert(html.includes('width=device-width, initial-scale=1.0, viewport-fit=cover'));
+test('mobile viewport keeps zoom enabled and touch targets large', function () {
+  assert(/width=device-width,\s*initial-scale=1(?:\.0)?,\s*viewport-fit=cover/.test(html));
   assert(!html.includes('user-scalable=no'));
-  assert(html.includes('--cell:clamp(44px,11vw,46px);'));
+  assert(html.includes('--cell: clamp(44px'));
+  assert(html.includes('min-height: 48px'));
 });
-
-test('index exposes tactical legibility controls and objective hud', function () {
-  ['objectiveText', 'forecast', 'btnThreat', 'btnCancel', 'btnConfirm', 'btnWait', 'btnEnd'].forEach(function (id) {
-    assert(html.includes('id="' + id + '"'));
+test('campaign, briefing, battle, result, pause, and help surfaces exist', function () {
+  ['homeScreen','briefScreen','battleScreen','resultScreen','missionList','objectiveText','objectiveProgress','forecast','btnThreat','btnCancel','btnConfirm','btnWait','btnObjective','btnEnd','pauseDialog','helpDialog'].forEach(function (id) {
+    assert(html.includes('id="' + id + '"'), 'missing #' + id);
   });
 });
-
-test('index loads only external runtime scripts and no legacy inline prototype blob', function () {
-  assert(html.includes('<script src="./engine/rules.js"></script>'));
-  assert(html.includes('<script src="./engine/ui.js"></script>'));
-  assert(!html.includes('phase0LegacySource'));
+test('runtime scripts are external, ordered, and shared shell connected', function () {
+  ['../../games/registry.js','../../shared/bootstrap.js','./data/missions.js','./engine/rules.js','./engine/ui.js'].forEach(function (src) {
+    assert(html.includes('<script src="' + src + '"></script>'), 'missing ' + src);
+  });
   assert(!html.includes('<script>'));
+  assert(ui.includes('M.listMissions()'));
+  assert(ui.includes('window.GameBoot.submitResult'));
 });
-
-test('ui keeps dom references outside serializable battle state', function () {
+test('serializable autosave and DOM-free rules boundary are preserved', function () {
   assert(!rules.includes('document.'));
   assert(!rules.includes('Math.random'));
-  assert(ui.includes('var unitEls = Object.create(null);'));
-  assert(!ui.includes('hpEl'));
-  assert(!ui.includes('el: null'));
-  assert(!ui.includes('hpBar: null'));
+  assert(ui.includes("var SAVE_KEY = 'mallang-starlight-save-v2'"));
+  assert(ui.includes('state: R.clone(state)'));
+  assert(ui.includes('localStorage.setItem'));
+  assert(ui.includes('var unitEls = Object.create(null)'));
 });
-
-test('ui is prewired to the Claude asset contract with emoji fallback', function () {
-  [
-    './assets/units/latte-guardian.png',
-    './assets/units/mint-starlight.png',
-    './assets/enemies/squeakbot.png',
-    './assets/enemies/bearbot.png'
-  ].forEach(function (asset) { assert(ui.includes(asset)); });
+test('optimized runtime art is wired through html and mission data', function () {
+  ['./assets/runtime/ui/hub-bg.webp','./assets/runtime/ui/result-sticker.webp','./assets/runtime/ui/icon-192.png'].forEach(function (asset) {
+    assert(html.includes(asset), 'missing ' + asset);
+  });
+  ['assets/runtime/tokens/latte.webp','assets/runtime/tokens/mint.webp','assets/runtime/tokens/boss-bear.webp'].forEach(function (asset) {
+    assert(missions.includes(asset), 'missing ' + asset);
+  });
   assert(ui.includes('token-fallback'));
   assert(ui.includes("image.addEventListener('error'"));
+});
+test('accessibility includes focus, reduced motion, dialogs, and a non-color threat cue', function () {
+  assert(html.includes(':focus-visible'));
+  assert(html.includes('prefers-reduced-motion: reduce'));
+  assert(html.includes('<dialog id="pauseDialog">'));
+  assert(html.includes('aria-live="assertive"'));
+  assert(html.includes('.cell.threat::before'));
+  assert(html.includes('content: "!"'));
+});
+test('manifest exposes install metadata and required icon sizes', function () {
+  assert.strictEqual(manifest.display, 'standalone');
+  assert.strictEqual(manifest.start_url, './index.html');
+  assert(manifest.icons.some(function (icon) { return icon.sizes === '192x192'; }));
+  assert(manifest.icons.some(function (icon) { return icon.sizes === '512x512'; }));
 });
 
 var failed = 0;
