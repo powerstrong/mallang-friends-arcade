@@ -1,7 +1,7 @@
 # 말랑프렌즈 별빛작전 — 전술 SRPG 기획서
 
 > 작업명: **말랑프렌즈 별빛작전**  
-> 내부 폴더명: `dragon-knight`(레거시 코드명, 외부 노출 금지)  
+> 폴더·레지스트리 ID: `mallang-starlight`  
 > 상태: **3작전 마이크로 캠페인 구현 완료, 밸런스·릴리스 QA 진행 중**
 > 최종 갱신: 2026-08-08  
 > 이 문서는 개발의 단일 기준선이다. 결정이 바뀌면 여기부터 고친다.
@@ -200,7 +200,7 @@
 현재 구조:
 
 ```text
-games/dragon-knight/
+games/mallang-starlight/
   index.html
   manifest.webmanifest
   engine/rules.js

@@ -1,7 +1,7 @@
 # HANDOFF — 말랑프렌즈 별빛작전
 
 > 콜드 스타트 순서: 이 문서 → `DESIGN.md` → `ART.md` → `index.html`  
-> 내부 폴더명 `dragon-knight`는 레거시 코드명이다. 외부 제목으로 사용하지 않는다.  
+> 폴더·레지스트리 ID·코드 네임스페이스는 `mallang-starlight`로 통일한다.  
 > 최종 갱신: 2026-08-08
 
 ---
@@ -153,7 +153,7 @@ Phase 0 메커닉 프로토타입은 더 이상 “현재 결과물”이 아니
 ## 10. 다음 작업자가 읽을 파일
 
 ```text
-games/dragon-knight/
+games/mallang-starlight/
   HANDOFF.md
   DESIGN.md
   ART.md

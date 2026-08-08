@@ -36,6 +36,9 @@ test('runtime scripts are external, ordered, and shared shell connected', functi
   assert(!html.includes('<script>'));
   assert(ui.includes('M.listMissions()'));
   assert(ui.includes('window.GameBoot.submitResult'));
+  assert(rules.includes('root.MallangStarlightRules = api'));
+  assert(missions.includes('root.MallangStarlightMissions = api'));
+  assert(ui.includes('window.__mallangStarlight'));
 });
 test('serializable autosave and DOM-free rules boundary are preserved', function () {
   assert(!rules.includes('document.'));

@@ -1,8 +1,8 @@
 (function () {
   'use strict';
 
-  var R = window.MallangTacticsRules;
-  var M = window.MallangTacticsMissions;
+  var R = window.MallangStarlightRules;
+  var M = window.MallangStarlightMissions;
   if (!R || !M) throw new Error('규칙과 작전 데이터가 먼저 로드되어야 합니다.');
 
   var SAVE_KEY = 'mallang-starlight-save-v2';
@@ -464,7 +464,7 @@
   el.resultRetry.addEventListener('click', function () { startMission(mission.id); }); el.resultHome.addEventListener('click', renderHome);
   window.addEventListener('resize', function () { if (state) { renderProps(); renderUnits(); } });
 
-  window.__mallangTactics = {
+  window.__mallangStarlight = {
     getState: function () { return state ? R.clone(state) : null; }, getUiState: function () { return R.clone(ui); }, getSave: function () { return R.clone(save); },
     listActions: function (id) { return state ? R.listLegalActions(state, id) : []; }, startMission: startMission,
     clearSave: function () { save = newSave(); persist(false); renderHome(); }

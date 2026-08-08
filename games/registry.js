@@ -176,7 +176,7 @@ window.GAME_REGISTRY = [
     path: '/games/board-timer/index.html',
   },
   {
-    id: 'dragon-knight',
+    id: 'mallang-starlight',
     title: '말랑프렌즈 별빛작전',
     description: '라떼와 민트가 오작동 장난감을 멈추고 광장 시설을 구하는 모바일 싱글 전술 SRPG.',
     type: 'SOLO',
@@ -194,6 +194,6 @@ window.GAME_REGISTRY = [
     resultUnit: '★',
     resultScale: 1,
     resultDecimals: 0,
-    path: '/games/dragon-knight/index.html',
+    path: '/games/mallang-starlight/index.html',
   },
 ];
