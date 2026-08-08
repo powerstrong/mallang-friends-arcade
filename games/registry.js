@@ -187,6 +187,7 @@ window.GAME_REGISTRY = [
     status: 'DRAFT',
     visibility: 'DIRECT_ONLY',
     reviewState: 'NOT_SUBMITTED',
+    stage: 'LAB',
     author: 'powerstrong',
     icon: '⭐',
     accentColor: '#7766d8',
