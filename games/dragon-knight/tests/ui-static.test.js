@@ -11,6 +11,12 @@ var missions = fs.readFileSync(path.join(root, 'data', 'missions.js'), 'utf8');
 var manifest = JSON.parse(fs.readFileSync(path.join(root, 'manifest.webmanifest'), 'utf8'));
 var tests = [];
 function test(name, fn) { tests.push({ name: name, fn: fn }); }
+function filesUnder(dir) {
+  return fs.readdirSync(dir, { withFileTypes: true }).reduce(function (out, entry) {
+    var target = path.join(dir, entry.name);
+    return out.concat(entry.isDirectory() ? filesUnder(target) : [target]);
+  }, []);
+}
 
 test('mobile viewport keeps zoom enabled and touch targets large', function () {
   assert(/width=device-width,\s*initial-scale=1(?:\.0)?,\s*viewport-fit=cover/.test(html));
@@ -56,6 +62,21 @@ test('optimized runtime art is wired through html and mission data', function ()
   });
   assert(ui.includes('token-fallback'));
   assert(ui.includes("image.addEventListener('error'"));
+});
+test('every shipped runtime image has a real consumer', function () {
+  var consumers = [html, ui, missions, JSON.stringify(manifest)].join('\n');
+  var shipped = filesUnder(path.join(root, 'assets', 'runtime')).filter(function (file) {
+    return /\.(?:png|webp|jpe?g|gif|svg)$/i.test(file);
+  });
+  shipped.forEach(function (file) {
+    var relative = path.relative(root, file).split(path.sep).join('/');
+    assert(consumers.includes(relative), 'orphan runtime image: ' + relative);
+  });
+  var references = consumers.match(/(?:\.\/)?assets\/runtime\/[A-Za-z0-9_./-]+\.(?:png|webp|jpe?g|gif|svg)/gi) || [];
+  references.forEach(function (reference) {
+    var relative = reference.replace(/^\.\//, '');
+    assert(fs.existsSync(path.join(root, relative)), 'missing runtime image: ' + relative);
+  });
 });
 test('accessibility includes focus, reduced motion, dialogs, and a non-color threat cue', function () {
   assert(html.includes(':focus-visible'));

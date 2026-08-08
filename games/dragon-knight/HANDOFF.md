@@ -134,8 +134,8 @@ Phase 0 메커닉 프로토타입은 더 이상 “현재 결과물”이 아니
 - 기존 말랑프렌즈 기준: `world/assets/*portrait.png`, `*sheet_3x3.png`
 - 기계 적 기준: `games/machine-animal-runner/assets/enemy-mech-*.png`, `boss-mech.png`
 - 상세 자산 계약: `ART.md`
-- `assets/art/style-anchor-v1.png`는 폐기된 중세 판타지 시안이다. 사용하거나 파생하지 않는다.
-- 신규 이미지는 필요시 별도 생성 파이프라인에서 만든다. 현재 작업트리에는 Claude 산출물을 최적화한 런타임 에셋과 앱 아이콘이 포함돼 있다.
+- 폐기된 중세 시안, 미사용 타일, 중복 PNG 원본, 미등장 친구 토큰은 저장소에서 제거했다. 필요하면 Git 이력에서 복구한다.
+- 신규 이미지는 `assets/ASSET_BRIEF.md` 계약에 따라 별도 작업 공간에서 만들고, 채택된 최적화 런타임 에셋과 앱 아이콘만 저장소에 넣는다.
 
 ---
 
@@ -165,8 +165,8 @@ games/dragon-knight/
   tests/rules.test.js
   tests/missions.test.js
   tests/ui-static.test.js
-  assets/CLAUDE_ASSET_BRIEF.md
-  assets/art/style-anchor-v1.png  # 폐기 시안, 사용 금지
+  assets/ASSET_BRIEF.md
+  assets/runtime/                # 코드가 실제 사용하는 배포 자산만 보관
 ```
 
 현재 가장 중요한 다음 작업은 **실기기 2·3번 작전 재확인, 결과 연출/사운드 세부 폴리시, 공개 승격 전 최종 QA**다. 별 보상은 구현됐고 병아리 합류는 후속 챕터로 결정했다. 구조적 경계는 `콘텐츠 → 명령 → 순수 규칙/상태 → 이벤트 → UI`로 유지한다.
