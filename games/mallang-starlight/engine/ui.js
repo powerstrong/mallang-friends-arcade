@@ -68,20 +68,125 @@
     el.announcer.textContent = '';
     window.setTimeout(function () { el.announcer.textContent = text; }, 10);
   }
+  // 오디오는 전부 WebAudio로 합성한다. 바이너리 사운드 파일 없이 file://에서도
+  // 동작하며, save.sound 토글 하나로 효과음과 BGM을 함께 끄고 켠다.
+  var masterGain = null;
+  var bgm = { timer: null, nextTime: 0, step: 0, name: null, gain: null };
+  var desiredBgm = null;
+
+  function ensureAudio() {
+    if (!audioContext) {
+      try { audioContext = new (window.AudioContext || window.webkitAudioContext)(); }
+      catch (error) { return null; }
+      masterGain = audioContext.createGain();
+      masterGain.gain.value = 0.9;
+      masterGain.connect(audioContext.destination);
+    }
+    if (audioContext.state === 'suspended') { try { audioContext.resume(); } catch (error) { /* 사용자 제스처 대기 */ } }
+    return audioContext;
+  }
+  function tone(freq, startAt, dur, type, peak, dest) {
+    var osc = audioContext.createOscillator();
+    var gain = audioContext.createGain();
+    osc.type = type || 'sine';
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0.0001, startAt);
+    gain.gain.exponentialRampToValueAtTime(Math.max(0.0002, peak), startAt + 0.012);
+    gain.gain.exponentialRampToValueAtTime(0.0001, startAt + dur);
+    osc.connect(gain); gain.connect(dest || masterGain);
+    osc.start(startAt); osc.stop(startAt + dur + 0.03);
+  }
+
+  // 효과음: [주파수, 시작오프셋, 길이, 파형, 정점게인] 노트들의 짧은 시퀀스.
+  var SFX = {
+    tap:      [[520, 0, .05, 'sine', .05]],
+    select:   [[600, 0, .05, 'sine', .06], [820, .05, .07, 'sine', .05]],
+    move:     [[470, 0, .05, 'sine', .06], [640, .05, .07, 'triangle', .05]],
+    hit:      [[210, 0, .09, 'square', .06], [150, .03, .10, 'square', .05]],
+    guard:    [[320, 0, .09, 'sine', .06], [480, .07, .12, 'sine', .06], [640, .16, .16, 'sine', .05]],
+    pickup:   [[540, 0, .06, 'triangle', .06], [810, .06, .10, 'triangle', .06]],
+    activate: [[660, 0, .07, 'sine', .06], [880, .07, .09, 'sine', .06], [1175, .16, .16, 'sine', .05]],
+    win:      [[523, 0, .13, 'triangle', .06], [659, .11, .13, 'triangle', .06], [784, .22, .15, 'triangle', .06], [1047, .34, .34, 'triangle', .06]],
+    fail:     [[330, 0, .16, 'sine', .06], [247, .15, .20, 'sine', .06], [185, .33, .34, 'sine', .05]],
+    star:     [[988, 0, .08, 'sine', .05], [1319, .07, .13, 'sine', .05]]
+  };
   function beep(kind) {
     if (!save.sound) return;
+    var ctx = ensureAudio(); if (!ctx) return;
     try {
-      audioContext = audioContext || new (window.AudioContext || window.webkitAudioContext)();
-      var notes = { tap: [460,.035], move: [560,.06], hit: [180,.09], win: [760,.16], fail: [140,.18], star: [920,.09] };
-      var note = notes[kind] || notes.tap;
-      var osc = audioContext.createOscillator();
-      var gain = audioContext.createGain();
-      osc.frequency.value = note[0]; osc.type = kind === 'hit' ? 'square' : 'sine';
-      gain.gain.setValueAtTime(.045, audioContext.currentTime);
-      gain.gain.exponentialRampToValueAtTime(.001, audioContext.currentTime + note[1]);
-      osc.connect(gain); gain.connect(audioContext.destination); osc.start(); osc.stop(audioContext.currentTime + note[1]);
+      var seq = SFX[kind] || SFX.tap;
+      var base = ctx.currentTime + 0.001;
+      seq.forEach(function (note) { tone(note[0], base + note[1], note[2], note[3], note[4], masterGain); });
     } catch (error) { /* 소리는 선택 기능입니다. */ }
   }
+
+  // 부드러운 I–vi–IV–V 진행. 화면마다 템포/음색만 바꿔 같은 엔진으로 BGM을 만든다.
+  var BGM_PROG = [
+    { bass: 130.81, arp: [261.63, 329.63, 392.00, 523.25] }, // C
+    { bass: 110.00, arp: [329.63, 440.00, 523.25, 440.00] }, // Am
+    { bass: 87.31,  arp: [349.23, 440.00, 523.25, 659.25] }, // F
+    { bass: 98.00,  arp: [392.00, 493.88, 587.33, 493.88] }  // G
+  ];
+  var BGM_THEMES = {
+    home:   { step: 0.42, wave: 'sine',     arp: false, pad: true,  gain: 0.05 },
+    brief:  { step: 0.34, wave: 'sine',     arp: true,  pad: true,  gain: 0.045 },
+    battle: { step: 0.28, wave: 'triangle', arp: true,  pad: false, gain: 0.05 }
+  };
+
+  function bgmVoiceStep(theme, idx, when) {
+    var chord = BGM_PROG[Math.floor(idx / 4) % BGM_PROG.length];
+    var beat = idx % 4;
+    if (beat === 0) {
+      tone(chord.bass, when, theme.step * 3.6, 'sine', theme.gain * 1.1, bgm.gain);
+      if (theme.pad) chord.arp.forEach(function (freq) { tone(freq / 2, when, theme.step * 3.6, 'sine', theme.gain * 0.3, bgm.gain); });
+    }
+    if (theme.arp) tone(chord.arp[beat], when, theme.step * 1.4, theme.wave, theme.gain * 0.7, bgm.gain);
+    else if (beat === 2) tone(chord.arp[0] * 2, when, theme.step * 1.8, theme.wave, theme.gain * 0.4, bgm.gain);
+  }
+  function bgmTick() {
+    if (!audioContext || !bgm.name) return;
+    var theme = BGM_THEMES[bgm.name]; if (!theme) return;
+    while (bgm.nextTime < audioContext.currentTime + 0.25) {
+      bgmVoiceStep(theme, bgm.step, bgm.nextTime);
+      bgm.nextTime += theme.step;
+      bgm.step = (bgm.step + 1) % (BGM_PROG.length * 4);
+    }
+  }
+  function bgmStop() {
+    if (bgm.timer) { clearInterval(bgm.timer); bgm.timer = null; }
+    if (bgm.gain && audioContext) {
+      try { bgm.gain.gain.cancelScheduledValues(audioContext.currentTime); bgm.gain.gain.setTargetAtTime(0.0001, audioContext.currentTime, 0.08); } catch (error) { /* noop */ }
+    }
+    bgm.name = null;
+  }
+  function bgmPlay(name) {
+    var ctx = ensureAudio(); if (!ctx || ctx.state !== 'running') return;
+    if (bgm.name === name && bgm.timer) return;
+    if (bgm.timer) { clearInterval(bgm.timer); bgm.timer = null; }
+    if (!bgm.gain) { bgm.gain = ctx.createGain(); bgm.gain.connect(masterGain); }
+    bgm.gain.gain.cancelScheduledValues(ctx.currentTime);
+    bgm.gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+    bgm.gain.gain.setTargetAtTime(1, ctx.currentTime, 0.3);
+    bgm.name = name; bgm.step = 0; bgm.nextTime = ctx.currentTime + 0.08;
+    bgmTick();
+    bgm.timer = window.setInterval(bgmTick, 60);
+  }
+  function setBgm(name) {
+    desiredBgm = name;
+    if (!save.sound || !name) { bgmStop(); return; }
+    bgmPlay(name);
+  }
+  function resumeAudioFromGesture() {
+    if (!save.sound || !desiredBgm) return;
+    var ctx = ensureAudio();
+    if (ctx && ctx.state === 'running' && (bgm.name !== desiredBgm || !bgm.timer)) bgmPlay(desiredBgm);
+  }
+  document.addEventListener('pointerdown', resumeAudioFromGesture);
+  document.addEventListener('keydown', resumeAudioFromGesture);
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) { if (bgm.timer) { clearInterval(bgm.timer); bgm.timer = null; } }
+    else resumeAudioFromGesture();
+  });
   function stars(count) { var out = ''; for (var i = 0; i < 3; i += 1) out += i < count ? '★' : '☆'; return out; }
 
   function renderHome() {
@@ -110,6 +215,7 @@
     el.homeSound.textContent = save.sound ? '🔊' : '🔇';
     el.homeSound.setAttribute('aria-pressed', save.sound ? 'true' : 'false');
     screens(el.homeScreen);
+    setBgm('home');
   }
 
   function openBrief(id) {
@@ -122,14 +228,14 @@
     el.briefDialogue.innerHTML = (mission.story || []).map(function (line) {
       return '<div><b>' + line.speaker + '</b> · ' + line.text + '</div>';
     }).join('');
-    screens(el.briefScreen); beep('tap');
+    screens(el.briefScreen); setBgm('brief'); beep('tap');
   }
   function resetUi() { ui = { selectedId: null, previewMove: null, pendingAction: null, threats: false, busy: false, hintText: '', skillArmed: false }; }
   function startMission(id) {
     mission = M.createMission(id); selectedMissionId = id;
     state = R.createState(mission); state.missionId = id; resetUi();
     ui.hintText = mission.hint || '친구를 탭하면 이동할 수 있는 칸이 나타납니다.';
-    buildBoard(); saveBattle(false); screens(el.battleScreen);
+    buildBoard(); saveBattle(false); screens(el.battleScreen); setBgm('battle');
     hint(ui.hintText);
     say(mission.title + '. ' + mission.objective.text); beep('move');
   }
@@ -138,7 +244,7 @@
     if (!active) return renderHome();
     try {
       mission = M.createMission(active.missionId); selectedMissionId = active.missionId;
-      state = R.createState(active.state); resetUi(); buildBoard(); screens(el.battleScreen);
+      state = R.createState(active.state); resetUi(); buildBoard(); screens(el.battleScreen); setBgm('battle');
       ui.hintText = '진행 중이던 작전을 이어갑니다.';
       hint(ui.hintText);
       say(mission.title + ' 작전을 이어갑니다.');
@@ -355,7 +461,7 @@
 
   function select(unit) {
     ui.selectedId = unit.id; ui.previewMove = null; ui.pendingAction = null; ui.skillArmed = false;
-    hint(unit.moved ? '장난감이나 목표 행동을 고른 뒤 확정하세요.' : '파란 칸을 눌러 이동을 미리 보세요.'); beep('tap'); render();
+    hint(unit.moved ? '장난감이나 목표 행동을 고른 뒤 확정하세요.' : '파란 칸을 눌러 이동을 미리 보세요.'); beep('select'); render();
   }
   function clearPending() { ui.previewMove = null; ui.pendingAction = null; ui.skillArmed = false; hint(ui.selectedId ? '이동할 칸이나 행동을 다시 고르세요.' : '움직일 친구를 고르세요.'); render(); }
   function objectiveAt(actions, actor, x, y) {
@@ -399,6 +505,10 @@
   }
 
   function floatEvent(event) {
+    if (event.type === 'guard-applied') return beep('guard');
+    if (event.type === 'item-picked') return beep('pickup');
+    if (event.type === 'item-delivered') return beep('activate');
+    if (event.type === 'device-activated') return beep('activate');
     if (event.type !== 'unit-hit') return;
     var refs = unitEls[event.targetId]; if (!refs) return;
     var label = document.createElement('div'); label.className = 'float'; label.textContent = '-' + event.amount;
@@ -444,7 +554,7 @@
     return score;
   }
   function outcome() {
-    ui.busy = true;
+    ui.busy = true; bgmStop();
     var result = R.evaluateObjective(state), won = state.status === 'victory', earned = scoreStars();
     var stopped = state.units.filter(function (unit) { return unit.team === 'foe' && unit.hp <= 0; }).length;
     save.activeBattle = null;
@@ -513,7 +623,8 @@
   window.__mallangStarlight = {
     getState: function () { return state ? R.clone(state) : null; }, getUiState: function () { return R.clone(ui); }, getSave: function () { return R.clone(save); },
     listActions: function (id) { return state ? R.listLegalActions(state, id) : []; }, startMission: startMission,
-    clearSave: function () { save = newSave(); persist(false); renderHome(); }
+    clearSave: function () { save = newSave(); persist(false); renderHome(); },
+    getAudio: function () { return { sound: save.sound, desired: desiredBgm, bgm: bgm.name, playing: Boolean(bgm.timer), ctx: audioContext ? audioContext.state : null }; }
   };
   renderHome();
 })();

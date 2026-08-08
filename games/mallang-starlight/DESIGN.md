@@ -293,6 +293,7 @@ games/mallang-starlight/
 - 브랜드 에셋은 저장소 내부 게임 제작에만 사용하며 `ASSET_POLICY.md`를 따른다.
 - 상세 계약과 자산 목록은 `ART.md`에서 관리한다.
 - 현재 런타임 배선은 `assets/runtime/tokens/*.webp`, `assets/runtime/props/*.webp`, `assets/runtime/ui/*.webp|png`를 기준으로 한다.
+- 사운드는 바이너리 오디오 파일 없이 `engine/ui.js`에서 WebAudio로 전량 합성한다(`file://` 호환, 에셋 0바이트). 효과음(선택·이동·해결·든든막기·줍기·제어별·승리·실패·별)과 화면별 BGM(홈/브리핑/전투 3테마, I–vi–IV–V 진행)을 제공하며, 결과 화면에서는 BGM을 멈춰 승패 사운드를 강조한다. 모든 오디오는 `save.sound` 토글 하나로 함께 제어하고, 브라우저 자동재생 정책에 맞춰 첫 사용자 제스처에서 오디오 컨텍스트를 깨운다.
 
 ---
 
