@@ -150,6 +150,7 @@
     .cell.threat::after { background: repeating-linear-gradient(135deg, rgba(224,75,97,.25) 0 6px, rgba(224,75,97,.06) 6px 12px); box-shadow: inset 0 0 0 2px rgba(196,51,73,.66); }
     .cell.threat::before { content: "!"; position: absolute; top: 2px; right: 4px; z-index: 3; color: #a9283d; font-size: 12px; font-weight: 950; }
     .cell.path::before { content: ""; position: absolute; inset: 38%; z-index: 4; border-radius: 50%; background: rgba(255,255,255,.86); }
+    .cell.step::after { content: ""; position: absolute; inset: 1px; z-index: 2; border-radius: 4px; border: 2px dashed rgba(196,51,73,.6); background: rgba(224,75,97,.08); }
     .prop { position: absolute; z-index: 3; width: var(--cell); height: var(--cell); display: grid; place-items: center; pointer-events: none; }
     .prop img { width: 78%; height: 78%; object-fit: contain; filter: drop-shadow(0 2px 2px rgba(70,52,93,.26)); }
     .prop-label { position: absolute; left: 4px; right: 4px; bottom: 2px; overflow: hidden; color: #3e3550; font-size: 8px; font-weight: 950; text-align: center; text-overflow: ellipsis; white-space: nowrap; text-shadow: 0 1px #fff; }
@@ -170,6 +171,10 @@
     .shield-badge { position: absolute; top: -6px; left: -6px; z-index: 3; display: none; width: 20px; height: 20px; place-items: center; border: 1px solid #fff; border-radius: 50%; background: #65c9d5; font-size: 11px; box-shadow: 0 2px 4px rgba(45,33,70,.24); }
     .unit.guarded .shield-badge { display: grid; }
     .unit.guarded .unit-body { box-shadow: 0 0 0 3px rgba(87,197,211,.45), 0 3px 6px rgba(45,33,70,.35); }
+    .aim-badge { position: absolute; right: -6px; bottom: 8px; z-index: 4; display: none; min-width: 20px; height: 18px; padding: 0 3px; place-items: center; border: 1px solid #fff; border-radius: 9px; background: #e0506f; color: #fff; font-size: 10px; font-weight: 950; box-shadow: 0 2px 4px rgba(45,33,70,.3); }
+    .unit.aimed .unit-body { outline: 2px dashed rgba(224,80,111,.9); outline-offset: 2px; }
+    .unit.aimed-fatal .aim-badge { background: #b3213f; animation: aimpulse .9s ease-in-out infinite; }
+    @keyframes aimpulse { 50% { transform: scale(1.18); } }
     .float { position: absolute; z-index: 20; color: #c92f49; font-size: calc(var(--cell) * .45); font-weight: 950; pointer-events: none; animation: rise .75s ease-out forwards; text-shadow: 0 2px #fff; }
     @keyframes rise { to { transform: translateY(-30px); opacity: 0; } }
 
@@ -307,7 +312,7 @@
   <dialog id="helpDialog">
     <div class="dialog-card">
       <h2>세 번 탭하면 준비 끝!</h2>
-      <p><b>1.</b> 친구를 탭하고 파란 칸을 고릅니다.<br><b>2.</b> 미리 본 위치가 좋으면 확정합니다.<br><b>3.</b> 빨간 장난감을 탭해 결과를 확인한 뒤 확정합니다.<br><br>위협 보기는 장난감이 다음 차례에 닿을 수 있는 칸을 <b>!</b>와 빗금으로 보여 줍니다.</p>
+      <p><b>1.</b> 친구를 탭하고 파란 칸을 고릅니다.<br><b>2.</b> 미리 본 위치가 좋으면 확정합니다.<br><b>3.</b> 빨간 장난감을 탭해 결과를 확인한 뒤 확정합니다.<br><br><b>위협 예고</b>는 장난감이 이번 차례에 노리는 친구를 <b>−숫자</b>로, 이동할 칸을 빗금으로 보여 줍니다. 장난감을 탭하면 그 하나가 누구를 노리는지도 알려 줘요.</p>
       <button class="button" id="helpClose" type="button">알겠어요</button>
     </div>
   </dialog>

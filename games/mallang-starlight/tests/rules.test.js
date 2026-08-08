@@ -419,6 +419,50 @@ test('clocktower mission keeps a full-party victory route after balance changes'
   );
 });
 
+test('enemy phase forecast is non-mutating and deterministic across a round trip', function () {
+  var state = fixture();
+  var snapshot = JSON.stringify(state);
+  var first = R.forecastEnemyPhase(state);
+  assert.strictEqual(JSON.stringify(state), snapshot, 'forecast mutated the source state');
+  var second = R.forecastEnemyPhase(JSON.parse(JSON.stringify(state)));
+  assert.deepStrictEqual(first, second);
+});
+
+test('enemy phase forecast predicts the same friend HP the real phase produces', function () {
+  Missions.listMissionIds().forEach(function (id) {
+    var state = R.createState(Missions.createMission(id));
+    var forecast = R.forecastEnemyPhase(state);
+    var sim = R.endPhase(state);
+    R.aliveUnits(sim, 'foe').map(function (unit) { return unit.id; }).forEach(function (foeId) {
+      if (sim.status !== 'active') return;
+      var unit = R.getUnit(sim, foeId);
+      if (!unit || unit.hp <= 0) return;
+      var action = R.chooseAiAction(sim, foeId);
+      if (action) { var applied = R.applyAction(sim, action); if (applied.ok) sim = applied.state; }
+    });
+    var real = {};
+    R.aliveUnits(state, 'you').forEach(function (unit) { var after = R.getUnit(sim, unit.id); real[unit.id] = after ? Math.max(0, after.hp) : 0; });
+    assert.deepStrictEqual(forecast.hpAfter, real, id + ' forecast HP mismatch');
+  });
+});
+
+test('guard stance visibly lowers the forecast incoming damage', function () {
+  var state = fixture({
+    phase: 'you',
+    units: [
+      { id: 'latte', team: 'you', role: 'guardian', x: 1, y: 1, hp: 10, maxHp: 10, atk: 5, def: 1, mov: 0, range: 1 },
+      { id: 'mint', team: 'you', role: 'marksman', x: 1, y: 2, hp: 8, maxHp: 8, atk: 5, def: 1, mov: 0, range: 2 },
+      { id: 'bot', team: 'foe', x: 2, y: 2, hp: 8, maxHp: 8, atk: 6, def: 1, mov: 0, range: 1 }
+    ]
+  });
+  var before = R.forecastEnemyPhase(state).damageTo.mint || 0;
+  var guard = R.listLegalActions(state, 'latte').find(function (action) { return action.type === 'guard-stance'; });
+  var guarded = R.applyAction(state, guard).state;
+  var after = R.forecastEnemyPhase(guarded).damageTo.mint || 0;
+  assert(before > 0, 'expected the bot to threaten mint');
+  assert(after < before, 'guard should reduce forecast damage: ' + before + ' -> ' + after);
+});
+
 var failed = 0;
 tests.forEach(function (item) {
   try {

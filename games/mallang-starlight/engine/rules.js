@@ -446,6 +446,50 @@
     return waits[0] || null;
   }
 
+  // 다가올 장난감 페이즈를 상태를 바꾸지 않고 그대로 시뮬레이션해 각 장난감의 의도를
+  // 미리 알려준다. 고정 피해라 예고는 실제 결과와 정확히 일치한다. RNG는 시뮬레이션
+  // 사본에서만 전진하므로 원본 상태·스트림은 변하지 않는다.
+  function forecastEnemyPhase(state) {
+    var result = { intents: [], damageTo: {}, stopped: [], hpAfter: {}, anyThreat: false };
+    if (!state || state.status !== 'active') return result;
+    var sim = clone(state);
+    if (sim.phase === 'you') sim = endPhase(sim);
+    if (sim.phase !== 'foe' || sim.status !== 'active') return result;
+    var startHp = {};
+    aliveUnits(state, 'you').forEach(function (unit) { startHp[unit.id] = unit.hp; });
+    var foes = aliveUnits(sim, 'foe').map(function (unit) { return unit.id; });
+    for (var i = 0; i < foes.length; i += 1) {
+      if (sim.status !== 'active') break;
+      var mover = getUnit(sim, foes[i]);
+      if (!mover || mover.hp <= 0) continue;
+      var action = chooseAiAction(sim, foes[i]);
+      if (!action) continue;
+      var intent = { unitId: foes[i], type: action.type };
+      if (action.to) intent.to = { x: action.to.x, y: action.to.y };
+      if (action.from) intent.from = { x: action.from.x, y: action.from.y };
+      if (action.type === 'attack' || action.type === 'special-shot') {
+        var forecast = forecastAction(sim, action);
+        if (forecast) {
+          intent.targetId = action.targetId;
+          intent.damage = forecast.damage;
+          intent.stops = forecast.targetStopped;
+          result.damageTo[action.targetId] = (result.damageTo[action.targetId] || 0) + forecast.damage;
+          result.anyThreat = true;
+        }
+      }
+      result.intents.push(intent);
+      var applied = applyAction(sim, action);
+      if (applied.ok) sim = applied.state;
+    }
+    aliveUnits(state, 'you').forEach(function (unit) {
+      var after = getUnit(sim, unit.id);
+      var hp = after ? Math.max(0, after.hp) : 0;
+      result.hpAfter[unit.id] = hp;
+      if (startHp[unit.id] > 0 && hp <= 0) result.stopped.push(unit.id);
+    });
+    return result;
+  }
+
   function endPhase(state) {
     var next = clone(state);
     if (next.phase === 'you') next.phase = 'foe';
@@ -490,6 +534,7 @@
     applyAction: applyAction,
     evaluateObjective: evaluateObjective,
     listThreatenedTiles: listThreatenedTiles,
+    forecastEnemyPhase: forecastEnemyPhase,
     chooseAiAction: chooseAiAction,
     endPhase: endPhase,
     actionKey: actionKey

@@ -14,6 +14,7 @@
   var unitEls = Object.create(null);
   var propEls = Object.create(null);
   var ui = { selectedId: null, previewMove: null, pendingAction: null, threats: false, busy: false, hintText: '', skillArmed: false };
+  var intel = null;
   var audioContext = null;
   var ids = [
     'homeScreen','briefScreen','battleScreen','resultScreen','missionList','campaignProgress','continueButton','resumeButton','homeSound',
@@ -173,13 +174,13 @@
     state.units.forEach(function (unit) {
       var node = document.createElement('button'); node.type = 'button'; node.className = 'unit ' + unit.team;
       node.setAttribute('aria-label', unit.name || unit.id);
-      node.innerHTML = '<span class="unit-body"><span class="token-fallback"></span><img alt=""><span class="carrier-badge">🔋</span><span class="shield-badge">🛡</span><span class="hpbar"><i></i></span></span>';
+      node.innerHTML = '<span class="unit-body"><span class="token-fallback"></span><img alt=""><span class="carrier-badge">🔋</span><span class="shield-badge">🛡</span><span class="aim-badge"></span><span class="hpbar"><i></i></span></span>';
       node.querySelector('.token-fallback').textContent = unit.emoji || (unit.team === 'you' ? '🙂' : '🤖');
       var image = node.querySelector('img'); image.src = unit.asset || '';
       image.addEventListener('load', function () { node.querySelector('.token-fallback').hidden = true; });
       image.addEventListener('error', function () { image.hidden = true; });
       (function (id) { node.addEventListener('click', function (event) { var live = R.getUnit(state, id); event.stopPropagation(); if (live && live.hp > 0) tapCell(live.x, live.y); }); })(unit.id);
-      el.board.appendChild(node); unitEls[unit.id] = { root: node, hp: node.querySelector('.hpbar i'), bar: node.querySelector('.hpbar') };
+      el.board.appendChild(node); unitEls[unit.id] = { root: node, hp: node.querySelector('.hpbar i'), bar: node.querySelector('.hpbar'), aim: node.querySelector('.aim-badge') };
     });
     render();
   }
@@ -213,9 +214,14 @@
       refs.root.classList.toggle('selected', unit.id === ui.selectedId); refs.root.classList.toggle('preview', Boolean(ui.previewMove && unit.id === ui.selectedId));
       refs.root.classList.toggle('carrier', unit.id === carrier);
       refs.root.classList.toggle('guarded', Boolean(unit.guardBonus));
+      var incoming = intel && unit.team === 'you' ? (intel.damageTo[unit.id] || 0) : 0;
+      var stopped = incoming && intel.stopped.indexOf(unit.id) >= 0;
+      refs.root.classList.toggle('aimed', Boolean(incoming));
+      refs.root.classList.toggle('aimed-fatal', Boolean(stopped));
+      if (refs.aim) { refs.aim.textContent = incoming ? '−' + incoming : ''; refs.aim.style.display = incoming ? 'grid' : 'none'; }
     });
   }
-  function clearMarks() { cells.forEach(function (row) { row.forEach(function (cell) { cell.classList.remove('mv','atk','path','threat','interact'); }); }); }
+  function clearMarks() { cells.forEach(function (row) { row.forEach(function (cell) { cell.classList.remove('mv','atk','path','threat','interact','step'); }); }); }
   function mark(point, name) { if (point && cells[point.y] && cells[point.y][point.x]) cells[point.y][point.x].classList.add(name); }
   function same(a, b) { return a && b && a.x === b.x && a.y === b.y; }
   function fromHere(action, actor) { return action.from && same(action.from, actor); }
@@ -235,6 +241,10 @@
   function renderMarks() {
     clearMarks();
     if (ui.threats) R.listThreatenedTiles(state, 'foe').forEach(function (tile) { mark(tile, 'threat'); });
+    if (intel) intel.intents.forEach(function (item) {
+      var dest = item.to || item.from; var now = R.getUnit(state, item.unitId);
+      if (dest && now && (dest.x !== now.x || dest.y !== now.y)) mark(dest, 'step');
+    });
     if (!ui.selectedId || state.phase !== 'you') return;
     var actor = R.getUnit(state, ui.selectedId); if (!actor || actor.acted) return;
     var actions = R.listLegalActions(state, actor.id);
@@ -276,7 +286,13 @@
   }
   function currentSkillActions(actor) { return currentActions(actor, isSkillAction); }
   function renderForecast() {
-    if (!ui.pendingAction) { el.forecast.classList.remove('show'); el.forecast.textContent = ''; return; }
+    if (!ui.pendingAction) {
+      if (intel && state.phase === 'you') {
+        el.forecast.innerHTML = '<b>장난감 예고</b> · ' + intentSummary();
+        el.forecast.classList.add('show'); return;
+      }
+      el.forecast.classList.remove('show'); el.forecast.textContent = ''; return;
+    }
     if (ui.pendingAction.type === 'guard-stance') {
       el.forecast.innerHTML = '<b>든든막기</b><br>라떼와 인접 친구에게 적 페이즈 동안 보호막 +2를 줍니다.'; el.forecast.classList.add('show'); return;
     }
@@ -301,7 +317,7 @@
     var pending = Boolean(ui.previewMove || ui.pendingAction);
     var objectiveAction = actor && !pending ? currentObjectiveAction(actor) : null;
     var skillActions = actor && !pending ? currentSkillActions(actor) : [];
-    el.btnThreat.textContent = ui.threats ? '위협 숨기기' : '위협 보기'; el.btnThreat.setAttribute('aria-pressed', ui.threats ? 'true' : 'false');
+    el.btnThreat.textContent = ui.threats ? '예고 끄기' : '위협 예고'; el.btnThreat.setAttribute('aria-pressed', ui.threats ? 'true' : 'false');
     el.btnCancel.disabled = !pending || ui.busy; el.btnConfirm.disabled = !pending || ui.busy;
     el.btnConfirm.textContent = ui.pendingAction ? ((ui.pendingAction.type === 'attack' || ui.pendingAction.type === 'special-shot') ? '멈추기 확정' : '행동 확정') : '이동 확정';
     el.btnWait.disabled = !actor || actor.acted || state.phase !== 'you' || pending || ui.busy;
@@ -315,7 +331,26 @@
     el.turnText.textContent = state.turn + '턴'; el.turnLimitText.textContent = state.objective.turnLimit ? '제한 ' + state.objective.turnLimit + '턴' : '천천히 생각해요';
     el.objectiveProgress.textContent = progressText(); el.phase.textContent = state.phase === 'you' ? '● 친구 차례' : '● 장난감 차례'; el.phase.className = 'phase ' + state.phase;
   }
-  function render() { if (!state) return; renderHeader(); renderProps(); renderUnits(); renderMarks(); renderInfo(ui.selectedId ? R.getUnit(state, ui.selectedId) : null); el.hint.textContent = ui.hintText || ''; renderForecast(); renderControls(); }
+  function firstName(unit) { return unit && unit.name ? unit.name.split(' ')[0] : ''; }
+  function intentSummary() {
+    if (!intel) return '';
+    var parts = R.aliveUnits(state, 'you').map(function (unit) {
+      var dmg = intel.damageTo[unit.id] || 0;
+      if (!dmg) return null;
+      return firstName(unit) + ' −' + dmg + (intel.stopped.indexOf(unit.id) >= 0 ? '(정지 위험!)' : '');
+    }).filter(Boolean);
+    return parts.length ? '이대로 넘기면 · ' + parts.join(' · ') : '이대로 넘기면 아무도 다치지 않아요.';
+  }
+  function unitIntent(unitId) {
+    if (!intel) return null;
+    for (var i = 0; i < intel.intents.length; i += 1) if (intel.intents[i].unitId === unitId) return intel.intents[i];
+    return null;
+  }
+  function render() {
+    if (!state) return;
+    intel = (ui.threats && state.phase === 'you' && state.status === 'active') ? R.forecastEnemyPhase(state) : null;
+    renderHeader(); renderProps(); renderUnits(); renderMarks(); renderInfo(ui.selectedId ? R.getUnit(state, ui.selectedId) : null); el.hint.textContent = ui.hintText || ''; renderForecast(); renderControls();
+  }
   function hint(text) { ui.hintText = text; el.hint.textContent = text; }
 
   function select(unit) {
@@ -326,12 +361,23 @@
   function objectiveAt(actions, actor, x, y) {
     return actions.find(function (action) { var point = actionPoint(action); return isObjectiveAction(action) && fromHere(action, actor) && point && point.x === x && point.y === y; });
   }
+  function describeEnemyIntent(enemyId) {
+    if (state.phase !== 'you') return '';
+    var intent = null, forecast = R.forecastEnemyPhase(state);
+    for (var i = 0; i < forecast.intents.length; i += 1) if (forecast.intents[i].unitId === enemyId) { intent = forecast.intents[i]; break; }
+    if (!intent) return '';
+    if (intent.targetId) {
+      var target = R.getUnit(state, intent.targetId);
+      return ' 다음 차례에 ' + firstName(target) + '를 노려요 (−' + intent.damage + (intent.stops ? ', 정지 위험!' : '') + ').';
+    }
+    return ' 다음 차례에는 다가오기만 해요.';
+  }
   function tapCell(x, y) {
     if (ui.busy || state.phase !== 'you' || state.status !== 'active' || ui.previewMove || ui.pendingAction) return;
     var tapped = R.getUnitAt(state, x, y);
     if (!ui.selectedId) {
       if (tapped && tapped.team === 'you' && !tapped.acted) select(tapped);
-      else if (tapped) { renderInfo(tapped); hint('장난감의 기운과 거리를 확인했습니다.'); }
+      else if (tapped) { renderInfo(tapped); hint((tapped.team === 'foe' ? '장난감의 기운과 거리를 확인했습니다.' + describeEnemyIntent(tapped.id) : '장난감의 기운과 거리를 확인했습니다.')); }
       return;
     }
     var actor = R.getUnit(state, ui.selectedId);
@@ -343,7 +389,7 @@
       if (ui.skillArmed && special) { ui.skillArmed = false; ui.pendingAction = special; hint('별빛콩 결과를 확인하고 확정하세요.'); beep('tap'); render(); }
       else if (attack) { ui.pendingAction = attack; hint('결과를 확인한 뒤 멈추기를 확정하세요.'); beep('tap'); render(); }
       else if (special) { ui.pendingAction = special; hint('별빛콩 결과를 확인하고 확정하세요.'); beep('tap'); render(); }
-      else { renderInfo(tapped); hint('현재 위치에서는 닿지 않아요. 먼저 이동해 주세요.'); }
+      else { renderInfo(tapped); hint('현재 위치에서는 닿지 않아요. 먼저 이동해 주세요.' + describeEnemyIntent(tapped.id)); }
       return;
     }
     var interaction = objectiveAt(actions, actor, x, y);
@@ -420,7 +466,7 @@
   function showHelp(title, copy) { el.helpDialog.querySelector('h2').textContent = title; el.helpDialog.querySelector('p').innerHTML = copy; el.helpDialog.showModal(); }
   el.homeSound.addEventListener('click', function () { save.sound = !save.sound; persist(false); renderHome(); beep('tap'); });
   el.resumeButton.addEventListener('click', resumeMission); el.briefBack.addEventListener('click', renderHome);
-  el.briefPractice.addEventListener('click', function () { showHelp('세 번 탭하면 준비 끝!', '<b>1.</b> 친구와 파란 칸을 고릅니다.<br><b>2.</b> 위치를 미리 본 뒤 확정합니다.<br><b>3.</b> 빨간 장난감이나 노란 목표 행동을 고르고 다시 확정합니다.<br><br>위협 보기는 다음 장난감 차례에 닿는 칸을 <b>!</b>로 표시합니다.'); });
+  el.briefPractice.addEventListener('click', function () { showHelp('세 번 탭하면 준비 끝!', '<b>1.</b> 친구와 파란 칸을 고릅니다.<br><b>2.</b> 위치를 미리 본 뒤 확정합니다.<br><b>3.</b> 빨간 장난감이나 노란 목표 행동을 고르고 다시 확정합니다.<br><br><b>위협 예고</b>를 켜면 각 장난감이 이번에 누구를 노리고 얼마나 아프게 하는지 <b>−숫자</b>로 미리 보여 줍니다. 든든막기로 막으면 예상 피해가 바로 줄어드는 것도 확인할 수 있어요.'); });
   el.briefStart.addEventListener('click', function () { startMission(selectedMissionId); });
   el.battleMenu.addEventListener('click', function () { if (!ui.busy) el.pauseDialog.showModal(); });
   el.pauseContinue.addEventListener('click', function () { el.pauseDialog.close(); });
