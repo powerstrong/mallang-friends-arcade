@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#f4a63c" />
+    <link rel="icon" href="data:image/svg+xml,<svg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20100%20100'><text%20y='.9em'%20font-size='90'>🏗️</text></svg>" />
+    <title>말랑 타워</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <main class="game-shell">
+
+      <!-- 시작 화면 -->
+      <section id="startScreen" class="screen is-active">
+        <div class="hero">
+          <div class="hero-emoji" aria-hidden="true">🏗️</div>
+          <h1 class="game-title">말랑 타워</h1>
+          <p class="game-desc">좌우로 움직이는 말랑친구를 <b>탭</b> 한 번으로 착착 쌓아요.<br>딱 맞추면 폭이 되살아나요. 하늘 끝까지 올라가 볼까요?</p>
+          <p id="startBest" class="best-line is-hidden"></p>
+        </div>
+        <div class="btn-group">
+          <button id="btnStart" class="btn btn--primary">시작!</button>
+          <button id="btnExit" class="btn btn--secondary">광장으로</button>
+        </div>
+      </section>
+
+      <!-- 플레이 화면 -->
+      <section id="playScreen" class="screen">
+        <header class="hud">
+          <button id="btnSound" class="hud__sound" type="button" aria-label="소리 켜기 또는 끄기">🔊</button>
+          <div class="hud__floors"><span id="floorValue">0</span><small>층</small></div>
+          <div class="hud__best">🏆 <span id="bestValue">0</span></div>
+        </header>
+        <canvas id="stage" class="stage" aria-label="타워 쌓기 게임판"></canvas>
+        <p class="tap-hint" id="tapHint">화면을 탭하면 블록이 떨어져요</p>
+      </section>
+
+      <!-- 결과 화면 -->
+      <section id="overScreen" class="screen">
+        <div class="result-card">
+          <div class="result-emoji" id="resultEmoji" aria-hidden="true">🎉</div>
+          <h2 class="result-title" id="resultTitle">멋진 탑이에요!</h2>
+          <p class="result-score" id="finalScore">0<small>층</small></p>
+          <div class="result-stats">
+            <div><b id="resultBest">0</b><span>최고 기록</span></div>
+            <div><b id="resultCombo">0</b><span>최다 딱맞춤</span></div>
+          </div>
+          <p class="result-copy" id="resultCopy"></p>
+          <div class="btn-group">
+            <button id="btnRestart" class="btn btn--primary">다시 쌓기</button>
+            <button id="btnExitOver" class="btn btn--secondary">광장으로</button>
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- 순서 고정: registry → bootstrap → logic → game -->
+    <script src="/games/registry.js"></script>
+    <script src="/shared/bootstrap.js"></script>
+    <script src="./logic.js"></script>
+    <script src="./game.js"></script>
+  </body>
+</html>
