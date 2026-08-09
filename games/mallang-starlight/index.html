@@ -13,6 +13,7 @@
       --ink:#332b4c; --muted:#6f6786; --paper:#fffdf8; --line:#d9d0ea;
       --violet:#7766d8; --violet-dark:#51449e; --sky:#70b9f1; --mint:#4fbd98;
       --coral:#e96d7e; --amber:#e0a83a; --floor-a:#eef6e3; --floor-b:#f6faec;
+      --push:#3f86e6; --pull:#1fa98a;
       --cell:clamp(46px,13vw,58px); --shadow:0 12px 36px rgba(66,49,103,.18);
     }
     *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -140,14 +141,95 @@
     .result-stats span{color:var(--muted);font-size:11px;font-weight:800}
     .result-actions{display:grid;gap:9px;width:min(330px,100%)}
 
-    dialog{width:min(360px,calc(100% - 32px));padding:0;border:0;border-radius:22px;color:var(--ink);background:var(--paper);box-shadow:0 20px 55px rgba(27,20,46,.4)}
+    dialog{width:min(360px,calc(100% - 32px));max-height:calc(100dvh - 32px);overflow:auto;padding:0;border:0;border-radius:22px;color:var(--ink);background:var(--paper);box-shadow:0 20px 55px rgba(27,20,46,.4)}
     dialog::backdrop{background:rgba(28,21,47,.72)}
     .dialog-card{padding:22px}
     .dialog-card h2{margin:0 0 8px;font-size:22px}
     .dialog-card p{margin:0 0 16px;color:var(--muted);font-size:13.5px;line-height:1.6}
     .dialog-actions{display:grid;gap:9px}
     .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
-    @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+
+    /* 밀기/당기기 아이콘 · 홈 범례 */
+    .glyph{display:inline-grid;place-items:center;width:18px;height:18px;border-radius:6px;color:#fff;font-size:13px;font-weight:900;line-height:1;vertical-align:middle}
+    .glyph.push{background:var(--push)}
+    .glyph.pull{background:var(--pull)}
+    .legend{display:flex;gap:8px;margin-top:13px}
+    .legend-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 12px 5px 5px;border-radius:999px;background:rgba(255,255,255,.92);color:var(--ink);font-size:12.5px;font-weight:800}
+    .legend-chip .who{width:25px;height:25px;border-radius:50%;display:grid;place-items:center;font-size:15px;background:#f1ecfb}
+
+    /* 목표 HUD — 남은 장난감을 그림으로 */
+    .goal-hud{display:flex;align-items:center;gap:5px;flex-wrap:wrap;font-size:12px;font-weight:800}
+    .goal-hud .toy-pip{display:inline-grid;place-items:center;width:27px;height:27px;border-radius:8px;font-size:15px;
+      background:#fff;border:1.5px solid #dfcc75;transition:transform .3s ease,background .3s ease,border-color .3s ease}
+    .goal-hud .toy-pip.done{background:var(--mint);border-color:#2f8e6c;color:#fff;transform:scale(1.06)}
+    .goal-hud .lbl{color:#7a6a2c}
+
+    /* 슬롯(명령 상태를 아이콘으로) */
+    .slot .desc b{display:flex;align-items:center;gap:4px}
+    .slot .glyph{width:16px;height:16px;font-size:11px}
+    .slot .slot-state{color:var(--muted)}
+    .slot.set .slot-state{color:var(--ink);font-weight:800}
+    .slot-mark{margin-left:auto;display:grid;place-items:center;width:26px;height:26px;font-size:17px;color:#c3bad6}
+    .slot.latte.set{border-color:var(--push);background:#ebf2fd}
+    .slot.mint.set{border-color:var(--pull);background:#e6f6f2}
+    .slot.latte.set .slot-mark{color:var(--push)}
+    .slot.mint.set .slot-mark{color:var(--pull)}
+    .slot.sel{outline:2px solid #ffcf4a;outline-offset:1px}
+
+    /* 조작 가능한 장난감이 스스로 빛난다(밀/당길 대상) */
+    .unit.act-push .unit-body{animation:affpulse 1.05s ease-in-out infinite;box-shadow:0 3px 6px rgba(45,33,70,.35),0 0 0 3px var(--push),0 0 15px 3px rgba(63,134,230,.55)}
+    .unit.act-pull .unit-body{animation:affpulse 1.05s ease-in-out infinite;box-shadow:0 3px 6px rgba(45,33,70,.35),0 0 0 3px var(--pull),0 0 15px 3px rgba(31,169,138,.55)}
+    @keyframes affpulse{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}
+
+    /* 방향 화살표(예고 미리보기 · 예약 확정) */
+    .aff-arrow{position:absolute;z-index:8;display:grid;place-items:center;width:var(--cell);height:var(--cell);
+      font-size:calc(var(--cell)*.52);font-weight:950;pointer-events:none;text-shadow:0 1px 2px #fff;animation:affbob .9s ease-in-out infinite}
+    .aff-arrow.push{color:var(--push)}
+    .aff-arrow.pull{color:var(--pull)}
+    @keyframes affbob{50%{transform:scale(1.18)}}
+    .cmd-arrow{position:absolute;z-index:8;display:grid;place-items:center;width:var(--cell);height:var(--cell);
+      font-size:calc(var(--cell)*.46);font-weight:950;pointer-events:none;text-shadow:0 1px 2px #fff}
+    .cmd-arrow.push{color:var(--push)}
+    .cmd-arrow.pull{color:var(--pull)}
+    .dest-mark{position:absolute;z-index:4;display:grid;place-items:center;width:var(--cell);height:var(--cell);pointer-events:none;font-size:calc(var(--cell)*.34);opacity:.85}
+    .dest-mark .ring{position:absolute;inset:15%;border:2.5px dashed currentColor;border-radius:12px}
+    .dest-mark.latte{color:var(--push)}
+    .dest-mark.mint{color:var(--pull)}
+
+    /* 눌렀을 때 이펙트 */
+    .ripple{position:absolute;z-index:15;width:var(--cell);height:var(--cell);border-radius:50%;pointer-events:none;
+      background:radial-gradient(circle,rgba(120,102,216,.42),transparent 68%);animation:ripple .46s ease-out forwards}
+    .ripple.go{background:radial-gradient(circle,rgba(63,134,230,.5),transparent 68%)}
+    @keyframes ripple{from{transform:scale(.35);opacity:.95}to{transform:scale(1.9);opacity:0}}
+    .spark{position:absolute;z-index:22;pointer-events:none;font-size:calc(var(--cell)*.36);animation:spark .72s ease-out forwards}
+    @keyframes spark{from{transform:translate(0,0) scale(.4);opacity:1}to{transform:translate(var(--dx),var(--dy)) scale(1.1);opacity:0}}
+    .unit.pop-fx{animation:popfx .3s ease}
+    @keyframes popfx{40%{transform:scale(1.18)}}
+    .unit.repaired-fx .unit-body{animation:repairflash .62s ease-out}
+    @keyframes repairflash{0%{box-shadow:0 0 0 0 rgba(79,189,152,.85)}100%{box-shadow:0 0 0 24px rgba(79,189,152,0)}}
+    .unit.hurt-fx{animation:shakefx .42s}
+    .unit.hurt-fx .unit-body{animation:hurtflash .42s}
+    @keyframes shakefx{10%,90%{transform:translateX(-2px)}20%,80%{transform:translateX(3px)}30%,50%,70%{transform:translateX(-5px)}40%,60%{transform:translateX(5px)}}
+    @keyframes hurtflash{0%,100%{filter:none}45%{filter:brightness(1.3) drop-shadow(0 0 6px var(--coral))}}
+
+    /* 노는 방법 — 그림 가이드 */
+    .how-visual{display:grid;gap:15px}
+    .how-step{display:grid;grid-template-columns:auto 1fr;gap:13px;align-items:center}
+    .mini{display:grid;gap:2px;padding:3px;border-radius:10px;background:#cfc5df;box-shadow:0 4px 10px rgba(62,46,92,.16)}
+    .mini .mc{position:relative;width:27px;height:27px;border-radius:5px;background:var(--floor-a);display:grid;place-items:center;font-size:16px;line-height:1}
+    .mini .mc.alt{background:var(--floor-b)}
+    .mini .mc.wall{background:linear-gradient(145deg,#a597be,#81739f)}
+    .mini .mc .ar{font-weight:950;font-size:15px}
+    .mini .mc .ar.push{color:var(--push)}
+    .mini .mc .ar.pull{color:var(--pull)}
+    .mini .mc .ar.foe{color:#c23a52}
+    .mini .mc.hot{box-shadow:inset 0 0 0 2px rgba(224,75,97,.55)}
+    .how-cap{font-size:13px;line-height:1.5;color:var(--ink)}
+    .how-cap b{color:var(--violet-dark)}
+    .how-legend{display:flex;flex-wrap:wrap;gap:10px;margin:2px 0 4px}
+    .how-legend span{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:var(--muted)}
+    .how-legend .sw{width:18px;height:18px;border-radius:6px;display:grid;place-items:center;font-size:11px;color:#fff}
+    @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
   </style>
 </head>
 <body>
@@ -161,7 +243,11 @@
         <div class="hero-spacer"></div>
         <p class="brand-kicker">MALLANG FRIENDS</p>
         <h1 class="brand-title" id="gameTitle">별빛작전</h1>
-        <p class="brand-sub">라떼는 밀고 민트는 당겨요. 고장 난 장난감의 예고를 읽고, 벽·광선·수리별로 유도해 모두 수리하세요.</p>
+        <p class="brand-sub">고장 난 장난감을 밀고 당겨 모두 수리해요.</p>
+        <div class="legend" aria-hidden="true">
+          <span class="legend-chip latte"><span class="who">🐶</span><i class="glyph push">»</i>밀기</span>
+          <span class="legend-chip mint"><span class="who">🐱</span><i class="glyph pull">«</i>당기기</span>
+        </div>
       </header>
       <div class="home-body">
         <div class="section-title"><h2>퍼즐</h2><small id="progress">0 / 5 완료</small></div>
@@ -179,14 +265,22 @@
         <div class="battle-heading"><b id="battleTitle">퍼즐</b><span id="battleLocation"></span></div>
         <div class="beat-badge"><b id="beatText">1비트</b><small id="parText">최적 1</small></div>
       </header>
-      <div class="goal-bar"><span class="obj">목표</span><span id="goalText">모든 장난감을 수리하세요.</span></div>
+      <div class="goal-bar"><span class="obj" aria-hidden="true">🔧</span><span id="goalText" class="goal-hud" aria-live="polite"></span></div>
       <div class="board-scroll"><div class="board" id="board" role="grid" aria-label="퍼즐 보드"></div></div>
       <section class="panel" aria-label="명령 패널">
         <div class="preview-line" id="previewLine" aria-live="polite"></div>
         <div class="hint" id="hint" aria-live="polite"></div>
         <div class="slots">
-          <button class="slot" id="slotLatte" type="button"><span class="who">🐶</span><span class="desc"><b>라떼(밀기)</b><span>대기</span></span></button>
-          <button class="slot" id="slotMint" type="button"><span class="who">🐱</span><span class="desc"><b>민트(당기기)</b><span>대기</span></span></button>
+          <button class="slot latte" id="slotLatte" type="button">
+            <span class="who">🐶</span>
+            <span class="desc"><b>라떼 <i class="glyph push" aria-hidden="true">»</i></b><span class="slot-state">대기</span></span>
+            <span class="slot-mark" aria-hidden="true"></span>
+          </button>
+          <button class="slot mint" id="slotMint" type="button">
+            <span class="who">🐱</span>
+            <span class="desc"><b>민트 <i class="glyph pull" aria-hidden="true">«</i></b><span class="slot-state">대기</span></span>
+            <span class="slot-mark" aria-hidden="true"></span>
+          </button>
         </div>
         <div class="actions">
           <button class="button secondary" id="btnUndo" type="button">되돌리기</button>
@@ -226,8 +320,8 @@
   <dialog id="howDialog">
     <div class="dialog-card">
       <h2>노는 방법</h2>
-      <p id="howText"></p>
-      <button class="button" id="howClose" type="button">알겠어요</button>
+      <div id="howText"></div>
+      <button class="button" id="howClose" type="button" style="margin-top:16px">알겠어요</button>
     </div>
   </dialog>
 

@@ -65,11 +65,52 @@
   function say(t) { el.announcer.textContent = ''; window.setTimeout(function () { el.announcer.textContent = t; }, 10); }
   function screens(target) { [el.homeScreen, el.battleScreen, el.resultScreen].forEach(function (s) { s.classList.toggle('active', s === target); }); window.scrollTo(0, 0); }
   function starStr(n) { var s = ''; for (var i = 0; i < 3; i += 1) s += i < n ? '★' : '☆'; return s; }
+  function sign(n) { return n > 0 ? 1 : n < 0 ? -1 : 0; }
+  function arrowChar(d) { return d.x > 0 ? '▶' : d.x < 0 ? '◀' : d.y > 0 ? '▼' : '▲'; }
 
-  var HOW = '<b>고장 난 장난감(빨강)은 예고대로 움직여요.</b> 화살표=돌진 방향, 주황 점=포탑 광선.<br><br>' +
-    '<b>라떼</b>는 옆 장난감을 <b>밀고</b>, <b>민트</b>는 일직선의 장난감을 <b>당겨요</b>. 장난감을 <b>벽·다른 장난감·광선·수리별(⭐)</b>로 보내면 수리돼요.<br><br>' +
-    '① 친구 탭 → 파란 칸으로 이동을 정해요.<br>② 밀/당길 장난감을 탭하면 명령이 예약돼요.<br>③ 두 친구를 정한 뒤 <b>출동!</b> — 예상 결과가 미리 보여요.<br><br>' +
-    '<b>되돌리기</b>로 한 비트 무르고, <b>처음부터</b>로 재시작. 모든 장난감을 수리하면 성공! 피해 없이 최적 비트로 풀면 ⭐⭐⭐.';
+  // ── 눌렀을 때 나오는 이펙트(일회성, render와 무관하게 스스로 사라짐) ───────────────
+  function spawnAt(cls, x, y, ms) {
+    var n = document.createElement('div'); n.className = cls; el.board.appendChild(n); place(n, x, y);
+    window.setTimeout(function () { n.remove(); }, ms); return n;
+  }
+  function ripple(x, y, go) { spawnAt('ripple' + (go ? ' go' : ''), x, y, 480); }
+  function floatLabel(x, y, text) { var n = spawnAt('float', x, y, 820); n.textContent = text; }
+  function sparkle(x, y) {
+    var chars = ['⭐', '✨', '💫', '⭐', '✨', '⭐'];
+    for (var i = 0; i < 6; i += 1) {
+      var ang = Math.PI * 2 * i / 6, r = 24 + Math.random() * 12;
+      var s = spawnAt('spark', x, y, 760); s.textContent = chars[i];
+      s.style.setProperty('--dx', Math.round(Math.cos(ang) * r) + 'px');
+      s.style.setProperty('--dy', Math.round(Math.sin(ang) * r) + 'px');
+    }
+  }
+  function flashUnit(id, cls, ms) {
+    var n = unitEls[id]; if (!n) return;
+    n.classList.remove(cls); void n.offsetWidth; n.classList.add(cls);
+    window.setTimeout(function () { n.classList.remove(cls); }, ms);
+  }
+  function popUnit(id) { flashUnit(id, 'pop-fx', 320); }
+
+  // 노는 방법 — 글 대신 미니 보드 그림으로 보여준다.
+  function mc(content, cls) { return '<span class="mc' + (cls ? ' ' + cls : '') + '">' + (content || '') + '</span>'; }
+  function mini(cols, cells) { return '<span class="mini" style="grid-template-columns:repeat(' + cols + ',27px)">' + cells + '</span>'; }
+  function howHtml() {
+    var step1 = mini(3, mc('📡') + mc('<span class="ar foe">▶</span>', 'hot') + mc('', 'alt'));
+    var step2 = mini(3, mc('🐶') + mc('📡<span class="ar push" style="position:absolute;right:-4px">▶</span>') + mc('', 'wall'));
+    var step3 = mini(3, mc('🐱') + mc('<span class="ar pull">◀</span>', 'alt') + mc('📡<span style="position:absolute;font-size:11px;bottom:-2px">⭐</span>'));
+    return '<div class="how-visual">' +
+      '<div class="how-step">' + step1 + '<div class="how-cap"><b>장난감은 예고대로 움직여요.</b><br>빨간 화살표·표시 칸을 피하세요.</div></div>' +
+      '<div class="how-step">' + step2 + '<div class="how-cap"><b>라떼가 밀어</b> 벽에 쿵! → 수리 ✓</div></div>' +
+      '<div class="how-step">' + step3 + '<div class="how-cap"><b>민트가 당겨</b> ⭐ 위로 → 수리 ✓</div></div>' +
+      '<div class="how-legend">' +
+        '<span><span class="sw" style="background:var(--push)"></span>이동·밀기</span>' +
+        '<span><span class="sw" style="background:var(--pull)"></span>당기기</span>' +
+        '<span><span class="sw" style="background:#e04b61"></span>위험</span>' +
+        '<span><span class="sw" style="background:var(--amber)">⭐</span>수리칸</span>' +
+      '</div>' +
+      '<div class="how-cap" style="text-align:center">친구 탭 → <b>파란 칸</b> → <b>빛나는 장난감</b> → 출동!</div>' +
+      '</div>';
+  }
 
   // ── 홈 ────────────────────────────────────────────────────────────────────────
   function renderHome() {
@@ -103,7 +144,7 @@
     el.battleTitle.textContent = puzzle.title; el.battleLocation.textContent = puzzle.location; el.goalText.textContent = puzzle.brief;
     el.parText.textContent = '최적 ' + puzzle.par;
     buildBoard(); screens(el.battleScreen); bgmStart();
-    hint(puzzle.hint || '친구를 탭해 움직이세요.'); say(puzzle.title);
+    hint('친구를 탭!'); say(puzzle.title + '. ' + (puzzle.hint || '친구를 탭해 움직이세요.'));
     render(); beep('pick');
     if (!save.seenGuide) { save.seenGuide = true; persist(); window.setTimeout(function () { openHow(); }, 250); }
   }
@@ -192,9 +233,54 @@
     tg.arrows.forEach(function (a) { var n = document.createElement('div'); n.className = 'arrow';
       n.textContent = a.dir.x > 0 ? '▶' : a.dir.x < 0 ? '◀' : a.dir.y > 0 ? '▼' : '▲';
       addFx(n); place(n, a.x, a.y); n.style.display = 'grid'; n.style.placeItems = 'center'; n.style.width = 'var(--cell)'; n.style.height = 'var(--cell)'; });
+    renderAffordances();
     renderPreview();
+    renderGoal();
     renderSlots();
     renderButtons();
+  }
+
+  // 조작 가능한 장난감을 스스로 빛나게 하고, 밀/당김 방향을 화살표로 보여준다(글 대신 그림).
+  function abilityArrow(cls, type, toy, dir) {
+    var tx = toy.x + dir.x, ty = toy.y + dir.y;
+    if (!P.inBounds(state, tx, ty)) { tx = toy.x; ty = toy.y; }
+    var n = document.createElement('div');
+    n.className = cls + ' ' + (type === 'push' ? 'push' : 'pull');
+    n.textContent = arrowChar(dir);
+    addFx(n); place(n, tx, ty);
+  }
+  function renderAffordances() {
+    state.toys.forEach(function (t) { var n = unitEls[t.id]; if (n) n.classList.remove('act-push', 'act-pull'); });
+    if (sel && sel.to) {
+      var f = P.getFriend(state, sel.friendId);
+      P.abilitiesFrom(state, f, sel.to).forEach(function (ab) {
+        var t = P.getToy(state, ab.toyId); if (!t) return;
+        var dir = ab.type === 'push' ? ab.dir : { x: sign(sel.to.x - t.x), y: sign(sel.to.y - t.y) };
+        var n = unitEls[t.id]; if (n) n.classList.add(ab.type === 'push' ? 'act-push' : 'act-pull');
+        abilityArrow('aff-arrow', ab.type, t, dir);
+      });
+    }
+    reservedList().forEach(function (cmd) {
+      // 친구가 이동할 목적지를 발자국으로 표시(어디로 갈지 한눈에).
+      var f = P.getFriend(state, cmd.friendId);
+      if (f && (cmd.to.x !== f.x || cmd.to.y !== f.y)) {
+        var d = document.createElement('div'); d.className = 'dest-mark ' + cmd.friendId;
+        d.innerHTML = '<span class="ring"></span><span>👣</span>';
+        addFx(d); place(d, cmd.to.x, cmd.to.y);
+      }
+      if (!cmd.ability) return;
+      var t = P.getToy(state, cmd.ability.toyId); if (!t) return;
+      var dir = cmd.ability.type === 'push' ? cmd.ability.dir : { x: sign(cmd.to.x - t.x), y: sign(cmd.to.y - t.y) };
+      abilityArrow('cmd-arrow', cmd.ability.type, t, dir);
+    });
+  }
+  function renderGoal() {
+    if (!el.goalText) return;
+    var pips = state.toys.map(function (t) {
+      return '<span class="toy-pip' + (t.fixed ? ' done' : '') + '">' + (t.fixed ? '✓' : (t.emoji || '🤖')) + '</span>';
+    }).join('');
+    var remain = P.activeToys(state).length;
+    el.goalText.innerHTML = pips + '<span class="lbl">' + (remain ? '남은 수리 ' + remain : '모두 수리! 🎉') + '</span>';
   }
   function hearts(n, f) { var h = n.querySelector('.hearts'); if (!h) { h = document.createElement('span'); h.className = 'hearts'; n.querySelector('.unit-body').appendChild(h); }
     h.innerHTML = ''; for (var i = 0; i < f.maxHearts; i += 1) { var d = document.createElement('i'); if (i >= f.hearts) d.className = 'lost'; h.appendChild(d); } }
@@ -219,27 +305,31 @@
     after.friends.forEach(function (f) { var cur = state.friends.find(function (o) { return o.id === f.id; });
       if (f.hearts < cur.hearts) ghost(f.x, f.y, true, '💔'); });
     var parts = [];
-    if (fixedNow > 0) parts.push('장난감 ' + fixedNow + ' 수리');
-    if (dmg > 0) parts.push('피해 ' + dmg + ' ⚠'); else parts.push('피해 0');
-    el.previewLine.textContent = '예상 · ' + parts.join(' · ');
+    if (fixedNow > 0) parts.push('✓ 수리 ' + fixedNow);
+    if (dmg > 0) parts.push('💔 피해 ' + dmg); else parts.push('💚 무피해');
+    el.previewLine.textContent = '미리보기 · ' + parts.join(' · ');
   }
   function friendDamage(s) { return s.friends.reduce(function (a, f) { return a + (f.maxHearts - f.hearts); }, 0); }
   function ghost(x, y, hit, label) { var n = document.createElement('div'); n.className = 'ghost' + (hit ? ' hit' : '');
     n.innerHTML = '<span class="ring"></span>'; if (label) { var s = document.createElement('span'); s.textContent = label; s.style.position = 'absolute'; s.style.fontSize = 'calc(var(--cell)*.4)'; n.appendChild(s); }
     addFx(n); place(n, x, y); }
 
-  function slotDesc(cmd, friend) {
-    if (!cmd) return '대기';
-    var moved = cmd.to.x !== friend.x || cmd.to.y !== friend.y;
-    var abil = '';
-    if (cmd.ability) { var t = P.getToy(state, cmd.ability.toyId); abil = (cmd.ability.type === 'push' ? '밀기 ' : '당기기 ') + (t ? t.name : ''); }
-    return (moved ? '이동' : '제자리') + (abil ? ' → ' + abil : ' (이동만)');
-  }
+  // 슬롯 상태를 문장 대신 짧은 라벨 + 아이콘으로 보여준다.
   function renderSlots() {
     [['latte', el.slotLatte], ['mint', el.slotMint]].forEach(function (pair) {
-      var f = P.getFriend(state, pair[0]), slot = pair[1];
-      slot.classList.toggle('set', Boolean(reserved[pair[0]]));
-      slot.querySelector('.desc span').textContent = f && f.hearts > 0 ? slotDesc(reserved[pair[0]], f) : '지침';
+      var fid = pair[0], slot = pair[1];
+      var f = P.getFriend(state, fid), cmd = reserved[fid];
+      var selecting = sel && sel.friendId === fid;
+      slot.classList.toggle('set', Boolean(cmd));
+      slot.classList.toggle('sel', Boolean(selecting));
+      var stEl = slot.querySelector('.slot-state'), mk = slot.querySelector('.slot-mark');
+      if (!f || f.hearts <= 0) { stEl.textContent = '지침'; mk.textContent = '💤'; return; }
+      if (cmd) {
+        if (cmd.ability) { stEl.textContent = cmd.ability.type === 'push' ? '밀기!' : '당기기!'; mk.textContent = '✓'; }
+        else { stEl.textContent = '이동만'; mk.textContent = '👣'; }
+      } else if (selecting) {
+        stEl.textContent = sel.to ? '대상 고르기' : '갈 곳 정하기'; mk.textContent = '✦';
+      } else { stEl.textContent = '대기'; mk.textContent = ''; }
     });
   }
   function renderButtons() {
@@ -255,8 +345,9 @@
   function tapFriend(f) {
     if (busy || state.status !== 'active') return;
     sel = { friendId: f.id, to: null };
-    hint(f.id === 'latte' ? '라떼가 갈 파란 칸을 탭하세요. (옆 장난감을 밀 수 있어요)' : '민트가 갈 파란 칸을 탭하세요. (일직선 장난감을 당길 수 있어요)');
-    beep('pick'); render();
+    hint('파란 칸으로');
+    say((f.name || f.id) + ' 선택, 파란 칸으로 이동을 정하세요');
+    popUnit(f.id); ripple(f.x, f.y); beep('pick'); render();
   }
   function tapCell(x, y) {
     if (busy || state.status !== 'active' || !sel) return;
@@ -264,22 +355,24 @@
       var reach = P.reachable(state, sel.friendId).some(function (nd) { return nd.x === x && nd.y === y; });
       if (!reach) return;
       sel.to = { x: x, y: y };
-      // 이동만 명령을 즉시 예약(능력은 장난감 탭으로 추가)
+      // 이동만 명령을 즉시 예약(능력은 빛나는 장난감 탭으로 추가)
       reserved[sel.friendId] = { friendId: sel.friendId, to: { x: x, y: y }, ability: null };
       var abils = P.abilitiesFrom(state, P.getFriend(state, sel.friendId), sel.to);
-      hint(abils.length ? '밀거나 당길 장난감을 탭하세요. (그냥 두면 이동만)' : '이동만 예약했어요. 다른 친구도 정하고 출동!');
-      beep('tap'); render();
+      hint(abils.length ? '빛나는 장난감을 탭!' : '이동만 · 출동 준비');
+      say(abils.length ? '빛나는 장난감을 밀거나 당길 수 있어요' : '이동만 예약했어요');
+      ripple(x, y); beep('tap'); render();
     }
   }
   function tapToy(t) {
     if (busy || state.status !== 'active') return;
-    if (!sel || !sel.to) { hint('먼저 친구를 고르고 이동할 칸을 정하세요.'); return; }
+    if (!sel || !sel.to) { hint('먼저 친구와 갈 곳을'); return; }
     var f = P.getFriend(state, sel.friendId);
     var abils = P.abilitiesFrom(state, f, sel.to).filter(function (a) { return a.toyId === t.id; });
-    if (!abils.length) { hint('그 자리에서는 이 장난감에 닿지 않아요.'); return; }
+    if (!abils.length) { hint('여기선 닿지 않아요'); return; }
     reserved[sel.friendId] = { friendId: sel.friendId, to: sel.to, ability: abils[0] };
     sel = null;
-    hint('예약됐어요. 예상 결과를 확인하고 출동하세요.'); beep('push'); render();
+    hint('출동 준비 완료!'); say('명령 예약됨');
+    popUnit(t.id); beep('push'); render();
   }
   function clearSlot(fid) { reserved[fid] = null; if (sel && sel.friendId === fid) sel = null; render(); }
 
@@ -287,17 +380,37 @@
     var cmds = reservedList(); if (busy || !cmds.length) return;
     var res = P.applyBeat(state, cmds); if (!res.ok) return;
     busy = true; history.push(P.clone(state));
-    var prev = state; state = res.state; sel = null; reserved = { latte: null, mint: null };
+    var goSpots = cmds.map(function (c) { return c.to; });
+    state = res.state; sel = null; reserved = { latte: null, mint: null };
     render();
-    (res.events || []).forEach(function (ev) { if (ev.type === 'toy-fixed') beep('repair'); if (ev.type === 'friend-hit') beep('hurt'); });
+    goSpots.forEach(function (s) { ripple(s.x, s.y, true); });
     beep('push');
+    playEvents(res.events || []);
     window.setTimeout(function () { busy = false;
       if (state.status !== 'active') return outcome();
-      hint('좋아요! 다음 비트를 정하세요.'); render();
-    }, 320);
+      hint(''); render();
+    }, 380);
   }
-  function undo() { if (busy || !history.length) return; state = history.pop(); sel = null; reserved = { latte: null, mint: null }; hint('한 비트 되돌렸어요.'); beep('tap'); render(); }
-  function restart() { if (busy) return; state = P.clone(initial); history = []; sel = null; reserved = { latte: null, mint: null }; hint(puzzle.hint || '다시 도전!'); beep('tap'); render(); }
+  // 결과 이펙트: 유닛 이동(0.28s) 뒤에 수리 반짝임·피해 흔들림을 재생한다.
+  function playEvents(events) {
+    window.setTimeout(function () {
+      events.forEach(function (ev) {
+        if (ev.type === 'toy-fixed') {
+          var t = P.getToy(state, ev.toyId);
+          if (t) { flashUnit(t.id, 'repaired-fx', 640); sparkle(t.x, t.y); floatLabel(t.x, t.y, '수리! ✓'); }
+          beep('repair');
+        } else if (ev.type === 'toy-repaired-star') {
+          var ts = P.getToy(state, ev.toyId); if (ts) sparkle(ts.x, ts.y);
+        } else if (ev.type === 'friend-hit') {
+          var f = P.getFriend(state, ev.friendId);
+          if (f) { flashUnit(f.id, 'hurt-fx', 440); floatLabel(f.x, f.y, '💔'); }
+          beep('hurt');
+        }
+      });
+    }, 200);
+  }
+  function undo() { if (busy || !history.length) return; state = history.pop(); sel = null; reserved = { latte: null, mint: null }; hint('되돌림'); say('한 비트 되돌렸어요'); beep('tap'); render(); }
+  function restart() { if (busy) return; state = P.clone(initial); history = []; sel = null; reserved = { latte: null, mint: null }; hint('다시!'); say('처음부터 다시'); beep('tap'); render(); }
 
   function stars() { if (state.status !== 'victory') return 0;
     var beatsUsed = state.beat - 1; var s = 1;
@@ -320,7 +433,7 @@
     if (window.GameBoot && window.GameBoot.submitResult) window.GameBoot.submitResult({ score: earned * 100, won: won });
   }
 
-  function openHow() { el.howText.innerHTML = HOW; el.howDialog.showModal(); }
+  function openHow() { el.howText.innerHTML = howHtml(); el.howDialog.showModal(); }
 
   // ── 이벤트 배선 ────────────────────────────────────────────────────────────────
   el.homeSound.addEventListener('click', function () { save.sound = !save.sound; persist(); if (!save.sound) bgmStop(); el.homeSound.textContent = save.sound ? '🔊' : '🔇'; beep('tap'); });
