@@ -9,6 +9,7 @@
   var reserved = { latte: null, mint: null };
   var sel = null;                          // { friendId, to } 명령 조립 중
   var busy = false;
+  var touched = false;                     // 이 퍼즐에서 한 번이라도 조작했는지(첫 탭 유도)
   var cells = [], unitEls = Object.create(null), starEls = Object.create(null), fxNodes = [];
 
   var ids = ['homeScreen','battleScreen','resultScreen','homeSound','puzzleList','progress','continueButton','howButton',
@@ -140,7 +141,7 @@
   function startPuzzle(id) {
     puzzle = Z.create(id); puzzleId = id;
     initial = P.createState(puzzle); state = P.clone(initial);
-    history = []; reserved = { latte: null, mint: null }; sel = null; busy = false;
+    history = []; reserved = { latte: null, mint: null }; sel = null; busy = false; touched = false;
     el.battleTitle.textContent = puzzle.title; el.battleLocation.textContent = puzzle.location; el.goalText.textContent = puzzle.brief;
     el.parText.textContent = '최적 ' + puzzle.par;
     buildBoard(); screens(el.battleScreen); bgmStart();
@@ -210,7 +211,7 @@
     el.beatText.textContent = state.beat + '비트';
     // 셀 마크
     for (var y = 0; y < state.height; y += 1) for (var x = 0; x < state.width; x += 1)
-      cells[y][x].classList.remove('reach', 'pick', 'danger', 'beam');
+      cells[y][x].classList.remove('reach', 'pick', 'cando', 'danger', 'beam');
     var tg = telegraph();
     Object.keys(tg.beam).forEach(function (k) { var t = tg.beam[k]; cells[t.y][t.x].classList.add('beam'); });
     Object.keys(tg.danger).forEach(function (k) { var t = tg.danger[k]; cells[t.y][t.x].classList.add('danger'); });
@@ -224,6 +225,7 @@
       n.style.display = f.hearts > 0 ? 'grid' : 'none'; if (f.hearts <= 0) return; place(n, f.x, f.y);
       n.classList.toggle('selected', sel && sel.friendId === f.id);
       n.classList.toggle('reserved', Boolean(reserved[f.id]));
+      n.classList.toggle('invite', !touched && state.status === 'active');
       hearts(n, f);
     });
     state.toys.forEach(function (t) { var n = unitEls[t.id]; if (!n) return; place(n, t.x, t.y);
@@ -250,13 +252,29 @@
     addFx(n); place(n, tx, ty);
   }
   function renderAffordances() {
-    state.toys.forEach(function (t) { var n = unitEls[t.id]; if (n) n.classList.remove('act-push', 'act-pull'); });
+    state.toys.forEach(function (t) { var n = unitEls[t.id]; if (n) n.classList.remove('act-push', 'act-pull', 'charging'); });
+    // 곧 광선을 쏠 포탑을 빨갛게 충전 표시(위협의 출처가 보이게).
+    P.activeToys(state).forEach(function (t) {
+      if (t.intent && t.intent.type === 'beam') { var n = unitEls[t.id]; if (n) n.classList.add('charging'); }
+    });
+    // 갈 곳을 고르는 중: 밀거나 당길 수 있는 칸만 배지로 안내(파란 칸의 바다 대신).
+    if (sel && !sel.to) {
+      var fr = P.getFriend(state, sel.friendId);
+      P.reachable(state, sel.friendId).forEach(function (nd) {
+        if (!P.abilitiesFrom(state, fr, nd).length) return;
+        cells[nd.y][nd.x].classList.add('cando');
+        var g = document.createElement('div'); g.className = 'act-badge ' + fr.role;
+        g.innerHTML = '<i>' + (fr.role === 'pusher' ? '»' : '«') + '</i>';
+        addFx(g); place(g, nd.x, nd.y);
+      });
+    }
+    // 갈 곳을 정함: 그 자리에서 밀/당길 장난감을 빛내고 방향 화살표를 띄운다.
     if (sel && sel.to) {
       var f = P.getFriend(state, sel.friendId);
       P.abilitiesFrom(state, f, sel.to).forEach(function (ab) {
         var t = P.getToy(state, ab.toyId); if (!t) return;
         var dir = ab.type === 'push' ? ab.dir : { x: sign(sel.to.x - t.x), y: sign(sel.to.y - t.y) };
-        var n = unitEls[t.id]; if (n) n.classList.add(ab.type === 'push' ? 'act-push' : 'act-pull');
+        var n = unitEls[t.id]; if (n) { n.classList.remove('charging'); n.classList.add(ab.type === 'push' ? 'act-push' : 'act-pull'); }
         abilityArrow('aff-arrow', ab.type, t, dir);
       });
     }
@@ -284,10 +302,14 @@
   }
   function hearts(n, f) { var h = n.querySelector('.hearts'); if (!h) { h = document.createElement('span'); h.className = 'hearts'; n.querySelector('.unit-body').appendChild(h); }
     h.innerHTML = ''; for (var i = 0; i < f.maxHearts; i += 1) { var d = document.createElement('i'); if (i >= f.hearts) d.className = 'lost'; h.appendChild(d); } }
-  function gauge(n, t) { var g = n.querySelector('.gauge'); if (t.fixed) { if (g) g.style.display = 'none'; return; }
-    if (!g) { g = document.createElement('span'); g.className = 'gauge'; g.innerHTML = '<i></i>'; n.querySelector('.unit-body').appendChild(g); }
-    g.style.display = t.repair > 1 ? 'block' : 'none';
-    g.querySelector('i').style.width = Math.round(Math.max(0, t.gauge) / t.repair * 100) + '%'; }
+  // 내구도를 눈금 칸으로: 남은 칸 수 = 아직 필요한 부딪힘 횟수(튼튼한 포탑이 한눈에).
+  function gauge(n, t) {
+    var g = n.querySelector('.gauge');
+    if (!g) { g = document.createElement('span'); g.className = 'gauge'; n.querySelector('.unit-body').appendChild(g); }
+    if (t.fixed || t.repair <= 1) { g.style.display = 'none'; return; }
+    g.style.display = 'flex'; g.innerHTML = '';
+    for (var i = 0; i < t.repair; i += 1) { var d = document.createElement('i'); if (i >= Math.max(0, t.gauge)) d.className = 'spent'; g.appendChild(d); }
+  }
 
   // 예상 결과(예약된 명령 기준)
   function renderPreview() {
@@ -305,8 +327,8 @@
     after.friends.forEach(function (f) { var cur = state.friends.find(function (o) { return o.id === f.id; });
       if (f.hearts < cur.hearts) ghost(f.x, f.y, true, '💔'); });
     var parts = [];
-    if (fixedNow > 0) parts.push('✓ 수리 ' + fixedNow);
-    if (dmg > 0) parts.push('💔 피해 ' + dmg); else parts.push('💚 무피해');
+    parts.push(fixedNow > 0 ? '✓ 수리 ' + fixedNow : '수리 0');
+    parts.push(dmg > 0 ? '💔 피해 ' + dmg : '💚 무피해');
     el.previewLine.textContent = '미리보기 · ' + parts.join(' · ');
   }
   function friendDamage(s) { return s.friends.reduce(function (a, f) { return a + (f.maxHearts - f.hearts); }, 0); }
@@ -344,24 +366,24 @@
   // ── 조작 ──────────────────────────────────────────────────────────────────────
   function tapFriend(f) {
     if (busy || state.status !== 'active') return;
+    touched = true;
+    if (sel && sel.friendId === f.id) { sel = null; hint('취소'); say('선택 취소'); beep('tap'); render(); return; }
     sel = { friendId: f.id, to: null };
-    hint('파란 칸으로');
-    say((f.name || f.id) + ' 선택, 파란 칸으로 이동을 정하세요');
+    hint('밝은 칸으로');
+    say((f.name || f.id) + ' 선택. 밝게 빛나는 칸으로 가면 장난감을 움직일 수 있어요');
     popUnit(f.id); ripple(f.x, f.y); beep('pick'); render();
   }
   function tapCell(x, y) {
     if (busy || state.status !== 'active' || !sel) return;
-    if (sel && !sel.to) {
-      var reach = P.reachable(state, sel.friendId).some(function (nd) { return nd.x === x && nd.y === y; });
-      if (!reach) return;
-      sel.to = { x: x, y: y };
-      // 이동만 명령을 즉시 예약(능력은 빛나는 장난감 탭으로 추가)
-      reserved[sel.friendId] = { friendId: sel.friendId, to: { x: x, y: y }, ability: null };
-      var abils = P.abilitiesFrom(state, P.getFriend(state, sel.friendId), sel.to);
-      hint(abils.length ? '빛나는 장난감을 탭!' : '이동만 · 출동 준비');
-      say(abils.length ? '빛나는 장난감을 밀거나 당길 수 있어요' : '이동만 예약했어요');
-      ripple(x, y); beep('tap'); render();
-    }
+    var reach = P.reachable(state, sel.friendId).some(function (nd) { return nd.x === x && nd.y === y; });
+    if (!reach) { sel = null; hint('취소'); say('선택 취소'); beep('tap'); render(); return; }
+    // 이동만 명령을 즉시 예약(능력은 빛나는 장난감 탭으로 추가). 다른 칸을 다시 탭하면 목적지 변경.
+    sel.to = { x: x, y: y };
+    reserved[sel.friendId] = { friendId: sel.friendId, to: { x: x, y: y }, ability: null };
+    var abils = P.abilitiesFrom(state, P.getFriend(state, sel.friendId), sel.to);
+    hint(abils.length ? '빛나는 장난감을 탭!' : '이동만 · 출동 준비');
+    say(abils.length ? '빛나는 장난감을 밀거나 당길 수 있어요' : '이동만 예약했어요');
+    ripple(x, y); beep('tap'); render();
   }
   function tapToy(t) {
     if (busy || state.status !== 'active') return;
@@ -381,10 +403,13 @@
     var res = P.applyBeat(state, cmds); if (!res.ok) return;
     busy = true; history.push(P.clone(state));
     var goSpots = cmds.map(function (c) { return c.to; });
+    var tgBeam = telegraph().beam; var beamTiles = Object.keys(tgBeam).map(function (k) { return tgBeam[k]; });
     state = res.state; sel = null; reserved = { latte: null, mint: null };
     render();
     goSpots.forEach(function (s) { ripple(s.x, s.y, true); });
     beep('push');
+    // 친구가 움직인 뒤(0.12s) 광선이 실제로 발사되는 걸 보여준다 → 피해의 인과가 읽힌다.
+    window.setTimeout(function () { beamTiles.forEach(function (t) { spawnAt('beam-flash', t.x, t.y, 420); }); }, 120);
     playEvents(res.events || []);
     window.setTimeout(function () { busy = false;
       if (state.status !== 'active') return outcome();
