@@ -1,645 +1,352 @@
 (function () {
   'use strict';
+  var P = window.MallangPuzzle, Z = window.MallangPuzzles;
+  if (!P || !Z) throw new Error('엔진과 퍼즐 데이터가 먼저 로드되어야 합니다.');
 
-  var R = window.MallangStarlightRules;
-  var M = window.MallangStarlightMissions;
-  if (!R || !M) throw new Error('규칙과 작전 데이터가 먼저 로드되어야 합니다.');
+  var SAVE_KEY = 'mallang-starlight-save-v3', SAVE_VERSION = 3;
+  var state = null, initial = null, puzzle = null, puzzleId = null;
+  var history = [];                        // 이전 상태(되돌리기)
+  var reserved = { latte: null, mint: null };
+  var sel = null;                          // { friendId, to } 명령 조립 중
+  var busy = false;
+  var cells = [], unitEls = Object.create(null), starEls = Object.create(null), fxNodes = [];
 
-  var SAVE_KEY = 'mallang-starlight-save-v2';
-  var SAVE_VERSION = 2;
-  var state = null;
-  var mission = null;
-  var selectedMissionId = null;
-  var cells = [];
-  var unitEls = Object.create(null);
-  var propEls = Object.create(null);
-  var ui = { selectedId: null, previewMove: null, pendingAction: null, threats: false, busy: false, hintText: '', skillArmed: false };
-  var intel = null;
-  var audioContext = null;
-  var ids = [
-    'homeScreen','briefScreen','battleScreen','resultScreen','missionList','campaignProgress','continueButton','resumeButton','homeSound',
-    'briefBack','briefEyebrow','briefLocation','briefTitle','briefCopy','briefDialogue','briefObjective','briefPractice','briefStart',
-    'battleMenu','battleTitle','battleLocation','turnText','turnLimitText','objectiveText','objectiveProgress','board','phase','autosave',
-    'info','hint','forecast','btnThreat','btnCancel','btnConfirm','btnWait','btnSkill','btnObjective','btnEnd','resultEyebrow','resultTitle',
-    'resultStars','resultCopy','resultTurns','resultFriends','resultStopped','resultNext','resultRetry','resultHome','pauseDialog',
-    'pauseContinue','pauseRestart','pauseQuit','helpDialog','helpClose','announcer'
-  ];
-  var el = {};
-  ids.forEach(function (id) { el[id] = document.getElementById(id); });
+  var ids = ['homeScreen','battleScreen','resultScreen','homeSound','puzzleList','progress','continueButton','howButton',
+    'battleMenu','battleTitle','battleLocation','beatText','parText','goalText','board','previewLine','hint',
+    'slotLatte','slotMint','btnUndo','btnRestart','btnGo','resultEyebrow','resultTitle','resultStars','resultCopy',
+    'resultBeats','resultDamage','resultNext','resultRetry','resultHome','menuDialog','menuContinue','menuHow','menuQuit',
+    'howDialog','howText','howClose','announcer'];
+  var el = {}; ids.forEach(function (id) { el[id] = document.getElementById(id); });
 
-  function newSave() { return { version: SAVE_VERSION, unlocked: 1, missions: {}, activeBattle: null, sound: true, seenGuide: false }; }
+  // ── 저장 ──────────────────────────────────────────────────────────────────────
+  function newSave() { return { version: SAVE_VERSION, unlocked: 1, puzzles: {}, sound: true, seenGuide: false }; }
   function readSave() {
     try {
-      var parsed = JSON.parse(localStorage.getItem(SAVE_KEY));
-      if (!parsed || parsed.version !== SAVE_VERSION) return newSave();
-      parsed.missions = parsed.missions || {};
-      parsed.unlocked = Math.max(1, Number(parsed.unlocked) || 1);
-      if (typeof parsed.sound !== 'boolean') parsed.sound = true;
-      if (typeof parsed.seenGuide !== 'boolean') parsed.seenGuide = false;
-      return parsed;
-    } catch (error) { return newSave(); }
+      var p = JSON.parse(localStorage.getItem(SAVE_KEY));
+      if (!p || p.version !== SAVE_VERSION) return newSave();
+      p.puzzles = p.puzzles || {}; p.unlocked = Math.max(1, Number(p.unlocked) || 1);
+      if (typeof p.sound !== 'boolean') p.sound = true;
+      if (typeof p.seenGuide !== 'boolean') p.seenGuide = false;
+      return p;
+    } catch (e) { return newSave(); }
   }
   var save = readSave();
+  function persist() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) {} }
 
-  function persist(feedback) {
-    try {
-      localStorage.setItem(SAVE_KEY, JSON.stringify(save));
-      if (feedback && el.autosave) {
-        el.autosave.textContent = '방금 자동 저장됨';
-        window.setTimeout(function () { el.autosave.textContent = '자동 저장 켜짐'; }, 900);
-      }
-    } catch (error) {
-      if (el.autosave) el.autosave.textContent = '저장 공간을 확인해 주세요';
-    }
+  // ── 오디오(WebAudio 합성, 파일 없음) ───────────────────────────────────────────
+  var ac = null, master = null, bgm = { timer: null, next: 0, step: 0, gain: null, on: false };
+  function audio() {
+    if (!ac) { try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return null; }
+      master = ac.createGain(); master.gain.value = .9; master.connect(ac.destination); }
+    if (ac.state === 'suspended') { try { ac.resume(); } catch (e) {} }
+    return ac;
   }
-  function saveBattle(feedback) {
-    // 적 행동 도중의 중간 상태는 저장하지 않는다. 모바일 탭이 닫혀도
-    // 마지막 친구 조작 시점으로 되돌아가 안전하게 적 페이즈를 다시 시작한다.
-    if (!state || !mission || state.status !== 'active' || state.phase !== 'you') return;
-    save.activeBattle = { missionId: mission.id, state: R.clone(state), savedAt: Date.now() };
-    persist(feedback);
+  function tone(f, at, dur, type, peak, dest) {
+    var o = ac.createOscillator(), g = ac.createGain(); o.type = type || 'sine'; o.frequency.value = f;
+    g.gain.setValueAtTime(.0001, at); g.gain.exponentialRampToValueAtTime(Math.max(.0002, peak), at + .012);
+    g.gain.exponentialRampToValueAtTime(.0001, at + dur); o.connect(g); g.connect(dest || master); o.start(at); o.stop(at + dur + .03);
   }
-  function screens(target) {
-    [el.homeScreen, el.briefScreen, el.battleScreen, el.resultScreen].forEach(function (screen) {
-      screen.classList.toggle('active', screen === target);
-    });
-    window.scrollTo(0, 0);
-  }
-  function say(text) {
-    el.announcer.textContent = '';
-    window.setTimeout(function () { el.announcer.textContent = text; }, 10);
-  }
-  // 오디오는 전부 WebAudio로 합성한다. 바이너리 사운드 파일 없이 file://에서도
-  // 동작하며, save.sound 토글 하나로 효과음과 BGM을 함께 끄고 켠다.
-  var masterGain = null;
-  var bgm = { timer: null, nextTime: 0, step: 0, name: null, gain: null };
-  var desiredBgm = null;
+  var SFX = { tap:[[520,0,.05,'sine',.05]], pick:[[600,0,.05,'sine',.06],[820,.05,.07,'sine',.05]],
+    push:[[300,0,.06,'triangle',.06],[440,.05,.08,'triangle',.05]], repair:[[660,0,.06,'sine',.06],[880,.06,.08,'sine',.06],[1175,.15,.14,'sine',.05]],
+    hurt:[[220,0,.09,'square',.06],[150,.03,.1,'square',.05]], win:[[523,0,.13,'triangle',.06],[659,.11,.13,'triangle',.06],[784,.22,.15,'triangle',.06],[1047,.34,.3,'triangle',.06]],
+    fail:[[330,0,.16,'sine',.06],[247,.15,.2,'sine',.06],[185,.33,.32,'sine',.05]] };
+  function beep(k) { if (!save.sound) return; var c = audio(); if (!c) return; try { (SFX[k] || SFX.tap).forEach(function (n) { tone(n[0], c.currentTime + .001 + n[1], n[2], n[3], n[4], master); }); } catch (e) {} }
+  var PROG = [{ b:130.81, a:[261.63,329.63,392,523.25] },{ b:110, a:[329.63,440,523.25,440] },{ b:87.31, a:[349.23,440,523.25,659.25] },{ b:98, a:[392,493.88,587.33,493.88] }];
+  function bgmTick() { if (!ac || !bgm.on) return; var step = .34;
+    while (bgm.next < ac.currentTime + .25) { var ch = PROG[Math.floor(bgm.step/4)%PROG.length], beat = bgm.step%4;
+      if (beat === 0) { tone(ch.b, bgm.next, step*3.6, 'sine', .05, bgm.gain); ch.a.forEach(function (f) { tone(f/2, bgm.next, step*3.6,'sine',.014,bgm.gain); }); }
+      tone(ch.a[beat], bgm.next, step*1.3, 'triangle', .03, bgm.gain);
+      bgm.next += step; bgm.step = (bgm.step+1)%(PROG.length*4); } }
+  function bgmStart() { if (!save.sound) return; var c = audio(); if (!c || c.state !== 'running') return; if (bgm.on && bgm.timer) return;
+    if (!bgm.gain) { bgm.gain = c.createGain(); bgm.gain.connect(master); } bgm.gain.gain.value = 1; bgm.on = true; bgm.step = 0; bgm.next = c.currentTime + .1; bgmTick(); bgm.timer = window.setInterval(bgmTick, 60); }
+  function bgmStop() { bgm.on = false; if (bgm.timer) { clearInterval(bgm.timer); bgm.timer = null; } }
+  document.addEventListener('pointerdown', function () { if (save.sound && document.getElementById('battleScreen').classList.contains('active')) bgmStart(); });
 
-  function ensureAudio() {
-    if (!audioContext) {
-      try { audioContext = new (window.AudioContext || window.webkitAudioContext)(); }
-      catch (error) { return null; }
-      masterGain = audioContext.createGain();
-      masterGain.gain.value = 0.9;
-      masterGain.connect(audioContext.destination);
-    }
-    if (audioContext.state === 'suspended') { try { audioContext.resume(); } catch (error) { /* 사용자 제스처 대기 */ } }
-    return audioContext;
-  }
-  function tone(freq, startAt, dur, type, peak, dest) {
-    var osc = audioContext.createOscillator();
-    var gain = audioContext.createGain();
-    osc.type = type || 'sine';
-    osc.frequency.value = freq;
-    gain.gain.setValueAtTime(0.0001, startAt);
-    gain.gain.exponentialRampToValueAtTime(Math.max(0.0002, peak), startAt + 0.012);
-    gain.gain.exponentialRampToValueAtTime(0.0001, startAt + dur);
-    osc.connect(gain); gain.connect(dest || masterGain);
-    osc.start(startAt); osc.stop(startAt + dur + 0.03);
-  }
+  function say(t) { el.announcer.textContent = ''; window.setTimeout(function () { el.announcer.textContent = t; }, 10); }
+  function screens(target) { [el.homeScreen, el.battleScreen, el.resultScreen].forEach(function (s) { s.classList.toggle('active', s === target); }); window.scrollTo(0, 0); }
+  function starStr(n) { var s = ''; for (var i = 0; i < 3; i += 1) s += i < n ? '★' : '☆'; return s; }
 
-  // 효과음: [주파수, 시작오프셋, 길이, 파형, 정점게인] 노트들의 짧은 시퀀스.
-  var SFX = {
-    tap:      [[520, 0, .05, 'sine', .05]],
-    select:   [[600, 0, .05, 'sine', .06], [820, .05, .07, 'sine', .05]],
-    move:     [[470, 0, .05, 'sine', .06], [640, .05, .07, 'triangle', .05]],
-    hit:      [[210, 0, .09, 'square', .06], [150, .03, .10, 'square', .05]],
-    guard:    [[320, 0, .09, 'sine', .06], [480, .07, .12, 'sine', .06], [640, .16, .16, 'sine', .05]],
-    pickup:   [[540, 0, .06, 'triangle', .06], [810, .06, .10, 'triangle', .06]],
-    activate: [[660, 0, .07, 'sine', .06], [880, .07, .09, 'sine', .06], [1175, .16, .16, 'sine', .05]],
-    win:      [[523, 0, .13, 'triangle', .06], [659, .11, .13, 'triangle', .06], [784, .22, .15, 'triangle', .06], [1047, .34, .34, 'triangle', .06]],
-    fail:     [[330, 0, .16, 'sine', .06], [247, .15, .20, 'sine', .06], [185, .33, .34, 'sine', .05]],
-    star:     [[988, 0, .08, 'sine', .05], [1319, .07, .13, 'sine', .05]]
-  };
-  function beep(kind) {
-    if (!save.sound) return;
-    var ctx = ensureAudio(); if (!ctx) return;
-    try {
-      var seq = SFX[kind] || SFX.tap;
-      var base = ctx.currentTime + 0.001;
-      seq.forEach(function (note) { tone(note[0], base + note[1], note[2], note[3], note[4], masterGain); });
-    } catch (error) { /* 소리는 선택 기능입니다. */ }
-  }
+  var HOW = '<b>고장 난 장난감(빨강)은 예고대로 움직여요.</b> 화살표=돌진 방향, 주황 점=포탑 광선.<br><br>' +
+    '<b>라떼</b>는 옆 장난감을 <b>밀고</b>, <b>민트</b>는 일직선의 장난감을 <b>당겨요</b>. 장난감을 <b>벽·다른 장난감·광선·수리별(⭐)</b>로 보내면 수리돼요.<br><br>' +
+    '① 친구 탭 → 파란 칸으로 이동을 정해요.<br>② 밀/당길 장난감을 탭하면 명령이 예약돼요.<br>③ 두 친구를 정한 뒤 <b>출동!</b> — 예상 결과가 미리 보여요.<br><br>' +
+    '<b>되돌리기</b>로 한 비트 무르고, <b>처음부터</b>로 재시작. 모든 장난감을 수리하면 성공! 피해 없이 최적 비트로 풀면 ⭐⭐⭐.';
 
-  // 부드러운 I–vi–IV–V 진행. 화면마다 템포/음색만 바꿔 같은 엔진으로 BGM을 만든다.
-  var BGM_PROG = [
-    { bass: 130.81, arp: [261.63, 329.63, 392.00, 523.25] }, // C
-    { bass: 110.00, arp: [329.63, 440.00, 523.25, 440.00] }, // Am
-    { bass: 87.31,  arp: [349.23, 440.00, 523.25, 659.25] }, // F
-    { bass: 98.00,  arp: [392.00, 493.88, 587.33, 493.88] }  // G
-  ];
-  var BGM_THEMES = {
-    home:   { step: 0.42, wave: 'sine',     arp: false, pad: true,  gain: 0.05 },
-    brief:  { step: 0.34, wave: 'sine',     arp: true,  pad: true,  gain: 0.045 },
-    battle: { step: 0.28, wave: 'triangle', arp: true,  pad: false, gain: 0.05 }
-  };
-
-  function bgmVoiceStep(theme, idx, when) {
-    var chord = BGM_PROG[Math.floor(idx / 4) % BGM_PROG.length];
-    var beat = idx % 4;
-    if (beat === 0) {
-      tone(chord.bass, when, theme.step * 3.6, 'sine', theme.gain * 1.1, bgm.gain);
-      if (theme.pad) chord.arp.forEach(function (freq) { tone(freq / 2, when, theme.step * 3.6, 'sine', theme.gain * 0.3, bgm.gain); });
-    }
-    if (theme.arp) tone(chord.arp[beat], when, theme.step * 1.4, theme.wave, theme.gain * 0.7, bgm.gain);
-    else if (beat === 2) tone(chord.arp[0] * 2, when, theme.step * 1.8, theme.wave, theme.gain * 0.4, bgm.gain);
-  }
-  function bgmTick() {
-    if (!audioContext || !bgm.name) return;
-    var theme = BGM_THEMES[bgm.name]; if (!theme) return;
-    while (bgm.nextTime < audioContext.currentTime + 0.25) {
-      bgmVoiceStep(theme, bgm.step, bgm.nextTime);
-      bgm.nextTime += theme.step;
-      bgm.step = (bgm.step + 1) % (BGM_PROG.length * 4);
-    }
-  }
-  function bgmStop() {
-    if (bgm.timer) { clearInterval(bgm.timer); bgm.timer = null; }
-    if (bgm.gain && audioContext) {
-      try { bgm.gain.gain.cancelScheduledValues(audioContext.currentTime); bgm.gain.gain.setTargetAtTime(0.0001, audioContext.currentTime, 0.08); } catch (error) { /* noop */ }
-    }
-    bgm.name = null;
-  }
-  function bgmPlay(name) {
-    var ctx = ensureAudio(); if (!ctx || ctx.state !== 'running') return;
-    if (bgm.name === name && bgm.timer) return;
-    if (bgm.timer) { clearInterval(bgm.timer); bgm.timer = null; }
-    if (!bgm.gain) { bgm.gain = ctx.createGain(); bgm.gain.connect(masterGain); }
-    bgm.gain.gain.cancelScheduledValues(ctx.currentTime);
-    bgm.gain.gain.setValueAtTime(0.0001, ctx.currentTime);
-    bgm.gain.gain.setTargetAtTime(1, ctx.currentTime, 0.3);
-    bgm.name = name; bgm.step = 0; bgm.nextTime = ctx.currentTime + 0.08;
-    bgmTick();
-    bgm.timer = window.setInterval(bgmTick, 60);
-  }
-  function setBgm(name) {
-    desiredBgm = name;
-    if (!save.sound || !name) { bgmStop(); return; }
-    bgmPlay(name);
-  }
-  function resumeAudioFromGesture() {
-    if (!save.sound || !desiredBgm) return;
-    var ctx = ensureAudio();
-    if (ctx && ctx.state === 'running' && (bgm.name !== desiredBgm || !bgm.timer)) bgmPlay(desiredBgm);
-  }
-  document.addEventListener('pointerdown', resumeAudioFromGesture);
-  document.addEventListener('keydown', resumeAudioFromGesture);
-  document.addEventListener('visibilitychange', function () {
-    if (document.hidden) { if (bgm.timer) { clearInterval(bgm.timer); bgm.timer = null; } }
-    else resumeAudioFromGesture();
-  });
-  function stars(count) { var out = ''; for (var i = 0; i < 3; i += 1) out += i < count ? '★' : '☆'; return out; }
-
+  // ── 홈 ────────────────────────────────────────────────────────────────────────
   function renderHome() {
-    var missions = M.listMissions();
-    var done = missions.filter(function (item) { return save.missions[item.id] && save.missions[item.id].stars; }).length;
-    el.campaignProgress.textContent = done + ' / ' + missions.length + ' 완료';
-    el.missionList.innerHTML = '';
-    missions.forEach(function (item) {
-      var locked = item.order > save.unlocked;
-      var record = save.missions[item.id] || { stars: 0 };
-      var button = document.createElement('button');
-      button.type = 'button'; button.disabled = locked;
-      button.className = 'mission-card' + (locked ? ' locked' : '');
-      button.innerHTML = '<span class="mission-no">' + (locked ? '🔒' : item.order) + '</span>' +
-        '<span class="mission-copy"><b>' + item.title + '</b><span>' + item.location + '</span></span>' +
-        '<span class="mission-stars" aria-label="별 ' + record.stars + '개">' + stars(record.stars) + '</span>';
-      button.addEventListener('click', function () { openBrief(item.id); });
-      el.missionList.appendChild(button);
+    bgmStop();
+    var all = Z.list();
+    var done = all.filter(function (p) { return save.puzzles[p.id] && save.puzzles[p.id].stars; }).length;
+    el.progress.textContent = done + ' / ' + all.length + ' 완료';
+    el.puzzleList.innerHTML = '';
+    all.forEach(function (p) {
+      var locked = p.order > save.unlocked;
+      var rec = save.puzzles[p.id] || { stars: 0 };
+      var b = document.createElement('button'); b.type = 'button'; b.disabled = locked; b.className = 'puzzle-card' + (locked ? ' locked' : '');
+      b.innerHTML = '<span class="puzzle-no">' + (locked ? '🔒' : p.order) + '</span>' +
+        '<span class="puzzle-copy"><b>' + p.title + '</b><span>' + p.location + '</span></span>' +
+        '<span class="puzzle-stars">' + starStr(rec.stars) + '</span>';
+      b.addEventListener('click', function () { startPuzzle(p.id); });
+      el.puzzleList.appendChild(b);
     });
-    var next = missions.find(function (item) {
-      return item.order <= save.unlocked && !(save.missions[item.id] && save.missions[item.id].stars);
-    }) || missions[Math.min(save.unlocked, missions.length) - 1];
-    el.continueButton.textContent = done ? '다음 작전 확인' : '첫 작전 시작';
-    el.continueButton.onclick = function () { openBrief(next.id); };
-    el.resumeButton.classList.toggle('hidden', !save.activeBattle);
+    var next = all.find(function (p) { return p.order <= save.unlocked && !(save.puzzles[p.id] && save.puzzles[p.id].stars); }) || all[Math.min(save.unlocked, all.length) - 1];
+    el.continueButton.textContent = done ? '이어서 도전' : '첫 퍼즐 시작';
+    el.continueButton.onclick = function () { startPuzzle(next.id); };
     el.homeSound.textContent = save.sound ? '🔊' : '🔇';
-    el.homeSound.setAttribute('aria-pressed', save.sound ? 'true' : 'false');
     screens(el.homeScreen);
-    setBgm('home');
   }
 
-  function openBrief(id) {
-    mission = M.createMission(id); selectedMissionId = id;
-    el.briefEyebrow.textContent = mission.eyebrow;
-    el.briefLocation.textContent = mission.location;
-    el.briefTitle.textContent = mission.title;
-    el.briefCopy.textContent = mission.brief;
-    el.briefObjective.textContent = mission.objective.text;
-    el.briefDialogue.innerHTML = (mission.story || []).map(function (line) {
-      return '<div><b>' + line.speaker + '</b> · ' + line.text + '</div>';
-    }).join('');
-    screens(el.briefScreen); setBgm('brief'); beep('tap');
-  }
-  function resetUi() { ui = { selectedId: null, previewMove: null, pendingAction: null, threats: false, busy: false, hintText: '', skillArmed: false }; }
-  function startMission(id) {
-    mission = M.createMission(id); selectedMissionId = id;
-    state = R.createState(mission); state.missionId = id; resetUi();
-    ui.hintText = '① 움직일 친구를 탭하세요.';
-    buildBoard(); saveBattle(false); screens(el.battleScreen); setBgm('battle');
-    hint(ui.hintText);
-    say(mission.title + '. ' + mission.objective.text); beep('move');
-    if (!save.seenGuide) { save.seenGuide = true; persist(false); window.setTimeout(function () { showHelp('조작 방법', controlsGuide()); }, 260); }
-  }
-  function resumeMission() {
-    var active = save.activeBattle;
-    if (!active) return renderHome();
-    try {
-      mission = M.createMission(active.missionId); selectedMissionId = active.missionId;
-      state = R.createState(active.state); resetUi(); buildBoard(); screens(el.battleScreen); setBgm('battle');
-      ui.hintText = '진행 중이던 작전을 이어갑니다.';
-      hint(ui.hintText);
-      say(mission.title + ' 작전을 이어갑니다.');
-      // 이전 버전이 적 페이즈 시작 직후 남긴 세이브도 소프트락 없이 이어 간다.
-      if (state.phase === 'foe') window.setTimeout(enemyPhase, 0);
-    } catch (error) { save.activeBattle = null; persist(false); renderHome(); }
+  // ── 퍼즐 시작 ──────────────────────────────────────────────────────────────────
+  function startPuzzle(id) {
+    puzzle = Z.create(id); puzzleId = id;
+    initial = P.createState(puzzle); state = P.clone(initial);
+    history = []; reserved = { latte: null, mint: null }; sel = null; busy = false;
+    el.battleTitle.textContent = puzzle.title; el.battleLocation.textContent = puzzle.location; el.goalText.textContent = puzzle.brief;
+    el.parText.textContent = '최적 ' + puzzle.par;
+    buildBoard(); screens(el.battleScreen); bgmStart();
+    hint(puzzle.hint || '친구를 탭해 움직이세요.'); say(puzzle.title);
+    render(); beep('pick');
+    if (!save.seenGuide) { save.seenGuide = true; persist(); window.setTimeout(function () { openHow(); }, 250); }
   }
 
-  function cellSize() { return cells[0][0].getBoundingClientRect().width || 44; }
-  function place(node, x, y) {
-    var size = cellSize(); node.style.left = (3 + x * (size + 2)) + 'px'; node.style.top = (3 + y * (size + 2)) + 'px';
-  }
+  function cellSize() { return cells[0][0].getBoundingClientRect().width || 48; }
+  function place(node, x, y) { var s = cellSize(); node.style.left = (3 + x * (s + 2)) + 'px'; node.style.top = (3 + y * (s + 2)) + 'px'; }
+
   function buildBoard() {
-    el.board.innerHTML = ''; cells = []; unitEls = Object.create(null); propEls = Object.create(null);
-    el.battleTitle.textContent = mission.title; el.battleLocation.textContent = mission.location; el.objectiveText.textContent = mission.objective.text;
-    for (var y = 0; y < state.height; y += 1) {
-      cells[y] = [];
+    el.board.innerHTML = ''; cells = []; unitEls = Object.create(null); starEls = Object.create(null); fxNodes = [];
+    el.board.style.gridTemplateColumns = 'repeat(' + state.width + ', var(--cell))';
+    el.board.style.gridTemplateRows = 'repeat(' + state.height + ', var(--cell))';
+    for (var y = 0; y < state.height; y += 1) { cells[y] = [];
       for (var x = 0; x < state.width; x += 1) {
-        var cell = document.createElement('button'); cell.type = 'button';
-        cell.className = 'cell' + ((x + y) % 2 ? ' alt' : '');
-        if (state.terrain[y][x] === 1) cell.classList.add('wall');
-        if (state.terrain[y][x] === 2) cell.classList.add('water');
-        cell.setAttribute('role', 'gridcell'); cell.setAttribute('aria-label', (x + 1) + '열 ' + (y + 1) + '행');
-        (function (cx, cy) { cell.addEventListener('click', function () { tapCell(cx, cy); }); })(x, y);
-        el.board.appendChild(cell); cells[y][x] = cell;
-      }
-    }
-    (state.props || []).forEach(function (prop) {
-      var node = document.createElement('div'); node.className = 'prop';
-      node.innerHTML = '<img alt=""><span class="prop-label"></span>'; node.querySelector('.prop-label').textContent = prop.label || '';
-      el.board.appendChild(node); propEls[prop.id] = node;
-    });
-    state.units.forEach(function (unit) {
-      var node = document.createElement('button'); node.type = 'button'; node.className = 'unit ' + unit.team;
-      node.setAttribute('aria-label', unit.name || unit.id);
-      node.innerHTML = '<span class="unit-body"><span class="token-fallback"></span><img alt=""><span class="carrier-badge">🔋</span><span class="shield-badge">🛡</span><span class="aim-badge"></span><span class="hpbar"><i></i></span></span>';
-      node.querySelector('.token-fallback').textContent = unit.emoji || (unit.team === 'you' ? '🙂' : '🤖');
-      var image = node.querySelector('img'); image.src = unit.asset || '';
-      image.addEventListener('load', function () { node.querySelector('.token-fallback').hidden = true; });
-      image.addEventListener('error', function () { image.hidden = true; });
-      (function (id) { node.addEventListener('click', function (event) { var live = R.getUnit(state, id); event.stopPropagation(); if (live && live.hp > 0) tapCell(live.x, live.y); }); })(unit.id);
-      el.board.appendChild(node); unitEls[unit.id] = { root: node, hp: node.querySelector('.hpbar i'), bar: node.querySelector('.hpbar'), aim: node.querySelector('.aim-badge') };
-    });
-    render();
+        var c = document.createElement('button'); c.type = 'button'; c.className = 'cell' + ((x + y) % 2 ? ' alt' : '');
+        if (state.terrain[y][x] === 1) c.classList.add('wall');
+        c.setAttribute('aria-label', (x + 1) + '열 ' + (y + 1) + '행');
+        (function (cx, cy) { c.addEventListener('click', function () { tapCell(cx, cy); }); })(x, y);
+        el.board.appendChild(c); cells[y][x] = c;
+      } }
+    (state.props || []).forEach(function (p) { if (p.kind !== 'repair-star') return;
+      var n = document.createElement('div'); n.className = 'star-tile'; n.textContent = '⭐'; el.board.appendChild(n); starEls[p.id] = n; });
+    state.friends.forEach(function (f) { addUnit(f, 'friend'); });
+    state.toys.forEach(function (t) { addUnit(t, 'toy'); });
+  }
+  function addUnit(u, cls) {
+    var n = document.createElement('button'); n.type = 'button'; n.className = 'unit ' + cls;
+    n.setAttribute('aria-label', u.name || u.id);
+    n.innerHTML = '<span class="unit-body"><span class="token-fallback"></span><img alt=""><span class="fixed-badge">✓</span></span>';
+    n.querySelector('.token-fallback').textContent = u.emoji || (cls === 'friend' ? '🙂' : '🤖');
+    var img = n.querySelector('img'); img.src = u.asset || '';
+    img.addEventListener('load', function () { n.querySelector('.token-fallback').hidden = true; });
+    img.addEventListener('error', function () { img.hidden = true; });
+    (function (id, kind) { n.addEventListener('click', function (e) { e.stopPropagation();
+      if (kind === 'friend') { var f = P.getFriend(state, id); if (f && f.hearts > 0) tapFriend(f); }
+      else { var t = P.getToy(state, id); if (t && !t.fixed) tapToy(t); } }); })(u.id, cls);
+    el.board.appendChild(n); unitEls[u.id] = n;
   }
 
-  function propAsset(prop) {
-    if (prop.kind === 'control-star') return prop.active ? prop.activeAsset : prop.inactiveAsset;
-    if (prop.kind === 'pickup') return './assets/runtime/props/cart.webp';
-    if (prop.kind === 'escape') return './assets/runtime/props/escape.webp';
-    return './assets/runtime/props/star-on.webp';
-  }
-  function carrierId() {
-    var carrier = state.units.find(function (unit) { return unit.carrying && unit.carrying.indexOf(state.objective.itemId) >= 0; });
-    return carrier ? carrier.id : null;
-  }
-  function renderProps() {
-    (state.props || []).forEach(function (prop) {
-      var node = propEls[prop.id]; if (!node) return;
-      place(node, prop.x, prop.y); node.style.display = (prop.delivered || prop.carriedBy) ? 'none' : 'grid';
-      node.querySelector('img').src = propAsset(prop);
-    });
-  }
-  function unitPosition(unit) { return ui.previewMove && ui.previewMove.actorId === unit.id ? ui.previewMove.to : unit; }
-  function renderUnits() {
-    var carrier = carrierId();
-    state.units.forEach(function (unit) {
-      var refs = unitEls[unit.id]; if (!refs) return;
-      refs.root.style.display = unit.hp > 0 ? 'grid' : 'none'; if (unit.hp <= 0) return;
-      var pos = unitPosition(unit); place(refs.root, pos.x, pos.y);
-      var ratio = Math.max(0, unit.hp) / unit.maxHp; refs.hp.style.width = Math.round(ratio * 100) + '%';
-      refs.bar.classList.toggle('low', ratio <= .34); refs.root.classList.toggle('acted', unit.team === 'you' && unit.acted);
-      refs.root.classList.toggle('selected', unit.id === ui.selectedId); refs.root.classList.toggle('preview', Boolean(ui.previewMove && unit.id === ui.selectedId));
-      refs.root.classList.toggle('carrier', unit.id === carrier);
-      refs.root.classList.toggle('guarded', Boolean(unit.guardBonus));
-      var incoming = intel && unit.team === 'you' ? (intel.damageTo[unit.id] || 0) : 0;
-      var stopped = incoming && intel.stopped.indexOf(unit.id) >= 0;
-      refs.root.classList.toggle('aimed', Boolean(incoming));
-      refs.root.classList.toggle('aimed-fatal', Boolean(stopped));
-      if (refs.aim) { refs.aim.textContent = incoming ? '−' + incoming : ''; refs.aim.style.display = incoming ? 'grid' : 'none'; }
-    });
-  }
-  function clearMarks() { cells.forEach(function (row) { row.forEach(function (cell) { cell.classList.remove('mv','atk','path','threat','interact','step'); }); }); }
-  function mark(point, name) { if (point && cells[point.y] && cells[point.y][point.x]) cells[point.y][point.x].classList.add(name); }
-  function same(a, b) { return a && b && a.x === b.x && a.y === b.y; }
-  function fromHere(action, actor) { return action.from && same(action.from, actor); }
-  function isObjectiveAction(action) { return action && ['pickup-item','escape-with-item','activate-device'].indexOf(action.type) >= 0; }
-  function isSkillAction(action) { return action && ['guard-stance','special-shot'].indexOf(action.type) >= 0; }
-  function actionPoint(action) { return action.at || action.to || action.from; }
-  function currentActions(actor, predicate) {
-    if (!actor) return [];
-    return R.listLegalActions(state, actor.id).filter(function (action) { return fromHere(action, actor) && predicate(action); });
-  }
-  function skillLabel(actor) {
-    if (!actor) return '스킬';
-    if (actor.role === 'guardian') return '든든막기';
-    if (actor.role === 'marksman') return '별빛콩';
-    return '스킬';
-  }
-  function renderMarks() {
-    clearMarks();
-    if (ui.threats) R.listThreatenedTiles(state, 'foe').forEach(function (tile) { mark(tile, 'threat'); });
-    if (intel) intel.intents.forEach(function (item) {
-      var dest = item.to || item.from; var now = R.getUnit(state, item.unitId);
-      if (dest && now && (dest.x !== now.x || dest.y !== now.y)) mark(dest, 'step');
-    });
-    if (!ui.selectedId || state.phase !== 'you') return;
-    var actor = R.getUnit(state, ui.selectedId); if (!actor || actor.acted) return;
-    var actions = R.listLegalActions(state, actor.id);
-    if (ui.previewMove) { (ui.previewMove.path || []).forEach(function (tile) { mark(tile, 'path'); }); mark(ui.previewMove.to, 'mv'); }
-    else {
-      actions.filter(function (a) { return a.type === 'move'; }).forEach(function (a) { mark(a.to, 'mv'); });
-      if (ui.skillArmed) {
-        actions.filter(function (a) { return isSkillAction(a) && fromHere(a, actor); }).forEach(function (a) {
-          mark(a.targetId ? R.getUnit(state, a.targetId) : actionPoint(a), a.type === 'special-shot' ? 'atk' : 'interact');
-        });
-      } else {
-        actions.filter(function (a) { return a.type === 'attack' && fromHere(a, actor); }).forEach(function (a) { mark(R.getUnit(state, a.targetId), 'atk'); });
+  // ── 텔레그래프(예고) 계산 ──────────────────────────────────────────────────────
+  function telegraph() {
+    var danger = {}, beam = {}, arrows = [];
+    P.activeToys(state).forEach(function (t) {
+      if (!t.intent) return;
+      if (t.intent.type === 'dash') {
+        arrows.push({ x: t.x, y: t.y, dir: t.intent.dir });
+        var x = t.x, y = t.y;
+        for (var i = 0; i < (t.intent.dist || 2); i += 1) { x += t.intent.dir.x; y += t.intent.dir.y;
+          if (P.isWall(state, x, y) || P.toyAt(state, x, y)) break; danger[x + ',' + y] = { x: x, y: y };
+          if (P.friendAt(state, x, y)) break; }
+      } else if (t.intent.type === 'beam') {
+        P.beamTiles(state, t).forEach(function (tile) { beam[tile.x + ',' + tile.y] = tile; });
       }
-      actions.filter(function (a) { return isObjectiveAction(a) && fromHere(a, actor); }).forEach(function (a) { mark(actionPoint(a), 'interact'); });
-    }
-    if (ui.pendingAction) mark(ui.pendingAction.targetId ? R.getUnit(state, ui.pendingAction.targetId) : actionPoint(ui.pendingAction), (ui.pendingAction.type === 'attack' || ui.pendingAction.type === 'special-shot') ? 'atk' : 'interact');
+    });
+    return { danger: danger, beam: beam, arrows: arrows };
   }
 
-  function renderInfo(unit) {
-    if (!unit) { el.info.innerHTML = '<div class="unit-avatar">⭐</div><div><div class="unit-name">움직일 친구를 탭하세요</div><div class="unit-stats">친구를 탭하면 갈 수 있는 파란 칸이 나타나요.</div></div>'; return; }
-    var roleText = unit.role === 'guardian' ? ' · 스킬 <b>든든막기</b>' : unit.role === 'marksman' ? ' · 스킬 <b>별빛콩</b>' : '';
-    var guardText = unit.guardBonus ? ' · 보호막 <b>+' + unit.guardBonus + '</b>' : '';
-    el.info.innerHTML = '<div class="unit-avatar"><img src="' + unit.asset + '" alt=""></div><div><div class="unit-name">' + unit.name + '</div>' +
-      '<div class="unit-stats">체력 <b>' + Math.max(0,unit.hp) + '/' + unit.maxHp + '</b> · 공격 <b>' + unit.atk + '</b> · 방어 <b>' + unit.def +
-      '</b> · 이동 <b>' + unit.mov + '</b> · 사거리 <b>' + unit.range + '</b>' + guardText + roleText + '</div></div>';
-  }
-  function actionLabel(action, actor) {
-    if (!action) return actor ? skillLabel(actor) : '목표 설명';
-    if (action.type === 'pickup-item') return '배터리 줍기';
-    if (action.type === 'escape-with-item') return '배터리 전달';
-    if (action.type === 'activate-device') return '제어별 켜기';
-    if (action.type === 'guard-stance') return '든든막기';
-    if (action.type === 'special-shot') return '별빛콩';
-    return '목표 행동';
-  }
-  function currentObjectiveAction(actor) {
-    if (!actor) return null;
-    return R.listLegalActions(state, actor.id).find(function (action) { return isObjectiveAction(action) && fromHere(action, actor); }) || null;
-  }
-  function currentSkillActions(actor) { return currentActions(actor, isSkillAction); }
-  function renderForecast() {
-    if (!ui.pendingAction) {
-      if (intel && state.phase === 'you') {
-        el.forecast.innerHTML = '<b>장난감 미리보기</b> · ' + intentSummary();
-        el.forecast.classList.add('show'); return;
-      }
-      el.forecast.classList.remove('show'); el.forecast.textContent = ''; return;
-    }
-    if (ui.pendingAction.type === 'guard-stance') {
-      el.forecast.innerHTML = '<b>든든막기</b><br>라떼와 옆에 붙은 친구가 장난감 차례 동안 덜 아프게 버텨요 (보호막 +2).'; el.forecast.classList.add('show'); return;
-    }
-    if (ui.pendingAction.type !== 'attack' && ui.pendingAction.type !== 'special-shot') {
-      el.forecast.innerHTML = '<b>' + actionLabel(ui.pendingAction) + '</b><br>확정 전에는 작전 상태가 바뀌지 않습니다.'; el.forecast.classList.add('show'); return;
-    }
-    var f = R.forecastAction(state, ui.pendingAction); if (!f) return;
-    var attacker = R.getUnit(state, f.actorId), target = R.getUnit(state, f.targetId);
-    var counter = f.counterDamage ? ' · 반격 <b>' + f.counterDamage + '</b> (내 체력 ' + f.actorHpBefore + '→' + f.actorHpAfter + ')' : ' · 반격 없음';
-    var title = f.type === 'special-shot' ? '별빛콩' : attacker.name + ' → ' + target.name;
-    el.forecast.innerHTML = '<b>' + title + '</b><br>피해 <b>' + f.damage + '</b> (' + f.targetHpBefore + '→' + f.targetHpAfter + ')' + counter + (f.targetStopped ? ' · <b>쓰러뜨림!</b>' : '');
-    el.forecast.classList.add('show');
-  }
-  function progressText() {
-    if (state.objective.type === 'eliminate') return R.aliveUnits(state, state.objective.targetTeam || 'foe').length + '대 남음';
-    if (state.objective.type === 'deliver-and-escape') return carrierId() ? '운반 중' : ((state.props || []).some(function (p) { return p.id === state.objective.itemId && p.delivered; }) ? '운반 완료' : '배터리 찾기');
-    if (state.objective.type === 'activate-then-defeat-boss') return (state.props || []).filter(function (p) { return p.kind === 'control-star' && p.active; }).length + ' / ' + state.objective.requiredActiveCount + ' 켜짐';
-    return '';
-  }
-  function renderControls() {
-    var actor = ui.selectedId ? R.getUnit(state, ui.selectedId) : null;
-    var pending = Boolean(ui.previewMove || ui.pendingAction);
-    var objectiveAction = actor && !pending ? currentObjectiveAction(actor) : null;
-    var skillActions = actor && !pending ? currentSkillActions(actor) : [];
-    el.btnThreat.textContent = ui.threats ? '미리보기 끄기' : '적 미리보기'; el.btnThreat.setAttribute('aria-pressed', ui.threats ? 'true' : 'false');
-    el.btnCancel.disabled = !pending || ui.busy; el.btnConfirm.disabled = !pending || ui.busy;
-    el.btnConfirm.textContent = ui.pendingAction ? ((ui.pendingAction.type === 'attack' || ui.pendingAction.type === 'special-shot') ? '공격 확정' : '행동 확정') : '이동 확정';
-    el.btnWait.disabled = !actor || actor.acted || state.phase !== 'you' || pending || ui.busy;
-    el.btnSkill.textContent = actor ? skillLabel(actor) : '스킬';
-    el.btnSkill.disabled = !actor || actor.acted || state.phase !== 'you' || pending || ui.busy || skillActions.length === 0;
-    el.btnSkill.setAttribute('aria-pressed', ui.skillArmed ? 'true' : 'false');
-    el.btnObjective.textContent = objectiveAction ? actionLabel(objectiveAction) : '목표 설명'; el.btnObjective.disabled = ui.busy;
-    el.btnEnd.disabled = state.phase !== 'you' || ui.busy;
-  }
-  function renderHeader() {
-    el.turnText.textContent = state.turn + '턴'; el.turnLimitText.textContent = state.objective.turnLimit ? '제한 ' + state.objective.turnLimit + '턴' : '천천히 생각해요';
-    el.objectiveProgress.textContent = progressText(); el.phase.textContent = state.phase === 'you' ? '● 내 차례' : '● 장난감 차례'; el.phase.className = 'phase ' + state.phase;
-  }
-  function firstName(unit) { return unit && unit.name ? unit.name.split(' ')[0] : ''; }
-  function intentSummary() {
-    if (!intel) return '';
-    var parts = R.aliveUnits(state, 'you').map(function (unit) {
-      var dmg = intel.damageTo[unit.id] || 0;
-      if (!dmg) return null;
-      return firstName(unit) + ' −' + dmg + (intel.stopped.indexOf(unit.id) >= 0 ? '(쓰러질 위험!)' : '');
-    }).filter(Boolean);
-    return parts.length ? '이대로 넘기면 · ' + parts.join(' · ') : '이대로 넘기면 아무도 다치지 않아요.';
-  }
-  function unitIntent(unitId) {
-    if (!intel) return null;
-    for (var i = 0; i < intel.intents.length; i += 1) if (intel.intents[i].unitId === unitId) return intel.intents[i];
-    return null;
-  }
+  function reservedList() { return [reserved.latte, reserved.mint].filter(Boolean); }
+  function clearFx() { fxNodes.forEach(function (n) { n.remove(); }); fxNodes = []; }
+  function addFx(node) { el.board.appendChild(node); fxNodes.push(node); }
+
   function render() {
     if (!state) return;
-    intel = (ui.threats && state.phase === 'you' && state.status === 'active') ? R.forecastEnemyPhase(state) : null;
-    renderHeader(); renderProps(); renderUnits(); renderMarks(); renderInfo(ui.selectedId ? R.getUnit(state, ui.selectedId) : null); el.hint.textContent = ui.hintText || ''; renderForecast(); renderControls();
+    el.beatText.textContent = state.beat + '비트';
+    // 셀 마크
+    for (var y = 0; y < state.height; y += 1) for (var x = 0; x < state.width; x += 1)
+      cells[y][x].classList.remove('reach', 'pick', 'danger', 'beam');
+    var tg = telegraph();
+    Object.keys(tg.beam).forEach(function (k) { var t = tg.beam[k]; cells[t.y][t.x].classList.add('beam'); });
+    Object.keys(tg.danger).forEach(function (k) { var t = tg.danger[k]; cells[t.y][t.x].classList.add('danger'); });
+    // 선택 중: 도달 칸
+    if (sel && !sel.to) P.reachable(state, sel.friendId).forEach(function (nd) { cells[nd.y][nd.x].classList.add('reach'); });
+    if (sel && sel.to) cells[sel.to.y][sel.to.x].classList.add('reach', 'pick');
+    // 별
+    (state.props || []).forEach(function (p) { var n = starEls[p.id]; if (n) place(n, p.x, p.y); });
+    // 유닛
+    state.friends.forEach(function (f) { var n = unitEls[f.id]; if (!n) return;
+      n.style.display = f.hearts > 0 ? 'grid' : 'none'; if (f.hearts <= 0) return; place(n, f.x, f.y);
+      n.classList.toggle('selected', sel && sel.friendId === f.id);
+      n.classList.toggle('reserved', Boolean(reserved[f.id]));
+      hearts(n, f);
+    });
+    state.toys.forEach(function (t) { var n = unitEls[t.id]; if (!n) return; place(n, t.x, t.y);
+      n.classList.toggle('fixed', Boolean(t.fixed)); gauge(n, t); });
+    // 텔레그래프 화살표
+    clearFx();
+    tg.arrows.forEach(function (a) { var n = document.createElement('div'); n.className = 'arrow';
+      n.textContent = a.dir.x > 0 ? '▶' : a.dir.x < 0 ? '◀' : a.dir.y > 0 ? '▼' : '▲';
+      addFx(n); place(n, a.x, a.y); n.style.display = 'grid'; n.style.placeItems = 'center'; n.style.width = 'var(--cell)'; n.style.height = 'var(--cell)'; });
+    renderPreview();
+    renderSlots();
+    renderButtons();
   }
-  function hint(text) { ui.hintText = text; el.hint.textContent = text; }
+  function hearts(n, f) { var h = n.querySelector('.hearts'); if (!h) { h = document.createElement('span'); h.className = 'hearts'; n.querySelector('.unit-body').appendChild(h); }
+    h.innerHTML = ''; for (var i = 0; i < f.maxHearts; i += 1) { var d = document.createElement('i'); if (i >= f.hearts) d.className = 'lost'; h.appendChild(d); } }
+  function gauge(n, t) { var g = n.querySelector('.gauge'); if (t.fixed) { if (g) g.style.display = 'none'; return; }
+    if (!g) { g = document.createElement('span'); g.className = 'gauge'; g.innerHTML = '<i></i>'; n.querySelector('.unit-body').appendChild(g); }
+    g.style.display = t.repair > 1 ? 'block' : 'none';
+    g.querySelector('i').style.width = Math.round(Math.max(0, t.gauge) / t.repair * 100) + '%'; }
 
-  function select(unit) {
-    ui.selectedId = unit.id; ui.previewMove = null; ui.pendingAction = null; ui.skillArmed = false;
-    hint(unit.moved ? '③ 빨간 적을 탭해 공격하거나 [대기]를 누르세요.' : '② 파란 칸을 탭해 이동해요.'); beep('select'); render();
+  // 예상 결과(예약된 명령 기준)
+  function renderPreview() {
+    var cmds = reservedList();
+    if (!cmds.length) { el.previewLine.textContent = ''; return; }
+    var res = P.previewBeat(state, cmds);
+    if (!res) { el.previewLine.textContent = '⚠ 두 친구가 같은 칸으로 갈 수 없어요.'; return; }
+    var after = res.state;
+    var fixedNow = after.toys.filter(function (t) { return t.fixed; }).length - state.toys.filter(function (t) { return t.fixed; }).length;
+    var dmg = friendDamage(after) - friendDamage(state);
+    // 고스트: 장난감 예상 위치 / 수리, 친구 피해
+    after.toys.forEach(function (t) { var cur = P.getToy(state, t.id);
+      if (t.fixed && !cur.fixed) ghost(t.x, t.y, false, '✓');
+      else if (!t.fixed && (t.x !== cur.x || t.y !== cur.y)) ghost(t.x, t.y, false, ''); });
+    after.friends.forEach(function (f) { var cur = state.friends.find(function (o) { return o.id === f.id; });
+      if (f.hearts < cur.hearts) ghost(f.x, f.y, true, '💔'); });
+    var parts = [];
+    if (fixedNow > 0) parts.push('장난감 ' + fixedNow + ' 수리');
+    if (dmg > 0) parts.push('피해 ' + dmg + ' ⚠'); else parts.push('피해 0');
+    el.previewLine.textContent = '예상 · ' + parts.join(' · ');
   }
-  function clearPending() { ui.previewMove = null; ui.pendingAction = null; ui.skillArmed = false; hint(ui.selectedId ? '이동할 칸이나 행동을 다시 고르세요.' : '① 움직일 친구를 탭하세요.'); render(); }
-  function objectiveAt(actions, actor, x, y) {
-    return actions.find(function (action) { var point = actionPoint(action); return isObjectiveAction(action) && fromHere(action, actor) && point && point.x === x && point.y === y; });
+  function friendDamage(s) { return s.friends.reduce(function (a, f) { return a + (f.maxHearts - f.hearts); }, 0); }
+  function ghost(x, y, hit, label) { var n = document.createElement('div'); n.className = 'ghost' + (hit ? ' hit' : '');
+    n.innerHTML = '<span class="ring"></span>'; if (label) { var s = document.createElement('span'); s.textContent = label; s.style.position = 'absolute'; s.style.fontSize = 'calc(var(--cell)*.4)'; n.appendChild(s); }
+    addFx(n); place(n, x, y); }
+
+  function slotDesc(cmd, friend) {
+    if (!cmd) return '대기';
+    var moved = cmd.to.x !== friend.x || cmd.to.y !== friend.y;
+    var abil = '';
+    if (cmd.ability) { var t = P.getToy(state, cmd.ability.toyId); abil = (cmd.ability.type === 'push' ? '밀기 ' : '당기기 ') + (t ? t.name : ''); }
+    return (moved ? '이동' : '제자리') + (abil ? ' → ' + abil : ' (이동만)');
   }
-  function describeEnemyIntent(enemyId) {
-    if (state.phase !== 'you') return '';
-    var intent = null, forecast = R.forecastEnemyPhase(state);
-    for (var i = 0; i < forecast.intents.length; i += 1) if (forecast.intents[i].unitId === enemyId) { intent = forecast.intents[i]; break; }
-    if (!intent) return '';
-    if (intent.targetId) {
-      var target = R.getUnit(state, intent.targetId);
-      return ' 다음 차례에 ' + firstName(target) + '를 노려요 (−' + intent.damage + (intent.stops ? ', 쓰러질 위험!' : '') + ').';
-    }
-    return ' 다음 차례에는 다가오기만 해요.';
+  function renderSlots() {
+    [['latte', el.slotLatte], ['mint', el.slotMint]].forEach(function (pair) {
+      var f = P.getFriend(state, pair[0]), slot = pair[1];
+      slot.classList.toggle('set', Boolean(reserved[pair[0]]));
+      slot.querySelector('.desc span').textContent = f && f.hearts > 0 ? slotDesc(reserved[pair[0]], f) : '지침';
+    });
+  }
+  function renderButtons() {
+    el.btnUndo.disabled = busy || history.length === 0;
+    el.btnRestart.disabled = busy;
+    var cmds = reservedList();
+    var ok = cmds.length > 0 && !busy && !!P.previewBeat(state, cmds) && state.status === 'active';
+    el.btnGo.disabled = !ok;
+  }
+  function hint(t) { el.hint.textContent = t; }
+
+  // ── 조작 ──────────────────────────────────────────────────────────────────────
+  function tapFriend(f) {
+    if (busy || state.status !== 'active') return;
+    sel = { friendId: f.id, to: null };
+    hint(f.id === 'latte' ? '라떼가 갈 파란 칸을 탭하세요. (옆 장난감을 밀 수 있어요)' : '민트가 갈 파란 칸을 탭하세요. (일직선 장난감을 당길 수 있어요)');
+    beep('pick'); render();
   }
   function tapCell(x, y) {
-    if (ui.busy || state.phase !== 'you' || state.status !== 'active' || ui.previewMove || ui.pendingAction) return;
-    var tapped = R.getUnitAt(state, x, y);
-    if (!ui.selectedId) {
-      if (tapped && tapped.team === 'you' && !tapped.acted) select(tapped);
-      else if (tapped) { renderInfo(tapped); hint((tapped.team === 'foe' ? '장난감의 체력과 사거리를 확인했어요.' + describeEnemyIntent(tapped.id) : '장난감의 체력과 사거리를 확인했어요.')); }
-      return;
+    if (busy || state.status !== 'active' || !sel) return;
+    if (sel && !sel.to) {
+      var reach = P.reachable(state, sel.friendId).some(function (nd) { return nd.x === x && nd.y === y; });
+      if (!reach) return;
+      sel.to = { x: x, y: y };
+      // 이동만 명령을 즉시 예약(능력은 장난감 탭으로 추가)
+      reserved[sel.friendId] = { friendId: sel.friendId, to: { x: x, y: y }, ability: null };
+      var abils = P.abilitiesFrom(state, P.getFriend(state, sel.friendId), sel.to);
+      hint(abils.length ? '밀거나 당길 장난감을 탭하세요. (그냥 두면 이동만)' : '이동만 예약했어요. 다른 친구도 정하고 출동!');
+      beep('tap'); render();
     }
-    var actor = R.getUnit(state, ui.selectedId);
-    if (tapped && tapped.team === 'you') { if (!tapped.acted) select(tapped); return; }
-    var actions = R.listLegalActions(state, actor.id);
-    if (tapped && tapped.team === 'foe') {
-      var attack = actions.find(function (a) { return a.type === 'attack' && a.targetId === tapped.id && fromHere(a, actor); });
-      var special = actions.find(function (a) { return a.type === 'special-shot' && a.targetId === tapped.id && fromHere(a, actor); });
-      if (ui.skillArmed && special) { ui.skillArmed = false; ui.pendingAction = special; hint('별빛콩 예상 피해를 확인하고 [공격 확정]을 누르세요.'); beep('tap'); render(); }
-      else if (attack) { ui.pendingAction = attack; hint('예상 피해를 확인하고 [공격 확정]을 누르세요.'); beep('tap'); render(); }
-      else if (special) { ui.pendingAction = special; hint('별빛콩 예상 피해를 확인하고 [공격 확정]을 누르세요.'); beep('tap'); render(); }
-      else { renderInfo(tapped); hint('현재 위치에서는 닿지 않아요. 먼저 이동해 주세요.' + describeEnemyIntent(tapped.id)); }
-      return;
-    }
-    var interaction = objectiveAt(actions, actor, x, y);
-    if (interaction) { ui.pendingAction = interaction; hint('내용을 확인하고 [행동 확정]을 누르세요.'); render(); return; }
-    var move = actions.find(function (a) { return a.type === 'move' && a.to.x === x && a.to.y === y; });
-    if (move) { ui.skillArmed = false; ui.previewMove = move; hint('미리보기예요. [이동 확정] 또는 [취소]를 누르세요.'); beep('tap'); render(); }
   }
+  function tapToy(t) {
+    if (busy || state.status !== 'active') return;
+    if (!sel || !sel.to) { hint('먼저 친구를 고르고 이동할 칸을 정하세요.'); return; }
+    var f = P.getFriend(state, sel.friendId);
+    var abils = P.abilitiesFrom(state, f, sel.to).filter(function (a) { return a.toyId === t.id; });
+    if (!abils.length) { hint('그 자리에서는 이 장난감에 닿지 않아요.'); return; }
+    reserved[sel.friendId] = { friendId: sel.friendId, to: sel.to, ability: abils[0] };
+    sel = null;
+    hint('예약됐어요. 예상 결과를 확인하고 출동하세요.'); beep('push'); render();
+  }
+  function clearSlot(fid) { reserved[fid] = null; if (sel && sel.friendId === fid) sel = null; render(); }
 
-  function floatEvent(event) {
-    if (event.type === 'guard-applied') return beep('guard');
-    if (event.type === 'item-picked') return beep('pickup');
-    if (event.type === 'item-delivered') return beep('activate');
-    if (event.type === 'device-activated') return beep('activate');
-    if (event.type !== 'unit-hit') return;
-    var refs = unitEls[event.targetId]; if (!refs) return;
-    var label = document.createElement('div'); label.className = 'float'; label.textContent = '-' + event.amount;
-    label.style.left = refs.root.style.left; label.style.top = refs.root.style.top; el.board.appendChild(label);
-    window.setTimeout(function () { label.remove(); }, 780); beep('hit');
-  }
-  function syncStatus() { var result = R.evaluateObjective(state); if (result.status !== 'active') state.status = result.status; return result; }
-  function committed(result) {
-    if (!result || !result.ok) return;
-    state = result.state; ui.previewMove = null; ui.pendingAction = null; ui.skillArmed = false; (result.events || []).forEach(floatEvent); syncStatus(); saveBattle(true); render();
-    if (state.status !== 'active') return window.setTimeout(outcome, 320);
-    if (R.aliveUnits(state, 'you').every(function (unit) { return unit.acted; })) return window.setTimeout(enemyPhase, 260);
-    ui.selectedId = null; hint('다음 친구를 탭해 움직여요.'); render();
-  }
-  function enemyPhase() {
-    if (ui.busy || state.status !== 'active') return;
-    ui.busy = true; ui.selectedId = null; ui.previewMove = null; ui.pendingAction = null; ui.skillArmed = false;
-    // 정상 진입은 친구→장난감으로 넘기고, 구버전에서 복원한 장난감 페이즈는 그대로 재개한다.
-    if (state.phase === 'you') state = R.endPhase(state);
-    if (state.phase !== 'foe') { ui.busy = false; return; }
-    syncStatus(); if (state.status !== 'active') return outcome();
-    hint('장난감이 움직이는 중이에요…'); render();
-    var foes = R.aliveUnits(state, 'foe').map(function (unit) { return unit.id; });
-    function act(index) {
-      if (index >= foes.length || state.status !== 'active') return endEnemyPhase();
-      var unit = R.getUnit(state, foes[index]); if (!unit || unit.hp <= 0) return act(index + 1);
-      var action = R.chooseAiAction(state, unit.id);
-      if (action) { var result = R.applyAction(state, action); if (result.ok) { state = result.state; (result.events || []).forEach(floatEvent); syncStatus(); render(); } }
-      if (state.status !== 'active') return window.setTimeout(outcome, 280);
-      window.setTimeout(function () { act(index + 1); }, 320);
-    }
-    window.setTimeout(function () { act(0); }, 280);
-  }
-  function endEnemyPhase() {
-    state = R.endPhase(state); syncStatus(); ui.busy = false; saveBattle(true);
-    if (state.status !== 'active') return outcome();
-    hint('내 차례예요. ① 움직일 친구를 탭하세요.'); say(state.turn + '턴, 내 차례'); render();
-  }
-  function scoreStars() {
-    if (state.status !== 'victory') return 0;
-    var score = 1; if (state.turn <= mission.parTurns) score += 1;
-    if (R.aliveUnits(state, 'you').length === mission.units.filter(function (unit) { return unit.team === 'you'; }).length) score += 1;
-    return score;
-  }
-  function outcome() {
-    ui.busy = true; bgmStop();
-    var result = R.evaluateObjective(state), won = state.status === 'victory', earned = scoreStars();
-    var stopped = state.units.filter(function (unit) { return unit.team === 'foe' && unit.hp <= 0; }).length;
-    save.activeBattle = null;
-    if (won) {
-      var old = save.missions[mission.id] || { stars: 0, bestTurns: 999 };
-      save.missions[mission.id] = { stars: Math.max(old.stars, earned), bestTurns: Math.min(old.bestTurns, state.turn) };
-      save.unlocked = Math.min(M.listMissions().length, Math.max(save.unlocked, mission.order + 1));
-    }
-    persist(false);
-    el.resultEyebrow.textContent = won ? mission.eyebrow + ' 완료' : '작전 재정비'; el.resultTitle.textContent = won ? '작전 성공!' : '다시 준비해요';
-    el.resultStars.textContent = stars(earned); el.resultStars.setAttribute('aria-label', '별 ' + earned + '개');
-    el.resultCopy.textContent = won ? mission.victoryText : (result.reason || mission.defeatText);
-    el.resultTurns.textContent = state.turn; el.resultFriends.textContent = R.aliveUnits(state, 'you').length; el.resultStopped.textContent = stopped;
-    el.resultNext.classList.toggle('hidden', !(won && mission.order < M.listMissions().length)); screens(el.resultScreen); beep(won ? 'win' : 'fail');
-    if (won) window.setTimeout(function () { beep('star'); }, 180);
-    if (window.GameBoot && window.GameBoot.submitResult) window.GameBoot.submitResult({ score: earned * 100 + stopped * 10, won: won });
-  }
-
-  function controlsGuide() {
-    return '<b>내 차례에 친구를 한 명씩 움직여요.</b><br><br>' +
-      '① <b>친구</b>를 탭하면 갈 수 있는 <b>파란 칸</b>이 보여요.<br>' +
-      '② <b>파란 칸</b>을 탭해 위치를 미리 보고 <b>[이동 확정]</b>.<br>' +
-      '③ 이동한 자리에서 <b>빨간 적</b>을 탭해 예상 피해를 보고 <b>[공격 확정]</b>.<br>' +
-      '두 친구가 모두 행동하면 자동으로 적 차례로 넘어가요.<br><br>' +
-      '<b>칸 색깔</b><br>🟦 이동할 수 있는 칸　🟥 공격할 수 있는 적　🟨 목표 행동(줍기·전달·스위치)<br><br>' +
-      '<b>버튼</b><br>' +
-      '· <b>스킬</b> — 라떼: 든든막기(주변 보호), 민트: 별빛콩(먼 적 공격)<br>' +
-      '· <b>대기</b> — 그 자리에서 이번 차례를 마쳐요<br>' +
-      '· <b>적 미리보기</b> — 적이 다음에 누구를 −몇 만큼 때릴지 미리 표시<br>' +
-      '· <b>내 차례 끝내기</b> — 남은 친구를 두고 바로 적 차례로';
-  }
-  function showHelp(title, copy) { el.helpDialog.querySelector('h2').textContent = title; el.helpDialog.querySelector('p').innerHTML = copy; el.helpDialog.showModal(); }
-  el.homeSound.addEventListener('click', function () { save.sound = !save.sound; persist(false); renderHome(); beep('tap'); });
-  el.resumeButton.addEventListener('click', resumeMission); el.briefBack.addEventListener('click', renderHome);
-  el.briefPractice.addEventListener('click', function () { showHelp('조작 방법', controlsGuide()); });
-  el.briefStart.addEventListener('click', function () { startMission(selectedMissionId); });
-  el.battleMenu.addEventListener('click', function () { if (!ui.busy) el.pauseDialog.showModal(); });
-  el.pauseContinue.addEventListener('click', function () { el.pauseDialog.close(); });
-  el.pauseRestart.addEventListener('click', function () { el.pauseDialog.close(); startMission(mission.id); });
-  el.pauseQuit.addEventListener('click', function () { saveBattle(false); el.pauseDialog.close(); renderHome(); });
-  el.helpClose.addEventListener('click', function () { el.helpDialog.close(); });
-  el.btnThreat.addEventListener('click', function () { ui.threats = !ui.threats; beep('tap'); render(); });
-  el.btnCancel.addEventListener('click', clearPending);
-  el.btnConfirm.addEventListener('click', function () {
-    if (ui.busy) return;
-    if (ui.previewMove) {
-      var result = R.applyAction(state, ui.previewMove); if (!result.ok) return;
-      state = result.state; ui.previewMove = null; saveBattle(true); beep('move'); hint('이동했습니다. 장난감, 목표 행동, 대기 중 하나를 고르세요.'); render();
-    } else if (ui.pendingAction) committed(R.applyAction(state, ui.pendingAction));
-  });
-  el.btnWait.addEventListener('click', function () {
-    var actor = ui.selectedId ? R.getUnit(state, ui.selectedId) : null; if (!actor || ui.busy) return;
-    var wait = R.listLegalActions(state, actor.id).find(function (action) { return action.type === 'wait' && fromHere(action, actor); });
-    if (wait) committed(R.applyAction(state, wait));
-  });
-  el.btnSkill.addEventListener('click', function () {
-    var actor = ui.selectedId ? R.getUnit(state, ui.selectedId) : null;
-    var actions = actor ? currentSkillActions(actor) : [];
-    if (!actor || ui.busy || !actions.length) return;
-    if (actions.length === 1 && actions[0].type === 'guard-stance') {
-      ui.pendingAction = actions[0];
-      hint('든든막기 결과를 확인하고 확정하세요.');
-    } else {
-      ui.skillArmed = !ui.skillArmed;
-      hint(ui.skillArmed ? '별빛콩으로 공격할 적을 탭하세요.' : '스킬 선택을 취소했어요.');
-    }
+  function go() {
+    var cmds = reservedList(); if (busy || !cmds.length) return;
+    var res = P.applyBeat(state, cmds); if (!res.ok) return;
+    busy = true; history.push(P.clone(state));
+    var prev = state; state = res.state; sel = null; reserved = { latte: null, mint: null };
     render();
-  });
-  el.btnObjective.addEventListener('click', function () {
-    var actor = ui.selectedId ? R.getUnit(state, ui.selectedId) : null; var action = actor ? currentObjectiveAction(actor) : null;
-    if (action) { ui.pendingAction = action; hint('목표 행동을 확인하고 확정하세요.'); render(); }
-    else showHelp(mission.title, '<b>목표</b><br>' + mission.objective.text + '<br><br><b>작전 팁</b><br>' + mission.hint + '<br><br><b>스킬</b><br>라떼의 <b>든든막기</b>는 자신과 옆 친구를 장난감 차례 동안 단단하게 지켜 줘요. 민트의 <b>별빛콩</b>은 기본 사거리보다 1칸 더 멀리 반격 없이 공격해요.<br><br><b>조작</b><br>' + controlsGuide());
-  });
-  el.btnEnd.addEventListener('click', function () { if (!ui.busy && state.phase === 'you') enemyPhase(); });
-  el.resultNext.addEventListener('click', function () { openBrief(M.listMissionIds()[mission.order]); });
-  el.resultRetry.addEventListener('click', function () { startMission(mission.id); }); el.resultHome.addEventListener('click', renderHome);
-  window.addEventListener('resize', function () { if (state) { renderProps(); renderUnits(); } });
+    (res.events || []).forEach(function (ev) { if (ev.type === 'toy-fixed') beep('repair'); if (ev.type === 'friend-hit') beep('hurt'); });
+    beep('push');
+    window.setTimeout(function () { busy = false;
+      if (state.status !== 'active') return outcome();
+      hint('좋아요! 다음 비트를 정하세요.'); render();
+    }, 320);
+  }
+  function undo() { if (busy || !history.length) return; state = history.pop(); sel = null; reserved = { latte: null, mint: null }; hint('한 비트 되돌렸어요.'); beep('tap'); render(); }
+  function restart() { if (busy) return; state = P.clone(initial); history = []; sel = null; reserved = { latte: null, mint: null }; hint(puzzle.hint || '다시 도전!'); beep('tap'); render(); }
+
+  function stars() { if (state.status !== 'victory') return 0;
+    var beatsUsed = state.beat - 1; var s = 1;
+    if (friendDamage(state) === 0) s += 1;
+    if (beatsUsed <= puzzle.par) s += 1; return s; }
+  function outcome() {
+    bgmStop(); var won = state.status === 'victory', earned = stars();
+    var beatsUsed = state.beat - 1, dmg = friendDamage(state);
+    if (won) { var old = save.puzzles[puzzleId] || { stars: 0, bestBeats: 999 };
+      save.puzzles[puzzleId] = { stars: Math.max(old.stars, earned), bestBeats: Math.min(old.bestBeats, beatsUsed) };
+      var order = puzzle.order; save.unlocked = Math.max(save.unlocked, order + 1); persist(); }
+    el.resultEyebrow.textContent = won ? puzzle.title + ' 완료' : '다시 도전';
+    el.resultTitle.textContent = won ? '수리 완료!' : '아직이에요';
+    el.resultStars.textContent = starStr(earned);
+    el.resultCopy.textContent = won ? (earned === 3 ? '완벽해요! 피해 없이 최적 비트로 풀었어요.' : '모든 장난감을 수리했어요. 더 적은 비트·무피해로 ⭐⭐⭐에 도전!') : (P.evaluate(state).reason || '다시 준비해요.');
+    el.resultBeats.textContent = beatsUsed; el.resultDamage.textContent = dmg;
+    var all = Z.list(); el.resultNext.classList.toggle('hidden', !(won && puzzle.order < all.length));
+    el.resultNext.onclick = function () { startPuzzle(all[puzzle.order].id); };
+    screens(el.resultScreen); beep(won ? 'win' : 'fail');
+    if (window.GameBoot && window.GameBoot.submitResult) window.GameBoot.submitResult({ score: earned * 100, won: won });
+  }
+
+  function openHow() { el.howText.innerHTML = HOW; el.howDialog.showModal(); }
+
+  // ── 이벤트 배선 ────────────────────────────────────────────────────────────────
+  el.homeSound.addEventListener('click', function () { save.sound = !save.sound; persist(); if (!save.sound) bgmStop(); el.homeSound.textContent = save.sound ? '🔊' : '🔇'; beep('tap'); });
+  el.howButton.addEventListener('click', openHow);
+  el.howClose.addEventListener('click', function () { el.howDialog.close(); });
+  el.battleMenu.addEventListener('click', function () { if (!busy) el.menuDialog.showModal(); });
+  el.menuContinue.addEventListener('click', function () { el.menuDialog.close(); });
+  el.menuHow.addEventListener('click', function () { el.menuDialog.close(); openHow(); });
+  el.menuQuit.addEventListener('click', function () { el.menuDialog.close(); renderHome(); });
+  el.slotLatte.addEventListener('click', function () { if (reserved.latte) clearSlot('latte'); else { var f = P.getFriend(state, 'latte'); if (f && f.hearts > 0) tapFriend(f); } });
+  el.slotMint.addEventListener('click', function () { if (reserved.mint) clearSlot('mint'); else { var f = P.getFriend(state, 'mint'); if (f && f.hearts > 0) tapFriend(f); } });
+  el.btnGo.addEventListener('click', go);
+  el.btnUndo.addEventListener('click', undo);
+  el.btnRestart.addEventListener('click', restart);
+  el.resultRetry.addEventListener('click', function () { startPuzzle(puzzleId); });
+  el.resultHome.addEventListener('click', renderHome);
+  window.addEventListener('resize', function () { if (state) render(); });
 
   window.__mallangStarlight = {
-    getState: function () { return state ? R.clone(state) : null; }, getUiState: function () { return R.clone(ui); }, getSave: function () { return R.clone(save); },
-    listActions: function (id) { return state ? R.listLegalActions(state, id) : []; }, startMission: startMission,
-    clearSave: function () { save = newSave(); persist(false); renderHome(); },
-    getAudio: function () { return { sound: save.sound, desired: desiredBgm, bgm: bgm.name, playing: Boolean(bgm.timer), ctx: audioContext ? audioContext.state : null }; }
+    getState: function () { return state ? P.clone(state) : null; },
+    getSave: function () { return P.clone(save); },
+    getReserved: function () { return P.clone(reserved); },
+    startPuzzle: startPuzzle,
+    reserve: function (fid, cmd) { reserved[fid] = cmd; render(); },
+    go: go, undo: undo, restart: restart,
+    clearSave: function () { save = newSave(); persist(); renderHome(); }
   };
   renderHome();
 })();

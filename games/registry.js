@@ -178,7 +178,7 @@ window.GAME_REGISTRY = [
   {
     id: 'mallang-starlight',
     title: '말랑프렌즈 별빛작전',
-    description: '라떼와 민트가 오작동 장난감을 멈추고 광장 시설을 구하는 모바일 싱글 전술 SRPG.',
+    description: '라떼는 밀고 민트는 당겨요. 장난감의 예고를 읽고 벽·광선·수리별로 유도해 모두 수리하는 결정론 전술 퍼즐.',
     type: 'SOLO',
     recommendedPlayers: '1명',
     supportedPlayers: '1명',

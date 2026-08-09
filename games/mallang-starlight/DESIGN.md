@@ -1,4 +1,8 @@
-# 말랑프렌즈 별빛작전 — 전술 SRPG 기획서
+> ⛔ **폐기됨(2026-08-09).** 이 SRPG 기획은 코덱스+Claude 재미 리뷰 결과 「결정론 전술 퍼즐」로 전면 재설계되었다. **현재 정식 기획서는 [`REDESIGN.md`](./REDESIGN.md)**, 구현은 `engine/puzzle.js`·`data/puzzles.js`·`engine/ui.js`다. 아래 내용은 역사적 기록으로만 남긴다.
+
+---
+
+# 말랑프렌즈 별빛작전 — 전술 SRPG 기획서 (폐기)
 
 > 작업명: **말랑프렌즈 별빛작전**  
 > 폴더·레지스트리 ID: `mallang-starlight`  
