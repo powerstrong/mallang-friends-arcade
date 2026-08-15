@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>말랑프렌즈 키우기</title>
 <link rel="stylesheet" href="style.css" />
 </head>
@@ -33,16 +33,20 @@
       <div class="boss-timer-label">남은 시간</div>
       <div class="boss-timer-bar"><i id="bossTimerFill"></i></div>
       <div class="boss-timer-num" id="bossTimerNum">25.0</div>
+      <div class="boss-need" id="bossNeed"></div>
     </div>
 
     <div class="field">
       <img class="boss-ring" id="bossRing" src="assets/fx-bossring.png" alt="" hidden />
+      <div class="follower f2" id="follower2"></div>
+      <div class="follower f1" id="follower1"></div>
       <div class="hero" id="hero"></div>
       <div class="enemy" id="enemy" hidden>
         <div class="enemy-name" id="enemyName"></div>
         <div class="enemy-hp"><i id="enemyHpFill"></i></div>
         <img id="enemyArt" alt="" />
       </div>
+      <div class="fx-layer" id="fxLayer"></div>
     </div>
 
     <div class="ground"></div>

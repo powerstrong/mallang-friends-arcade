@@ -15,6 +15,8 @@
 var Combat = require('../engine/combat.js');
 var Bal = require('../engine/balance.js');
 var Chars = require('../data/characters.js');
+var Dungeon = require('../engine/dungeon.js');
+var Quests = require('../data/quests.js');
 var B = Bal.BALANCE;
 var AXES = Bal.AXES;
 var POLICY = Bal.SIM_POLICY;
@@ -163,6 +165,16 @@ function run(opts) {
   };
 
   m.partyChanges = 0;
+  m.dungeonRuns = 0;
+  m.questShards = 0;
+  /* 던전·일일 과제 보상 통합 (codex P0-2) — UI 경제와 시뮬 경제가 갈라지지 않게
+   * 하루 1회, 해금 이후부터 반영한다. 근사 규칙:
+   *  - 던전: 해금(stage≥dungeonUnlockStage) 후 매 시뮬 일마다 3회 (결정론이라 정확)
+   *  - 과제: 시뮬의 활동량이면 세 과제 모두 여유로 달성하므로 합계 조각을 일 1회 지급
+   * 실제 유저는 이보다 덜 챙기므로 이 모델은 "부지런한 유저" 상한이다. */
+  var questShardsPerDay = 0;
+  Quests.QUESTS.forEach(function (q) { questShardsPerDay += Quests.rewardOf(q); });
+  var nextDailyAt = 0;
   var lastPartyKey = '';
   var stageEnteredAt = 0;
   var firstFailAt = null;      // 현재 스테이지에서 처음 보스에 실패한 시각
@@ -215,6 +227,18 @@ function run(opts) {
         s.party = want;
         m.partyChanges++;
       }
+    }
+
+    // 하루 단위 콘텐츠 보상 — 해금된 날부터 하루에 한 번
+    if (s.stage >= B.dungeonUnlockStage && s.t >= nextDailyAt) {
+      nextDailyAt = s.t + 86400;
+      for (var dr = 0; dr < B.dungeonRunsPerDay; dr++) {
+        var dres = Dungeon.simulate(s);
+        Dungeon.applyReward(s, dres);
+        m.dungeonRuns++;
+      }
+      s.shards += questShardsPerDay;
+      m.questShards += questShardsPerDay;
     }
 
     var bought = decide(s, dpsOnly);

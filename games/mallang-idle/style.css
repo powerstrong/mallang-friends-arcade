@@ -117,25 +117,47 @@ body {
   height: 62%;
 }
 
-.hero {
+/* 파티 스프라이트 — 선봉(hero)과 지원(follower). 프레임 폭·시트는 game.js 가 주입한다.
+ * scale 은 keyframe 의 transform 이 덮어쓰므로 모든 키프레임에 var 로 함께 넣는다. */
+.hero, .follower {
   position: absolute;
-  left: 16%;
   bottom: 0;
-  width: 187px;
   height: 220px;
-  transform: scale(.52);
+  transform: scale(var(--sc, .40));
   transform-origin: bottom center;
-  background-image: url('assets/hero-rabbit-walk.png');
-  background-size: 561px 220px;
   background-position: 0 0;
+  background-repeat: no-repeat;
 }
-/* --walk-shift 는 캐릭터마다 프레임 폭이 달라 game.js 가 주입한다(3프레임 × frameW). */
-.hero.walking { animation: heroWalk .48s steps(3) infinite; }
+.hero { left: 17%; --sc: .40; z-index: 2; }
+.follower.f1 { left: 7%;  --sc: .30; bottom: 2px; z-index: 1; opacity: .96; }
+.follower.f2 { left: -1%; --sc: .26; bottom: 4px; z-index: 0; opacity: .92; }
+
+/* --walk-shift = -(3프레임 × frameW) */
+.hero.walking, .follower.walking { animation: heroWalk .48s steps(3) infinite; }
 @keyframes heroWalk { to { background-position: var(--walk-shift, -561px) 0; } }
-.hero.attacking { animation: heroAttack .28s ease-in-out infinite; }
-@keyframes heroAttack {
-  0%, 100% { transform: scale(.52) translateX(0); }
-  50%      { transform: scale(.52) translateX(9px); }
+
+/* 교전 대기 — 제자리에서 말랑하게 통통 */
+.hero.fighting, .follower.fighting { animation: idleBounce .8s ease-in-out infinite; }
+@keyframes idleBounce {
+  0%, 100% { transform: scale(var(--sc, .40)) translateY(0); }
+  50%      { transform: scale(var(--sc, .40)) translateY(-5px) scaleX(1.03); }
+}
+
+/* 타격 순간 — 적을 향해 돌진했다가 돌아온다. 착지에서 찌부(squash) */
+.hero.strike { animation: heroStrike .24s cubic-bezier(.3, 1.4, .6, 1) !important; }
+@keyframes heroStrike {
+  0%   { transform: scale(var(--sc, .40)) translateX(0); }
+  38%  { transform: scale(var(--sc, .40)) translateX(46px) rotate(4deg) scaleY(.96); }
+  62%  { transform: scale(var(--sc, .40)) translateX(38px) rotate(2deg) scaleY(1.04); }
+  100% { transform: scale(var(--sc, .40)) translateX(0); }
+}
+
+/* 지원 사격 순간 — 폴짝 */
+.follower.cast { animation: followerCast .3s ease-out !important; }
+@keyframes followerCast {
+  0%   { transform: scale(var(--sc)) translateY(0); }
+  45%  { transform: scale(var(--sc)) translateY(-12px) rotate(-4deg); }
+  100% { transform: scale(var(--sc)) translateY(0); }
 }
 
 .enemy {
@@ -149,17 +171,33 @@ body {
 }
 .enemy img {
   display: block;
-  height: 96px;
+  height: 90px;
   width: auto;
   transform: scaleX(-1);
   filter: drop-shadow(0 3px 4px rgba(90, 60, 80, .18));
 }
-.enemy.is-boss img { height: 150px; }
-.enemy.hurt img { animation: hurt .12s ease-out; }
-@keyframes hurt {
-  0% { filter: drop-shadow(0 3px 4px rgba(90,60,80,.18)) brightness(1); }
-  50% { filter: drop-shadow(0 3px 4px rgba(90,60,80,.18)) brightness(1.7); }
-  100% { filter: drop-shadow(0 3px 4px rgba(90,60,80,.18)) brightness(1); }
+.enemy.is-boss img { height: 148px; }
+
+/* 등장 — 몹은 폴짝 튀어나오고, 보스는 위에서 쿵 */
+.enemy img.spawn-in { animation: spawnIn .3s cubic-bezier(.2, 1.4, .5, 1); }
+@keyframes spawnIn {
+  0%   { transform: scaleX(-1) scale(.4) translateY(14px); opacity: 0; }
+  100% { transform: scaleX(-1) scale(1) translateY(0); opacity: 1; }
+}
+.enemy img.boss-in { animation: bossIn .45s cubic-bezier(.25, 1.3, .45, 1); }
+@keyframes bossIn {
+  0%   { transform: scaleX(-1) translateY(-110px) scale(1.15); opacity: 0; }
+  55%  { transform: scaleX(-1) translateY(0) scale(1) scaleY(.9); opacity: 1; }
+  75%  { transform: scaleX(-1) scaleY(1.06); }
+  100% { transform: scaleX(-1) scaleY(1); }
+}
+
+/* 피격 — 찌부 + 밀려남 + 번쩍 */
+.enemy.squash img { animation: enemySquash .16s ease-out !important; }
+@keyframes enemySquash {
+  0%   { transform: scaleX(-1); filter: drop-shadow(0 3px 4px rgba(90,60,80,.18)) brightness(1); }
+  40%  { transform: scaleX(-1.12) scaleY(.88) translateX(-7px); filter: drop-shadow(0 3px 4px rgba(90,60,80,.18)) brightness(1.8); }
+  100% { transform: scaleX(-1); filter: drop-shadow(0 3px 4px rgba(90,60,80,.18)) brightness(1); }
 }
 .enemy-name { font-size: 11px; font-weight: 700; color: var(--ink); background: rgba(255,255,255,.82); padding: 1px 8px; border-radius: 8px; }
 .enemy.is-boss .enemy-name { color: var(--boss); }
@@ -281,10 +319,12 @@ body {
 .panel-head { display: flex; align-items: center; justify-content: space-between; }
 .panel-title { font-size: 13px; font-weight: 800; color: var(--ink-soft); }
 
+/* 터치 타깃은 44px 안팎을 지킨다 — 실기기에서 26px 언저리는 오탭 지옥이다(codex 리뷰) */
 .bulk { display: flex; gap: 4px; }
 .bulk button {
-  font: inherit; font-size: 12px; font-weight: 700;
-  padding: 4px 11px; border-radius: 8px;
+  font: inherit; font-size: 12.5px; font-weight: 700;
+  padding: 11px 15px; border-radius: 9px;
+  min-height: 42px;
   border: 1px solid var(--line); background: #fff; color: var(--ink-soft);
   cursor: pointer;
 }
@@ -371,7 +411,8 @@ body {
 .tabs button {
   font: inherit; font-size: 13px; font-weight: 800;
   flex: 1;
-  padding: 8px 0 9px;
+  padding: 13px 0 14px;
+  min-height: 44px;
   border: none;
   border-bottom: 2.5px solid transparent;
   background: none;
@@ -498,6 +539,75 @@ body {
 .book-cell.unseen img { filter: brightness(0) opacity(.25); }
 .book-cell.unseen span { color: #c9bcc9; }
 
+/* ── 전투 이펙트 레이어 ────────────────────────────────────── */
+.fx-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 3;
+}
+.fx-layer > * { position: absolute; transform: translate(-50%, -50%); }
+
+.fx-impact {
+  width: 76px; height: 76px;
+  background: url('assets/fx-impact.png') center / contain no-repeat;
+  animation: impactPop .3s ease-out forwards;
+  rotate: var(--rot, 0deg);
+}
+.fx-impact.small { width: 46px; height: 46px; }
+@keyframes impactPop {
+  0%   { transform: translate(-50%, -50%) scale(.35); opacity: 0; }
+  30%  { transform: translate(-50%, -50%) scale(1.12); opacity: 1; }
+  100% { transform: translate(-50%, -50%) scale(.92); opacity: 0; }
+}
+
+.fx-poof {
+  width: 96px; height: 96px;
+  background: url('assets/fx-poof.png') center / contain no-repeat;
+  animation: poofOut .44s ease-out forwards;
+}
+@keyframes poofOut {
+  0%   { transform: translate(-50%, -50%) scale(.5); opacity: .95; }
+  100% { transform: translate(-50%, -50%) scale(1.35) translateY(-14px); opacity: 0; }
+}
+
+.fx-proj {
+  width: 40px; height: 40px;
+  background: url('assets/fx-star.png') center / contain no-repeat;
+  filter: drop-shadow(0 0 5px rgba(255, 214, 120, .8));
+}
+
+.fx-dmg {
+  font-size: 17px;
+  font-weight: 800;
+  color: #fff;
+  -webkit-text-stroke: 3.5px #e0578a;
+  paint-order: stroke fill;
+  text-shadow: 0 2px 6px rgba(180, 60, 110, .35);
+  font-variant-numeric: tabular-nums;
+  animation: dmgPop .6s cubic-bezier(.2, .9, .4, 1) forwards;
+  white-space: nowrap;
+}
+@keyframes dmgPop {
+  0%   { transform: translate(-50%, -50%) scale(.6); opacity: 0; }
+  20%  { transform: translate(-50%, -60%) scale(1.15); opacity: 1; }
+  100% { transform: translate(-50%, -150%) scale(.95); opacity: 0; }
+}
+
+/* 보스 타이머 하단 — 필요 DPS 안내 */
+.boss-need {
+  grid-column: 1 / -1;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--ink-soft);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.boss-need.lack { color: var(--boss); }
+
+/* 던전 잠금 */
+.dungeon-card.locked { filter: grayscale(.5); opacity: .75; }
+
 /* ── 연출 (P5): 화면 흔들림 · 컨페티 ──────────────────────── */
 .arena.shake { animation: arenaShake .3s ease-out; }
 @keyframes arenaShake {
@@ -520,15 +630,19 @@ body {
   100% { opacity: 0; transform: translate(var(--dx, 0), 90px) rotate(240deg); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .arena.shake, .confetti { animation: none; }
-  .confetti { display: none; }
+  .arena.shake, .confetti, .hero.strike, .hero.fighting, .follower.fighting,
+  .follower.cast, .enemy.squash img, .enemy img.spawn-in, .enemy img.boss-in,
+  .fx-impact, .fx-poof { animation: none; }
+  .confetti, .fx-impact, .fx-poof, .fx-proj { display: none; }
 }
 
-/* HUD 음소거 버튼 */
+/* HUD 음소거 버튼 — 44px 터치 타깃 */
 .mute-btn {
-  font: inherit; font-size: 15px;
+  font: inherit; font-size: 17px;
   border: none; background: none; cursor: pointer;
-  padding: 2px 4px; margin-left: 6px;
+  padding: 0; margin-left: 4px;
+  width: 44px; height: 44px;
+  display: flex; align-items: center; justify-content: center;
   opacity: .75;
 }
 

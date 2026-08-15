@@ -89,7 +89,7 @@ cost(axis,lv)= costBase[axis] * costGrowth[axis]^(lv-1)
 |---|---|
 | `mobHpGrowth(1.18)` **>** `goldGrowth(1.16)` | 스테이지가 오를수록 서서히 벽이 생긴다. 방치형의 기본 텐션 |
 | `costGrowth.atk(1.15)` **>** `atkGrowth(1.12)` | 한 레벨의 실질 이득이 체감한다 → 다른 축을 볼 이유가 생긴다 |
-| `bossHpMultiplier(7)` | 일반몹 7마리분. 파밍 구간과 관문의 대비를 만든다 |
+| `bossHpMultiplier(12)` | 일반몹 12마리분. 파밍 구간과 관문의 대비를 만든다 |
 | `aspdCap` | ASPD가 무한 성장하면 ATK 축이 무의미해진다 |
 
 **이 숫자들은 정답이 아니라 출발점이다.** 판정은 아래 지표가 한다.

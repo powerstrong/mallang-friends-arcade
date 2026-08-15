@@ -42,6 +42,7 @@
     enemyName: $('enemyName'), enemyHpFill: $('enemyHpFill'), bossRing: $('bossRing'),
     upgrades: $('upgrades'), bulkToggle: $('bulkToggle'),
     stageProgress: $('stageProgress'), dpsHint: $('dpsHint'), exitBtn: $('exitBtn'),
+    follower1: $('follower1'), follower2: $('follower2'), fxLayer: $('fxLayer'), bossNeed: $('bossNeed'),
     field: document.querySelector('.field'), intro: $('intro'), introStart: $('introStart'),
     tabs: $('tabs'), panelUpgrade: $('panelUpgrade'), panelParty: $('panelParty'),
     partyList: $('partyList'), partySlots: $('partySlots'), partyDot: $('partyDot'),
@@ -339,11 +340,25 @@
 
   function renderBattle() {
     if (!state.daily || !state.dungeon) return;
+    var locked = state.stage < B.dungeonUnlockStage;
+    var card = el.dungeonGo.closest('.dungeon-card');
+    if (card) card.classList.toggle('locked', locked);
+    if (locked) {
+      el.dungeonRuns.textContent = '스테이지 ' + B.dungeonUnlockStage + ' 도달 시 열려요';
+      el.dungeonBest.textContent = state.dungeon.best;
+      el.dungeonGo.disabled = true;
+      el.dungeonGo.textContent = '잠김';
+      return renderQuests();
+    }
     var left = B.dungeonRunsPerDay - state.dungeon.runs;
     el.dungeonRuns.textContent = '오늘 ' + Math.max(0, left) + '회 남음';
     el.dungeonBest.textContent = state.dungeon.best;
     el.dungeonGo.disabled = left <= 0;
     el.dungeonGo.textContent = left > 0 ? '입장' : '내일 다시';
+    renderQuests();
+  }
+
+  function renderQuests() {
 
     var claimable = 0;
     Quests.QUESTS.forEach(function (q) {
@@ -367,6 +382,7 @@
   function runDungeon() {
     if (!el.dungeonModal.hidden) return;   // 결과 확인 전 재진입 방지
     syncDaily();
+    if (state.stage < B.dungeonUnlockStage) return;   // 해금 전 — 초반 경제 우회 차단
     if (state.dungeon.runs >= B.dungeonRunsPerDay) return;
     state.dungeon.runs++;
     var result = Dungeon.simulate(state);
@@ -461,19 +477,120 @@
   var bgOffset = 0;
   var lastEnemyKey = '';
 
-  /* 화면에 서는 주인공은 편성 1번 자리의 친구다. 프레임 폭이 캐릭터마다 달라
-   * background-size 까지 같이 바꿔야 워크사이클이 어긋나지 않는다. */
-  var lastHeroId = '';
+  /* 화면에 서는 것은 편성 전원이다 — 1번이 선봉(근접), 2·3번이 뒤에서 지원 사격.
+   * 프레임 폭이 캐릭터마다 달라 background-size 까지 같이 바꿔야 워크사이클이 안 어긋난다. */
+  var lastPartyKey = '';
+  function applySprite(node, c) {
+    node.style.width = c.frameW + 'px';
+    node.style.backgroundImage = "url('" + c.walk + "')";
+    node.style.backgroundSize = (c.frameW * 3) + 'px 220px';
+    node.style.setProperty('--walk-shift', '-' + (c.frameW * 3) + 'px');
+  }
   function renderHero() {
-    var id = state.party && state.party[0];
-    if (!id || id === lastHeroId) return;
-    var c = Chars.byId(id);
-    if (!c) return;
-    lastHeroId = id;
-    el.hero.style.width = c.frameW + 'px';
-    el.hero.style.backgroundImage = "url('" + c.walk + "')";
-    el.hero.style.backgroundSize = (c.frameW * 3) + 'px 220px';
-    el.hero.style.setProperty('--walk-shift', '-' + (c.frameW * 3) + 'px');
+    var key = (state.party || []).join(',');
+    if (!key || key === lastPartyKey) return;
+    lastPartyKey = key;
+    var lead = Chars.byId(state.party[0]);
+    if (lead) applySprite(el.hero, lead);
+    [el.follower1, el.follower2].forEach(function (node, i) {
+      var c = state.party[i + 1] ? Chars.byId(state.party[i + 1]) : null;
+      node.hidden = !c;
+      if (c) applySprite(node, c);
+    });
+  }
+
+  // ── 전투 연출: 스트라이크·임팩트·데미지 숫자·지원 사격 ──────────
+  /* 엔진은 연속 DPS 로 계산하지만 화면은 "때리는 순간"이 보여야 산다.
+   * 공격 속도에 맞춰 돌진-타격을 틱으로 재생하고, 틱 사이에 깎인 HP 를
+   * 데미지 숫자로 뭉쳐 보여준다. 전부 표현 계층 — 엔진은 건드리지 않는다. */
+  var strikeAccum = 0, strikeGap = 0, dmgSince = 0;
+  var fxCount = 0;
+  var FX_CAP = 26;              // 동시 이펙트 노드 상한 — 저사양 보호
+
+  function spawnFx(cls, x, y, ttl, text) {
+    if (fxCount >= FX_CAP) return null;
+    fxCount++;
+    var n = document.createElement(text != null ? 'span' : 'i');
+    n.className = cls;
+    if (text != null) n.textContent = text;
+    n.style.left = x + 'px';
+    n.style.top = y + 'px';
+    el.fxLayer.appendChild(n);
+    setTimeout(function () { n.remove(); fxCount--; }, ttl);
+    return n;
+  }
+
+  function enemyPoint() {
+    var fr = el.fxLayer.getBoundingClientRect();
+    var er = el.enemyArt.getBoundingClientRect();
+    return { x: er.left + er.width * 0.5 - fr.left, y: er.top + er.height * 0.55 - fr.top };
+  }
+
+  function heroStrikeFx(dmg) {
+    el.hero.classList.remove('strike');
+    void el.hero.offsetWidth;
+    el.hero.classList.add('strike');
+    sfx('hit');
+    var p = enemyPoint();
+    var jx = (Math.random() - 0.5) * 26, jy = (Math.random() - 0.5) * 20;
+    var imp = spawnFx('fx-impact', p.x + jx, p.y + jy, 320);
+    if (imp) imp.style.setProperty('--rot', Math.floor(Math.random() * 70 - 35) + 'deg');
+    spawnFx('fx-dmg', p.x + jx, p.y + jy - 26, 620, fmt(dmg));
+    el.enemy.classList.remove('squash');
+    void el.enemy.offsetWidth;
+    el.enemy.classList.add('squash');
+  }
+
+  /* 지원 사격 — 2·3번 동료가 자기 주기로 별을 던진다. 데미지는 이미 DPS 에
+   * 편성 보너스로 녹아 있으므로 숫자는 띄우지 않는다(전투가 두 배로 세 보이면 거짓말). */
+  var followerTimers = [0, 0];
+  function followerShot(node) {
+    var fr = el.fxLayer.getBoundingClientRect();
+    var nr = node.getBoundingClientRect();
+    var from = { x: nr.left + nr.width * 0.6 - fr.left, y: nr.top + nr.height * 0.35 - fr.top };
+    var to = enemyPoint();
+    var star = spawnFx('fx-proj', from.x, from.y, 520);
+    if (!star) return;
+    node.classList.remove('cast');
+    void node.offsetWidth;
+    node.classList.add('cast');
+    var dx = to.x - from.x, dy = to.y - from.y;
+    star.animate([
+      { transform: 'translate(0,0) rotate(0deg)' },
+      { transform: 'translate(' + (dx * 0.5) + 'px,' + (dy * 0.5 - 34) + 'px) rotate(180deg)' },
+      { transform: 'translate(' + dx + 'px,' + dy + 'px) rotate(360deg)' },
+    ], { duration: 430, easing: 'linear' }).onfinish = function () {
+      star.remove(); fxCount--;
+      spawnFx('fx-impact small', to.x, to.y, 280);
+    };
+    // animate 의 onfinish 가 제거를 담당하므로 spawnFx 의 타이머 제거와 중복돼도 안전하다
+  }
+
+  function updateCombatFx(dt) {
+    var fighting = state.phase !== Combat.PHASE_ADVANCE && !el.enemy.hidden;
+    dmgSince += Combat.dps(state) * dt * speedMul * (state.phase === Combat.PHASE_BOSS ? (1 + Combat.partyBonus(state).bossMul) : 1);
+    if (!fighting) { dmgSince = 0; return; }
+
+    // 타격 틱: 공속을 따르되 눈이 따라갈 상한(초당 4회)을 둔다
+    var rate = Math.min(4, Combat.effAspd(state));
+    strikeGap += dt;
+    strikeAccum += dt * rate;
+    if (strikeAccum >= 1 && strikeGap >= 0.22) {
+      strikeAccum = 0; strikeGap = 0;
+      heroStrikeFx(dmgSince);
+      dmgSince = 0;
+    }
+
+    // 동료 지원 사격 — 서로 어긋난 주기로
+    [el.follower1, el.follower2].forEach(function (node, i) {
+      if (node.hidden) return;
+      followerTimers[i] += dt;
+      var cycle = 1.7 + i * 0.6;
+      if (followerTimers[i] >= cycle) {
+        followerTimers[i] = 0;
+        followerShot(node);
+      }
+    });
   }
 
   function renderHud() {
@@ -527,7 +644,11 @@
     }
     if (phaseChanged) {
       el.hero.classList.toggle('walking', walking);
-      el.hero.classList.toggle('attacking', !walking);
+      el.hero.classList.toggle('fighting', !walking);
+      [el.follower1, el.follower2].forEach(function (n) {
+        n.classList.toggle('walking', walking);
+        n.classList.toggle('fighting', !walking);
+      });
     }
 
     if (walking) {
@@ -544,11 +665,14 @@
         el.enemy.classList.toggle('is-boss', isBoss);
         el.enemy.hidden = false;
         el.bossRing.hidden = !isBoss;
+        // 등장 연출 — 몹은 폴짝, 보스는 쿵 하고 내려온다
+        el.enemyArt.classList.remove('spawn-in', 'boss-in');
+        void el.enemyArt.offsetWidth;
+        el.enemyArt.classList.add(isBoss ? 'boss-in' : 'spawn-in');
         // 도감 기록 — 처음 만난 몬스터/보스
         var ch = Chapters.chapterFor(state.stage);
         recordSeen(isBoss ? (ch.id + ':boss:' + art.id) : (ch.id + ':' + art.id));
       }
-      sfx('hit');   // 교전 중 타격음 (audio 내부에서 스로틀)
       var ratio = state.enemyMaxHp > 0 ? Math.max(0, state.enemyHp / state.enemyMaxHp) : 0;
       el.enemyHpFill.style.width = (ratio * 100) + '%';
     }
@@ -565,6 +689,11 @@
       var left = Math.max(0, B.bossTimeLimit - state.bossT);
       el.bossTimerFill.style.width = (left / B.bossTimeLimit * 100) + '%';
       el.bossTimerNum.textContent = left.toFixed(1);
+      // "왜 졌는지"를 숫자로 — 필요 DPS 대비 내 DPS 를 상시 표시(codex 리뷰)
+      var needDps = Combat.bossHp(state.stage) / B.bossTimeLimit;
+      var mine = Combat.bossDps(state);
+      el.bossNeed.textContent = '필요 DPS ' + fmt(needDps) + ' · 내 DPS ' + fmt(mine);
+      el.bossNeed.classList.toggle('lack', mine < needDps);
     } else if (state.mobIndex !== lastMobIndex || lastPipCount !== B.mobsPerStage) {
       lastMobIndex = state.mobIndex;
       el.progressText.textContent = state.mobIndex + ' / ' + B.mobsPerStage;
@@ -607,7 +736,14 @@
     var needPanel = false;
     for (var i = 0; i < state.events.length; i++) {
       var ev = state.events[i];
-      if (ev.type === 'mob_kill') { needPanel = true; floatGold(ev.gold); }
+      if (ev.type === 'mob_kill') {
+        needPanel = true;
+        floatGold(ev.gold);
+        // 처치 — 몬스터가 '펑' 하고 사라진다
+        var pp = enemyPoint();
+        spawnFx('fx-poof', pp.x, pp.y, 460);
+        sfx('kill');
+      }
       else if (ev.type === 'boss_clear') {
         toast('스테이지 ' + ev.stage + ' 돌파!', 'win');
         sfx('clear'); shake();
@@ -630,13 +766,17 @@
   }
 
   // ── 루프 ────────────────────────────────────────────────────
+  /* 시작하기를 누르기 전에는 게임 시간이 흐르지 않는다. 유저가 로고를 오래 보면
+   * 첫 강화·첫 보스 타이밍이 전부 달라지기 때문(codex 리뷰 P0-1).
+   * 복귀 유저는 인트로가 없으므로 즉시 시작한다. */
+  var gameStarted = true;
   var panelAccum = 0;
   function frame(now) {
     var dt = lastFrame ? Math.min((now - lastFrame) / 1000, 0.25) : 0;
     lastFrame = now;
     var simDt = dt * speedMul;
 
-    if (simDt > 0) {
+    if (simDt > 0 && gameStarted) {
       if (floatCooldown > 0) floatCooldown -= dt;
       /* 날짜 동기화는 반드시 step 보다 먼저 — 자정 직후의 처치·강화가 새 스냅숏에
        * 흡수되어 진행도에서 사라지는 것을 막는다(codex 리뷰). */
@@ -647,6 +787,7 @@
       panelAccum += dt;
       if (needPanel || panelAccum > 0.2) { renderPanel(); panelAccum = 0; }
       renderArena(simDt);
+      updateCombatFx(dt);
 
       saveTimer += dt;
       if (saveTimer > 5) { persist(); saveTimer = 0; }
@@ -656,7 +797,11 @@
   var dailyTimer = 0;
 
   // ── 저장 ────────────────────────────────────────────────────
+  /* 리셋 직후에는 저장을 막는다 — Reset 이 키를 지우고 reload 하는 사이에
+   * pagehide 의 persist 가 세이브를 되살리는 경합이 실제로 있었다. */
+  var suppressPersist = false;
   function persist() {
+    if (suppressPersist) return;
     try { localStorage.setItem(Save.STORAGE_KEY, Save.dump(state, Date.now())); }
     catch (e) { /* 저장 불가 — 진행은 계속한다 */ }
   }
@@ -777,7 +922,8 @@
       persist();
       hiddenAt = Date.now();
     } else if (hiddenAt) {
-      grantOffline((Date.now() - hiddenAt) / 1000);
+      // 시작 전(인트로)에는 게임 시간이 없으므로 오프라인 보상도 없다
+      if (gameStarted) grantOffline((Date.now() - hiddenAt) / 1000);
       hiddenAt = 0;
       lastFrame = 0;          // 복귀 첫 프레임의 dt 를 0 으로 — 큰 dt 가 한 번에 밀리지 않게
     }
@@ -801,6 +947,8 @@
         return { stage: state.stage, phase: state.phase, gold: state.gold };
       },
       Combat: Combat, Save: Save, Chapters: Chapters, Balance: Bal,
+      // 연출 검증용 — 헤드리스에선 rAF 가 멈춰 자연 발화를 볼 수 없다
+      fx: { strike: heroStrikeFx, shot: followerShot, poofAt: function () { var p = enemyPoint(); return spawnFx('fx-poof', p.x, p.y, 460); } },
     };
     el.devPanel.addEventListener('click', function (e) {
       var cmd = e.target.getAttribute('data-dev');
@@ -838,10 +986,15 @@
         }
       }
       else if (kind === 'reset') {
-        if (window.confirm('진행을 모두 지울까요?')) {
-          try { localStorage.removeItem(Save.STORAGE_KEY); } catch (er) {}
-          state = Combat.createState();
-          toast('초기화했어요');
+        if (window.confirm('진행을 모두 지울까요? (인트로·튜토리얼 포함 첫 방문 상태로)')) {
+          // 첫 방문 QA 용 — 세이브만 지우면 온보딩이 재현되지 않는다(codex 리뷰)
+          suppressPersist = true;   // reload 직전 pagehide persist 가 세이브를 되살리지 않게
+          try {
+            localStorage.removeItem(Save.STORAGE_KEY);
+            localStorage.removeItem(Save.STORAGE_KEY + '-seen');
+            localStorage.removeItem(Save.STORAGE_KEY + '-tut');
+          } catch (er) {}
+          location.reload();
         }
       }
       renderPanel();
@@ -875,8 +1028,11 @@
   try { seenIntro = localStorage.getItem(Save.STORAGE_KEY + '-seen') === '1'; } catch (e) {}
   if (!seenIntro) {
     el.intro.hidden = false;
+    gameStarted = false;          // 시작 버튼 전에는 t=0, gold=0 그대로
     el.introStart.addEventListener('click', function () {
       el.intro.hidden = true;
+      gameStarted = true;
+      lastFrame = 0;              // 인트로를 보던 시간이 첫 dt 로 밀리지 않게
       if (Audio) Audio.warm();
       sfx('tap');
       try { localStorage.setItem(Save.STORAGE_KEY + '-seen', '1'); } catch (e) {}

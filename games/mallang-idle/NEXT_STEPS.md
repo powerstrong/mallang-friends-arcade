@@ -1,6 +1,6 @@
 # 말랑프렌즈 키우기 — 현재 상태와 다음 작업
 
-`mallang-idle` · 최종 갱신 2026-08-15
+`mallang-idle` · 최종 갱신 2026-08-16
 
 > 새 세션은 이 문서 → [AGENT_PROTOCOL.md](AGENT_PROTOCOL.md) 순으로 읽고 이어간다.
 
@@ -8,7 +8,32 @@
 
 ## 지금 어디까지 왔나
 
-**P0~P5 전 단계 완료 (2026-08-15) — v1 범위 종료. 이후는 POST-v1(아케이드 메타게임)**
+**상태: `v1 candidate` — 사람 게이트 대기.** 상태는 네 단계로 구분한다(codex 리뷰):
+
+| 단계 | 상태 |
+|---|---|
+| 구현 | ✅ P0~P5 전 범위 (2026-08-15~16) |
+| 기계적 검증 | ✅ 회귀 테스트 41개 · 시뮬 지표 · 브라우저 좌표 클릭 E2E |
+| **사람 게이트** | ⏳ **대기** — P1 "5분 뒤 한 번 더 강화하고 싶은가"는 사람만 판정 가능 |
+| 배포 검증 | ✅ 배포본 시작 플로우·390×844 레이아웃 (codex 확인) |
+
+사람 게이트 통과 전에는 POST-v1(서버·랭킹·광장 경제)을 시작하지 않는다.
+
+### 2026-08-16 — 전투 연출 전면 강화 + codex 리뷰 반영
+
+- **살아있는 전투**: 공속 연동 돌진-타격 애니메이션, 타격 임팩트 스타 + 데미지 숫자,
+  피격 찌부·번쩍, 처치 시 구름 "펑", 몹 폴짝/보스 쿵 등장 연출, **편성 2·3번이
+  화면에 함께 서서 별 투사체로 지원 사격**(폴짝 캐스팅 모션 포함). FX 노드 상한 26
+- **시작 게이트**: 시작하기를 누르기 전에는 게임 시간이 흐르지 않는다(t=0·gold=0 보장,
+  시작 전 오프라인 지급도 차단). 복귀 유저는 인트로 없이 즉시 시작
+- **던전 해금**: 스테이지 10 (이전에는 1스테이지부터 열려 초반 경제 우회)
+- **시뮬-UI 경제 통합**: 던전 3회 + 일일 과제 조각을 시뮬에 반영. 그 결과 유물 지수
+  인플레가 드러나 재조정(유물 비용 1.45→1.6·효과 8→6%, 던전 골드 30→10초,
+  과제 18→11조각). 여유비 2.44 → 1.90(30분)·1.57(2시간)
+- **UI 계약 테스트** `tests/ui-contract.test.js`: [hidden] 가드·시작 게이트·에셋 존재·
+  FX 상한·Math.random 계층 규칙을 정적으로 고정
+- 보스전에 "필요 DPS vs 내 DPS" 상시 표시, 터치 타깃 44px, `user-scalable=no` 제거,
+  DEV Reset 이 온보딩까지 전체 초기화
 
 ### P4 콘텐츠 (완료)
 
@@ -74,10 +99,10 @@
 | BALANCE 단일 상수 `engine/balance.js` | 완료 |
 | seeded RNG `engine/rng.js` | 완료 (현재 전투는 무작위 요소 없음, 향후 드랍용) |
 | 세이브 `engine/save.js` | 완료 — version 1 + migrateSave + 상위버전 거부 |
-| 챕터 데이터 `data/chapters.js` | 완료 — 들판/삐걱이는 언덕/기계군단 3챕터 |
+| 챕터 데이터 `data/chapters.js` | 완료 — 5챕터(들판→언덕→전선→심장부→하늘 정원) |
 | 헤드리스 시뮬 `tools/sim.js` | 완료 — 24h 시뮬 0.2초 |
 | 그리드 서치 `tools/tune.js` | 완료 — 120조합 11.6초 |
-| 지표 회귀 테스트 `tests/balance.test.js` | **15개 전부 통과** |
+| 회귀 테스트 | **41개 전부 통과** (balance 33 + UI 계약 8) |
 | 게임 화면 `index.html/game.js/style.css` | 완료 — 횡스크롤 자동 전진, 강화 3축 x1/x10/MAX, 편성 탭 |
 | `?dev=1` 치트 패널 | 완료 — 골드/스테이지/오프라인/배속 x20/세이브 |
 | 캐릭터 `data/characters.js` | 완료 — 5명, 해금·슬롯 규칙, 파티 보너스 |
@@ -88,7 +113,8 @@
 ### 검증한 것
 
 ```bash
-node games/mallang-idle/tests/balance.test.js    # 15 passed
+node games/mallang-idle/tests/balance.test.js       # 33 passed
+node games/mallang-idle/tests/ui-contract.test.js   # 8 passed
 node games/mallang-idle/tools/sim.js --minutes=5
 node games/mallang-idle/tools/tune.js --top=5
 node scripts/validate-games.js                   # registry 검증 통과
@@ -130,7 +156,9 @@ node scripts/validate-games.js                   # registry 검증 통과
 
 - **엔진에 전투 로직을 두 벌 만들지 말 것.** `game.js` 는 렌더와 입력만 한다.
   시뮬레이터가 같은 `engine/combat.js` 를 쓰기 때문에 여기서 갈라지면 지표가 거짓말을 한다.
-- **`Math.random()` 금지.** 무작위가 필요하면 `engine/rng.js` 를 주입한다.
+- **`Math.random()` 금지는 엔진·데이터·시뮬 계층에만 적용된다** (`tests/ui-contract.test.js` 가 강제).
+  표현 계층(game.js 연출 지터, audio.js 노이즈)은 결정론과 무관하므로 허용. 엔진에서
+  무작위가 필요해지면 `engine/rng.js` 를 주입한다.
 - **지표 회귀 테스트의 허용 범위를 조용히 넓히지 말 것.** 먼저 BALANCE 상수를 고친다.
   범위를 바꿔야 한다면 근거를 테스트 주석과 커밋 메시지에 남긴다(이미 두 건의 선례가 있다).
 - **`window.__mallangIdle`** (`?dev=1` 전용) — 헤드리스/백그라운드 탭에서는

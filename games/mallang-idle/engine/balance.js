@@ -53,24 +53,28 @@
     shardClearDiv: 10,        // 돌파 보상 = 1 + floor(stage / shardClearDiv)
     shardFailDiv: 15,         // 실패 보상 = 1 + floor(stage / shardFailDiv) — 후반 벽에서도 수입 유지
 
+    /* 2026-08-16 재조정: 던전·일일 과제 조각 수입을 시뮬에 통합하자 유물 지수가
+     * 30분 여유비를 2.44 까지 밀어올렸다(보스가 관문 구실 상실). 골드/과제/유물을
+     * 함께 낮춰 여유비 1.90(30분)·1.57(2시간)으로 회복 — tools/sim.js 프로브 측정. */
     relics: {
-      hammer:  { costBase: 8, costGrowth: 1.45, perLv: 0.08 },  // 공격 ×1.08/Lv
-      barn:    { costBase: 8, costGrowth: 1.45, perLv: 0.08 },  // 골드 ×1.08/Lv
-      compass: { costBase: 6, costGrowth: 1.35, perLv: 0.12 },  // 보스 피해 ×1.12/Lv
+      hammer:  { costBase: 8, costGrowth: 1.6, perLv: 0.06 },  // 공격 ×1.06/Lv
+      barn:    { costBase: 8, costGrowth: 1.6, perLv: 0.06 },  // 골드 ×1.06/Lv
+      compass: { costBase: 6, costGrowth: 1.5, perLv: 0.09 },  // 보스 피해 ×1.09/Lv
     },
     maxRelicLevel: 10000,
 
     // ── 별빛 시련 (보스 러시 던전, P4) ────────────────────────
+    dungeonUnlockStage: 10,   // 이전에는 1스테이지부터 열려 초반 경제를 우회했다(codex P0-2)
     dungeonRunsPerDay: 3,
     dungeonBossTime: 15,      // 보스당 제한시간(초)
     dungeonStartMul: 0.35,    // 첫 보스 = 본편 보스의 35% — 방금 그 층을 깬 유저가
                               // 몇 연승은 하고 벽을 만나야 첫 경험이 성립한다
     dungeonHpGrowth: 1.35,    // 연전마다 HP 배율
-    dungeonGoldSeconds: 30,   // 격파당 골드 = 파밍 30초치
+    dungeonGoldSeconds: 10,   // 격파당 골드 = 파밍 10초치 (30초는 해금일 일시금이 과했다)
     dungeonMaxBosses: 200,    // 폭주 방지 상한
 
     // ── 일일 과제 (P4) ────────────────────────────────────────
-    questRewards: { kills: 5, upgrades: 5, bossTries: 8 },   // 별조각
+    questRewards: { kills: 3, upgrades: 3, bossTries: 5 },   // 별조각
     questTargets: { kills: 200, upgrades: 20, bossTries: 10 },
 
     // ── 표시 전용 ─────────────────────────────────────────────
