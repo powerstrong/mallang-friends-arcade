@@ -1,0 +1,418 @@
+/* 말랑프렌즈 키우기 — portrait-first 레이아웃
+ * 다른 부스 게임과 같은 규칙: game-shell 최대폭 430px, 화면 높이는
+ * 100vh → 100dvh → var(--app-h) 3단 폴백 (일부 모바일 브라우저의 dvh 함정 회피). */
+
+:root {
+  --shell-w: 430px;
+  --ink: #43324a;
+  --ink-soft: #7b6a83;
+  --paper: #fff8fb;
+  --panel: #ffffff;
+  --line: #f0e2ea;
+  --accent: #ff7ea8;
+  --accent-deep: #e0578a;
+  --gold: #f0a72c;
+  --gold-deep: #b8791c;
+  --boss: #e05a5a;
+  --ok: #57b894;
+  --shadow: 0 2px 10px rgba(120, 80, 110, .12);
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  overscroll-behavior: none;
+}
+
+body {
+  background: #f2e7ee;
+  color: var(--ink);
+  font-family: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont,
+               'Apple SD Gothic Neo', 'Malgun Gothic', 'Segoe UI', sans-serif;
+  font-size: 15px;
+  line-height: 1.4;
+  display: flex;
+  justify-content: center;
+  user-select: none;
+}
+
+#app {
+  width: 100%;
+  max-width: var(--shell-w);
+  height: 100vh;
+  height: 100dvh;
+  height: var(--app-h, 100dvh);
+  background: var(--paper);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+}
+
+/* ── 상단 HUD ──────────────────────────────────────────────── */
+.hud {
+  flex: none;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  z-index: 5;
+}
+.hud-left { display: flex; flex-direction: column; gap: 1px; }
+.hud-stage { display: flex; align-items: baseline; gap: 4px; }
+.hud-stage b { font-size: 21px; font-weight: 800; letter-spacing: -.02em; }
+.hud-stage span { font-size: 11px; color: var(--ink-soft); }
+.hud-chapter { font-size: 11.5px; color: var(--accent-deep); font-weight: 600; }
+
+.hud-right { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.hud-gold { display: flex; align-items: center; gap: 5px; font-size: 17px; font-weight: 800; color: var(--gold-deep); }
+.hud-power { font-size: 11.5px; color: var(--ink-soft); }
+.hud-power b { color: var(--ink); font-weight: 700; }
+
+.coin {
+  width: 15px; height: 15px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #ffe08a, var(--gold) 70%);
+  border: 1.5px solid var(--gold-deep);
+  display: inline-block; flex: none;
+}
+
+/* ── 전투 화면 ─────────────────────────────────────────────── */
+.arena {
+  flex: 1 1 auto;
+  position: relative;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.bg-layer {
+  position: absolute;
+  inset: 0;
+  background-image: url('assets/bg-meadow.jpg');
+  background-repeat: repeat-x;
+  background-position: 0 bottom;
+  background-size: auto 100%;
+  will-change: background-position;
+}
+
+.ground {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 4px;
+  background: rgba(180, 140, 90, .18);
+}
+
+.field {
+  position: absolute;
+  left: 0; right: 0;
+  bottom: 8%;
+  height: 62%;
+}
+
+.hero {
+  position: absolute;
+  left: 16%;
+  bottom: 0;
+  width: 187px;
+  height: 220px;
+  transform: scale(.52);
+  transform-origin: bottom center;
+  background-image: url('assets/hero-rabbit-walk.png');
+  background-size: 561px 220px;
+  background-position: 0 0;
+}
+.hero.walking { animation: heroWalk .48s steps(3) infinite; }
+@keyframes heroWalk { to { background-position: -561px 0; } }
+.hero.attacking { animation: heroAttack .28s ease-in-out infinite; }
+@keyframes heroAttack {
+  0%, 100% { transform: scale(.52) translateX(0); }
+  50%      { transform: scale(.52) translateX(9px); }
+}
+
+.enemy {
+  position: absolute;
+  right: 12%;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.enemy img {
+  display: block;
+  height: 96px;
+  width: auto;
+  transform: scaleX(-1);
+  filter: drop-shadow(0 3px 4px rgba(90, 60, 80, .18));
+}
+.enemy.is-boss img { height: 150px; }
+.enemy.hurt img { animation: hurt .12s ease-out; }
+@keyframes hurt {
+  0% { filter: drop-shadow(0 3px 4px rgba(90,60,80,.18)) brightness(1); }
+  50% { filter: drop-shadow(0 3px 4px rgba(90,60,80,.18)) brightness(1.7); }
+  100% { filter: drop-shadow(0 3px 4px rgba(90,60,80,.18)) brightness(1); }
+}
+.enemy-name { font-size: 11px; font-weight: 700; color: var(--ink); background: rgba(255,255,255,.82); padding: 1px 8px; border-radius: 8px; }
+.enemy.is-boss .enemy-name { color: var(--boss); }
+.enemy-hp {
+  width: 92px; height: 7px; border-radius: 4px;
+  background: rgba(255, 255, 255, .75);
+  border: 1px solid rgba(140, 100, 120, .2);
+  overflow: hidden;
+}
+.enemy.is-boss .enemy-hp { width: 140px; height: 9px; }
+.enemy-hp i { display: block; height: 100%; width: 100%; background: var(--ok); transition: width .08s linear; }
+.enemy.is-boss .enemy-hp i { background: var(--boss); }
+
+/* 보스 등장 링 — 적 발밑에 깔린다 */
+.boss-ring {
+  position: absolute;
+  right: 4%;
+  bottom: -14px;
+  width: 150px;
+  height: auto;
+  opacity: .85;
+  pointer-events: none;
+  animation: ringIn .35s ease-out, ringPulse 1.8s ease-in-out .35s infinite;
+}
+@keyframes ringIn { from { opacity: 0; transform: scale(.6); } }
+@keyframes ringPulse { 50% { opacity: .55; } }
+
+/* 골드 획득 플로팅 */
+.gold-float {
+  position: absolute;
+  right: 20%;
+  bottom: 46%;
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--gold-deep);
+  text-shadow: 0 1px 0 #fff, 0 0 6px rgba(255, 255, 255, .9);
+  pointer-events: none;
+  animation: goldFloat .9s ease-out forwards;
+}
+@keyframes goldFloat {
+  0%   { opacity: 0; transform: translateY(6px) scale(.9); }
+  25%  { opacity: 1; transform: translateY(0) scale(1.05); }
+  100% { opacity: 0; transform: translateY(-30px) scale(1); }
+}
+
+/* 보스 구간에는 화면을 살짝 조인다 */
+.arena.boss-mode .bg-layer { filter: saturate(.85) brightness(.94); }
+
+/* 스테이지 진행 */
+.stage-progress {
+  position: absolute;
+  top: 10px; left: 50%;
+  transform: translateX(-50%);
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  background: rgba(255, 255, 255, .78);
+  padding: 5px 12px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ink-soft);
+}
+.pips { display: flex; gap: 3px; }
+.pips i {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: rgba(160, 130, 150, .25);
+}
+.pips i.on { background: var(--accent); }
+
+/* 보스 타이머 */
+.boss-timer {
+  position: absolute;
+  top: 8px; left: 50%;
+  transform: translateX(-50%);
+  width: 76%;
+  background: rgba(255, 255, 255, .9);
+  border: 1px solid rgba(224, 90, 90, .3);
+  border-radius: 12px;
+  padding: 6px 12px;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 8px;
+  z-index: 3;
+}
+.boss-timer-label { font-size: 11px; font-weight: 700; color: var(--boss); }
+.boss-timer-bar { height: 8px; border-radius: 4px; background: rgba(224, 90, 90, .16); overflow: hidden; }
+.boss-timer-bar i { display: block; height: 100%; width: 100%; background: var(--boss); transition: width .1s linear; }
+.boss-timer-num { font-size: 12px; font-weight: 800; color: var(--boss); font-variant-numeric: tabular-nums; min-width: 34px; text-align: right; }
+
+/* 토스트 */
+.toast-stack {
+  position: absolute;
+  left: 0; right: 0; bottom: 12px;
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  pointer-events: none;
+}
+.toast {
+  font-size: 12.5px; font-weight: 700;
+  padding: 5px 14px; border-radius: 14px;
+  background: rgba(67, 50, 74, .82); color: #fff;
+  animation: toastIn .25s ease-out, toastOut .4s ease-in 1.3s forwards;
+}
+.toast.win { background: rgba(87, 184, 148, .92); }
+.toast.fail { background: rgba(224, 90, 90, .92); }
+@keyframes toastIn { from { opacity: 0; transform: translateY(8px); } }
+@keyframes toastOut { to { opacity: 0; transform: translateY(-6px); } }
+
+/* ── 강화 패널 ─────────────────────────────────────────────── */
+.panel {
+  flex: none;
+  background: var(--panel);
+  border-top: 1px solid var(--line);
+  padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 5;
+}
+.panel-head { display: flex; align-items: center; justify-content: space-between; }
+.panel-title { font-size: 13px; font-weight: 800; color: var(--ink-soft); }
+
+.bulk { display: flex; gap: 4px; }
+.bulk button {
+  font: inherit; font-size: 12px; font-weight: 700;
+  padding: 4px 11px; border-radius: 8px;
+  border: 1px solid var(--line); background: #fff; color: var(--ink-soft);
+  cursor: pointer;
+}
+.bulk button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+.upgrades { display: flex; flex-direction: column; gap: 6px; }
+.up-btn {
+  font: inherit;
+  display: grid;
+  grid-template-columns: 34px 1fr auto;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 9px 12px;
+  border-radius: 11px;
+  border: 1px solid var(--line);
+  background: #fffdfe;
+  color: var(--ink);
+  cursor: pointer;
+  text-align: left;
+  transition: transform .06s, box-shadow .12s;
+}
+.up-btn:active { transform: translateY(1px); }
+.up-btn:disabled { opacity: .5; cursor: default; }
+.up-btn.can { border-color: var(--accent); box-shadow: var(--shadow); }
+.up-icon { width: 34px; height: 34px; object-fit: contain; display: block; }
+.up-btn:disabled .up-icon { filter: grayscale(.55); opacity: .8; }
+.up-name { font-size: 13.5px; font-weight: 800; display: flex; align-items: center; gap: 6px; }
+.up-lv { font-size: 11px; font-weight: 700; color: #fff; background: var(--accent); border-radius: 6px; padding: 1px 6px; }
+.up-eff { font-size: 11px; color: var(--ink-soft); margin-top: 1px; }
+.up-cost { display: flex; align-items: center; gap: 4px; font-size: 13px; font-weight: 800; color: var(--gold-deep); white-space: nowrap; }
+.up-btn:disabled .up-cost { color: var(--ink-soft); }
+.up-cnt { font-size: 10.5px; color: var(--ink-soft); font-weight: 700; }
+
+.panel-foot { display: flex; align-items: center; justify-content: space-between; }
+.auto { font-size: 12px; color: var(--ink-soft); display: flex; align-items: center; gap: 5px; cursor: pointer; }
+.exit {
+  font: inherit; font-size: 12px; font-weight: 700;
+  padding: 5px 12px; border-radius: 8px;
+  border: 1px solid var(--line); background: #fff; color: var(--ink-soft); cursor: pointer;
+}
+
+/* ── 모달 ──────────────────────────────────────────────────── */
+.modal {
+  position: fixed; inset: 0;
+  background: rgba(50, 35, 55, .5);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 40; padding: 24px;
+}
+.modal-card {
+  background: var(--paper);
+  border-radius: 18px;
+  padding: 24px 22px;
+  width: 100%; max-width: 320px;
+  text-align: center;
+  box-shadow: 0 12px 40px rgba(70, 45, 70, .3);
+}
+.modal-card h2 { margin: 0 0 6px; font-size: 19px; letter-spacing: -.02em; }
+.modal-sub { margin: 0 0 16px; font-size: 12.5px; color: var(--ink-soft); }
+.modal-gold {
+  display: flex; align-items: center; justify-content: center; gap: 7px;
+  font-size: 25px; font-weight: 800; color: var(--gold-deep);
+  margin-bottom: 18px;
+}
+.modal-gold .coin { width: 21px; height: 21px; }
+.modal-card button {
+  font: inherit; font-size: 15px; font-weight: 800;
+  width: 100%; padding: 11px; border-radius: 12px;
+  border: none; background: var(--accent); color: #fff; cursor: pointer;
+}
+
+/* ── 인트로 ────────────────────────────────────────────────── */
+.intro {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: linear-gradient(180deg, #fff3f8 0%, #ffe8f1 55%, #ffdcea 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 28px 26px calc(28px + env(safe-area-inset-bottom));
+  text-align: center;
+}
+.intro-logo {
+  width: min(74%, 300px);
+  height: auto;
+  filter: drop-shadow(0 8px 18px rgba(200, 120, 160, .3));
+  animation: introPop .5s cubic-bezier(.2, 1.3, .5, 1);
+}
+@keyframes introPop { from { opacity: 0; transform: scale(.82) translateY(10px); } }
+.intro-title {
+  margin: 10px 0 0;
+  font-size: 25px;
+  font-weight: 800;
+  letter-spacing: -.03em;
+  color: var(--accent-deep);
+}
+.intro-desc { margin: 8px 0 22px; font-size: 14px; line-height: 1.65; color: var(--ink-soft); }
+.intro-desc b { color: var(--accent-deep); }
+.intro button {
+  font: inherit; font-size: 16px; font-weight: 800;
+  width: 100%; max-width: 280px; padding: 13px;
+  border: none; border-radius: 14px;
+  background: var(--accent); color: #fff;
+  box-shadow: 0 5px 14px rgba(224, 87, 138, .35);
+  cursor: pointer;
+}
+.intro button:active { transform: translateY(1px); }
+
+/* ── DEV 패널 ──────────────────────────────────────────────── */
+.devpanel {
+  position: fixed;
+  right: 6px; top: 6px;
+  background: rgba(30, 20, 35, .9);
+  color: #fff;
+  border-radius: 10px;
+  padding: 7px 8px;
+  z-index: 60;
+  font-size: 11px;
+  display: flex; flex-direction: column; gap: 4px;
+  max-width: 190px;
+}
+.dev-title { font-weight: 800; letter-spacing: .1em; opacity: .7; font-size: 9px; }
+.dev-row { display: flex; gap: 3px; flex-wrap: wrap; align-items: center; }
+.devpanel button {
+  font: inherit; font-size: 10.5px;
+  padding: 3px 6px; border-radius: 5px;
+  border: 1px solid rgba(255,255,255,.25);
+  background: rgba(255,255,255,.1); color: #fff; cursor: pointer;
+}
+.devpanel button.on { background: var(--accent); border-color: var(--accent); }
+
+@media (prefers-reduced-motion: reduce) {
+  .hero.walking, .hero.attacking, .enemy.hurt img, .toast { animation: none; }
+}
