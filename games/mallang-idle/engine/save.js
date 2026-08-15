@@ -17,7 +17,7 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function (Combat, Bal) {
   'use strict';
 
-  var CURRENT_VERSION = 3;
+  var CURRENT_VERSION = 4;
   var STORAGE_KEY = 'mallang-idle-save';
 
   /* 상태 → 저장 객체. 파생값(전투력·DPS)은 저장하지 않는다. 저장은 원본 데이터만
@@ -38,6 +38,9 @@
         barn: state.relics.barn,
         compass: state.relics.compass,
       },
+      collection: Array.isArray(state.collection) ? state.collection.slice() : [],
+      daily: state.daily || null,
+      dungeon: state.dungeon || null,
       playtime: state.t,
       stats: {
         kills: state.stats.kills,
@@ -58,7 +61,8 @@
     var B = Bal.BALANCE;
     var maxLv = B.maxUpgradeLevel;
 
-    s.stage = int(save.stage, 1, 1, Infinity);
+    // stage 상한: mobHp 지수가 double 을 넘어 Infinity 로 번지는 것을 막는다(balance.maxStage 주석).
+    s.stage = int(save.stage, 1, 1, B.maxStage);
     s.safeStage = int(save.safeStage, 0, 0, s.stage);
     s.mobIndex = int(save.mobIndex, 0, 0, B.mobsPerStage);
     s.gold = num(save.gold, 0, 0);
@@ -88,6 +92,46 @@
           s.relics[rid] = int(save.relics[rid], 0, 0, B.maxRelicLevel);
         }
       }
+    }
+    // 도감 — 문자열 id 만, 중복 제거, 상한(손상 세이브의 거대 배열 방어)
+    if (Array.isArray(save.collection)) {
+      var seen = {};
+      s.collection = [];
+      for (var ci = 0; ci < save.collection.length && s.collection.length < 500; ci++) {
+        var cid = save.collection[ci];
+        if (typeof cid === 'string' && !seen[cid]) { seen[cid] = 1; s.collection.push(cid); }
+      }
+    }
+    /* 일일 과제 — 필드를 재구성해서 받는다. 조작 세이브의 base 가 음수 극값이면
+     * 진행도가 폭주해 과제가 즉시 수령되고, claimed 가 객체가 아니면 claim 이 던진다. */
+    if (save.daily && typeof save.daily === 'object' && typeof save.daily.date === 'string') {
+      var base = save.daily.base || {};
+      var claimedIn = (save.daily.claimed && typeof save.daily.claimed === 'object' &&
+                       !Array.isArray(save.daily.claimed)) ? save.daily.claimed : {};
+      var claimed = {};
+      for (var ck in claimedIn) {
+        if (Object.prototype.hasOwnProperty.call(claimedIn, ck) && claimedIn[ck] === true) claimed[ck] = true;
+      }
+      s.daily = {
+        date: save.daily.date,
+        base: {
+          kills: int(base.kills, 0, 0, 1e15),
+          upgrades: int(base.upgrades, 0, 0, 1e15),
+          bossTries: int(base.bossTries, 0, 0, 1e15),
+        },
+        claimed: claimed,
+      };
+    } else {
+      s.daily = null;
+    }
+    if (save.dungeon && typeof save.dungeon === 'object' && typeof save.dungeon.date === 'string') {
+      s.dungeon = {
+        date: save.dungeon.date,
+        runs: int(save.dungeon.runs, 0, 0, 99),
+        best: int(save.dungeon.best, 0, 0, 100000),
+      };
+    } else {
+      s.dungeon = null;
     }
     return s;
   }
@@ -134,6 +178,15 @@
       if (!save.relics || typeof save.relics !== 'object') {
         save.relics = { hammer: 0, barn: 0, compass: 0 };
       }
+      return save;
+    },
+
+    /* 4: P4 콘텐츠 — 도감·일일 과제·던전. daily/dungeon 은 날짜가 바뀌면
+     * game.js 가 새로 만드므로 null 로 두면 첫 프레임에 초기화된다. */
+    4: function (save) {
+      if (!Array.isArray(save.collection)) save.collection = [];
+      if (save.daily === undefined) save.daily = null;
+      if (save.dungeon === undefined) save.dungeon = null;
       return save;
     },
   };

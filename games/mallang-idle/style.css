@@ -421,6 +421,112 @@ body {
 .pc-skill { font-size: 11.5px; font-weight: 700; color: var(--accent-deep); }
 .pc-desc { font-size: 11px; color: var(--ink-soft); }
 
+/* ── 도전 탭: 던전 + 일일 과제 (P4) ───────────────────────── */
+.dungeon-card {
+  display: grid;
+  grid-template-columns: 52px 1fr auto;
+  align-items: center;
+  gap: 11px;
+  padding: 11px 13px;
+  border-radius: 13px;
+  border: 1px solid #d8cbe8;
+  background: linear-gradient(135deg, #f4edfd 0%, #ece1fa 100%);
+}
+.dungeon-icon { width: 52px; height: 52px; object-fit: contain; }
+.dungeon-name { font-size: 15px; font-weight: 800; color: #6f4fd6; }
+.dungeon-sub { font-size: 11.5px; color: var(--ink-soft); }
+.dungeon-sub b { color: #6f4fd6; }
+.dungeon-go {
+  font: inherit; font-size: 14px; font-weight: 800;
+  padding: 9px 18px; border-radius: 11px;
+  border: none; background: #8b68e8; color: #fff; cursor: pointer;
+  box-shadow: 0 3px 8px rgba(111, 79, 214, .3);
+}
+.dungeon-go:active { transform: translateY(1px); }
+.dungeon-go:disabled { background: #c9bfd9; box-shadow: none; cursor: default; }
+.dungeon-result { font-size: 30px; font-weight: 800; color: #6f4fd6; margin-bottom: 10px; }
+
+.quests { display: flex; flex-direction: column; gap: 6px; }
+.quest-row {
+  display: grid;
+  grid-template-columns: 30px 1fr auto;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 11px;
+  border-radius: 11px;
+  border: 1px solid var(--line);
+  background: #fffdfe;
+}
+.quest-emoji { font-size: 20px; text-align: center; }
+.quest-body { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.quest-name { font-size: 13px; font-weight: 800; display: flex; justify-content: space-between; }
+.quest-prog { font-weight: 700; color: var(--ink-soft); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.quest-bar { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.quest-bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .3s; }
+.quest-claim {
+  font: inherit; font-size: 12px; font-weight: 800;
+  padding: 6px 11px; border-radius: 9px;
+  border: none; background: var(--gold); color: #fff; cursor: pointer;
+  white-space: nowrap;
+}
+.quest-claim:disabled { background: var(--line); color: var(--ink-soft); cursor: default; }
+.quest-claim.claimed { background: var(--ok); opacity: .7; }
+
+/* ── 도감 (P4) ─────────────────────────────────────────────── */
+.book-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 7px;
+  max-height: 38vh;
+  overflow-y: auto;
+}
+.book-cell {
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  padding: 8px 3px 6px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: #fffdfe;
+}
+.book-cell.boss { border-color: #e8c9d4; background: #fdf4f7; }
+.book-cell img { width: 44px; height: 44px; object-fit: contain; }
+.book-cell span { font-size: 9.5px; font-weight: 700; color: var(--ink-soft); text-align: center; }
+.book-cell.unseen img { filter: brightness(0) opacity(.25); }
+.book-cell.unseen span { color: #c9bcc9; }
+
+/* ── 연출 (P5): 화면 흔들림 · 컨페티 ──────────────────────── */
+.arena.shake { animation: arenaShake .3s ease-out; }
+@keyframes arenaShake {
+  0%, 100% { transform: translate(0, 0); }
+  25% { transform: translate(3px, -2px); }
+  50% { transform: translate(-3px, 2px); }
+  75% { transform: translate(2px, 1px); }
+}
+.confetti {
+  position: absolute;
+  top: 42%;
+  width: 8px; height: 8px;
+  border-radius: 2px;
+  pointer-events: none;
+  z-index: 4;
+  animation: confettiFly 1s ease-out forwards;
+}
+@keyframes confettiFly {
+  0%   { opacity: 1; transform: translate(0, 0) rotate(0); }
+  100% { opacity: 0; transform: translate(var(--dx, 0), 90px) rotate(240deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .arena.shake, .confetti { animation: none; }
+  .confetti { display: none; }
+}
+
+/* HUD 음소거 버튼 */
+.mute-btn {
+  font: inherit; font-size: 15px;
+  border: none; background: none; cursor: pointer;
+  padding: 2px 4px; margin-left: 6px;
+  opacity: .75;
+}
+
 /* ── 튜토리얼 코치마크 ─────────────────────────────────────── */
 .coach {
   position: absolute;

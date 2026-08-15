@@ -13,6 +13,11 @@
   var Chapters = window.MallangIdleChapters;
   var Chars = window.MallangIdleCharacters;
   var Bal = window.MallangIdleBalance;
+  var Dungeon = window.MallangIdleDungeon;
+  var Quests = window.MallangIdleQuests;
+  var Audio = window.MallangIdleAudio;
+
+  function sfx(name) { if (Audio) Audio.play(name); }
   var B = Bal.BALANCE;
   var AXES = Bal.AXES;
 
@@ -43,6 +48,14 @@
     partyBonusHint: $('partyBonusHint'), exitBtn2: $('exitBtn2'),
     panelRelic: $('panelRelic'), relicList: $('relicList'), relicDot: $('relicDot'),
     shardNum: $('shardNum'), exitBtn3: $('exitBtn3'),
+    panelBattle: $('panelBattle'), battleDot: $('battleDot'), questList: $('questList'),
+    dungeonRuns: $('dungeonRuns'), dungeonBest: $('dungeonBest'), dungeonGo: $('dungeonGo'),
+    dungeonModal: $('dungeonModal'), dungeonSub: $('dungeonSub'), dungeonKills: $('dungeonKills'),
+    dungeonShards: $('dungeonShards'), dungeonGold: $('dungeonGold'), dungeonOk: $('dungeonOk'),
+    exitBtn4: $('exitBtn4'),
+    panelBook: $('panelBook'), bookGrid: $('bookGrid'), bookCount: $('bookCount'),
+    bookHint: $('bookHint'), exitBtn5: $('exitBtn5'),
+    muteBtn: $('muteBtn'),
     toastStack: $('toastStack'),
     offlineModal: $('offlineModal'), offlineGold: $('offlineGold'),
     offlineSub: $('offlineSub'), offlineOk: $('offlineOk'),
@@ -142,7 +155,7 @@
     var n = plannedCount(axisId);
     if (n <= 0) return;
     var got = Combat.buy(state, axisId, n);
-    if (got > 0) { finishTutorial(); renderPanel(); }
+    if (got > 0) { sfx('upgrade'); finishTutorial(); renderPanel(); renderBattle(); }
   }
 
   function effectText(axisId) {
@@ -223,7 +236,7 @@
       if (!seenUnlocks[unlocked[i]]) {
         seenUnlocks[unlocked[i]] = true;
         var c = Chars.byId(unlocked[i]);
-        if (state.t > 1 && c) { toast(c.name + ' 합류!', 'win'); news = true; }
+        if (state.t > 1 && c) { toast(c.name + ' 합류!', 'win'); sfx('unlock'); news = true; }
       }
     }
     if (news) { el.partyDot.hidden = false; partyDirty = true; }
@@ -238,12 +251,12 @@
       var btn = document.createElement('button');
       btn.className = 'up-btn';
       btn.innerHTML =
-        '<span class="relic-emoji">' + r.emoji + '</span>' +
+        '<img class="up-icon" src="' + r.icon + '" alt="" />' +
         '<div><div class="up-name">' + r.name + ' <span class="up-lv"></span></div>' +
         '<div class="up-eff"></div></div>' +
         '<div><div class="up-cost shard">⭐<span></span></div></div>';
       btn.addEventListener('click', function () {
-        if (Combat.buyRelic(state, r.id)) { renderRelics(); renderPanel(); persist(); }
+        if (Combat.buyRelic(state, r.id)) { sfx('relic'); renderRelics(); renderPanel(); persist(); }
       });
       el.relicList.appendChild(btn);
       relicNodes[r.id] = {
@@ -272,6 +285,176 @@
     });
     // 유물 탭이 닫혀 있을 때 살 수 있는 게 생기면 점으로 알린다.
     if (anyAffordable && el.panelRelic.hidden) el.relicDot.hidden = false;
+  }
+
+  // ── 일일 리셋 · 던전 · 과제 (P4) ─────────────────────────────
+  function todayStr() {
+    var d = new Date();
+    return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate();
+  }
+
+  /* 날짜가 바뀌었으면 과제·던전을 새로 깐다. 프레임마다 불러도 싸다. */
+  function syncDaily() {
+    var today = todayStr();
+    if (!state.daily || state.daily.date !== today) {
+      state.daily = Quests.freshDaily(today, state.stats);
+      renderBattle();
+    }
+    if (!state.dungeon || state.dungeon.date !== today) {
+      state.dungeon = { date: today, runs: 0, best: (state.dungeon && state.dungeon.best) || 0 };
+      renderBattle();
+    }
+  }
+
+  var questNodes = {};
+  function buildQuests() {
+    el.questList.innerHTML = '';
+    Quests.QUESTS.forEach(function (q) {
+      var row = document.createElement('div');
+      row.className = 'quest-row';
+      row.innerHTML =
+        '<span class="quest-emoji">' + q.emoji + '</span>' +
+        '<div class="quest-body"><div class="quest-name">' + q.name +
+        ' <span class="quest-prog"></span></div>' +
+        '<div class="quest-bar"><i></i></div></div>' +
+        '<button class="quest-claim">⭐ ' + Quests.rewardOf(q) + '</button>';
+      var btn = row.querySelector('.quest-claim');
+      btn.addEventListener('click', function () {
+        syncDaily();   // 자정 직후 전날 과제를 수령하는 틈을 막는다
+        var got = Quests.claim(q, state, state.daily);
+        if (got > 0) {
+          sfx('relic');
+          toast('⭐ +' + got, 'win');
+          renderBattle(); renderRelics(); persist();
+        }
+      });
+      el.questList.appendChild(row);
+      questNodes[q.id] = {
+        prog: row.querySelector('.quest-prog'),
+        bar: row.querySelector('.quest-bar i'),
+        btn: btn,
+      };
+    });
+  }
+
+  function renderBattle() {
+    if (!state.daily || !state.dungeon) return;
+    var left = B.dungeonRunsPerDay - state.dungeon.runs;
+    el.dungeonRuns.textContent = '오늘 ' + Math.max(0, left) + '회 남음';
+    el.dungeonBest.textContent = state.dungeon.best;
+    el.dungeonGo.disabled = left <= 0;
+    el.dungeonGo.textContent = left > 0 ? '입장' : '내일 다시';
+
+    var claimable = 0;
+    Quests.QUESTS.forEach(function (q) {
+      var n = questNodes[q.id];
+      var prog = Quests.progressOf(q, state.stats, state.daily);
+      var target = Quests.targetOf(q);
+      var done = Quests.isDone(q, state.stats, state.daily);
+      var claimed = Quests.isClaimed(q, state.daily);
+      n.prog.textContent = Math.min(prog, target) + ' / ' + target;
+      n.bar.style.width = Math.min(100, prog / target * 100) + '%';
+      n.btn.disabled = !done || claimed;
+      n.btn.textContent = claimed ? '완료' : '⭐ ' + Quests.rewardOf(q);
+      n.btn.classList.toggle('claimed', claimed);
+      if (done && !claimed) claimable++;
+    });
+    if (claimable > 0 && el.panelBattle.hidden) el.battleDot.hidden = false;
+  }
+
+  /* 던전 — 결과는 즉시 결정론으로 계산하고, 화면은 결과 팝업으로 보여준다.
+   * (조작이 없는 자동 전투이므로 "달리는 척"은 시간 낭비다 — 장르 표준.) */
+  function runDungeon() {
+    if (!el.dungeonModal.hidden) return;   // 결과 확인 전 재진입 방지
+    syncDaily();
+    if (state.dungeon.runs >= B.dungeonRunsPerDay) return;
+    state.dungeon.runs++;
+    var result = Dungeon.simulate(state);
+    Dungeon.applyReward(state, result);
+    if (result.kills > state.dungeon.best) state.dungeon.best = result.kills;
+    sfx('dungeon');
+    el.dungeonSub.textContent = result.baseStage + '층 기준 연속 격파';
+    el.dungeonKills.textContent = result.kills + '연승!';
+    el.dungeonShards.textContent = fmt(result.shards);
+    el.dungeonGold.textContent = fmt(result.gold);
+    el.dungeonModal.hidden = false;
+    renderBattle(); renderRelics(); renderPanel(); persist();
+  }
+
+  // ── 도감 (P4) ────────────────────────────────────────────────
+  var bookDirty = true;
+  var collectionSet = {};
+
+  function allBookEntries() {
+    var out = [];
+    var seenIds = {};
+    Chapters.CHAPTERS.forEach(function (ch) {
+      ch.mobs.forEach(function (m) {
+        var key = ch.id + ':' + m.id;
+        if (!seenIds[key]) { seenIds[key] = 1; out.push({ key: key, name: m.name, art: m.art, chapter: ch.name }); }
+      });
+      var bkey = ch.id + ':boss:' + ch.boss.id;
+      out.push({ key: bkey, name: ch.boss.name, art: ch.boss.art, chapter: ch.name, boss: true });
+    });
+    return out;
+  }
+  var BOOK_ENTRIES = null;
+
+  function recordSeen(key) {
+    if (collectionSet[key]) return;
+    collectionSet[key] = true;
+    state.collection.push(key);
+    bookDirty = true;
+  }
+
+  function renderBook() {
+    if (!bookDirty) return;
+    bookDirty = false;
+    if (!BOOK_ENTRIES) BOOK_ENTRIES = allBookEntries();
+    var seen = 0;
+    el.bookGrid.innerHTML = '';
+    BOOK_ENTRIES.forEach(function (e) {
+      var got = !!collectionSet[e.key];
+      if (got) seen++;
+      var cell = document.createElement('div');
+      cell.className = 'book-cell' + (got ? '' : ' unseen') + (e.boss ? ' boss' : '');
+      cell.innerHTML = '<img src="' + e.art + '" alt="" loading="lazy" />' +
+        '<span>' + (got ? e.name : '???') + '</span>';
+      el.bookGrid.appendChild(cell);
+    });
+    el.bookCount.textContent = seen + ' / ' + BOOK_ENTRIES.length;
+    el.bookHint.textContent = seen >= BOOK_ENTRIES.length ? '모두 만났어요!' : '새 친구는 다음 챕터에';
+  }
+
+  // ── 연출 (P5) ────────────────────────────────────────────────
+  /* 배속 플레이에서 한 프레임에 돌파가 몰리면 셰이크·컨페티가 폭증한다 — 짧게 묶는다. */
+  var lastFxAt = 0;
+  function fxReady() {
+    var now = performance.now();
+    if (now - lastFxAt < 400) return false;
+    lastFxAt = now;
+    return true;
+  }
+
+  function shake() {
+    if (!fxReady()) return;
+    el.arena.classList.remove('shake');
+    void el.arena.offsetWidth;              // reflow 로 애니메이션 재시작
+    el.arena.classList.add('shake');
+    burstNow();
+  }
+
+  function burstNow() {
+    for (var i = 0; i < 10; i++) {
+      var p = document.createElement('i');
+      p.className = 'confetti';
+      p.style.left = (35 + Math.random() * 30) + '%';
+      p.style.setProperty('--dx', (Math.random() * 120 - 60) + 'px');
+      p.style.background = ['#ff7ea8', '#f0a72c', '#57b894', '#b08cff'][i % 4];
+      p.style.animationDelay = (Math.random() * 0.1) + 's';
+      el.arena.appendChild(p);
+      (function (node) { setTimeout(function () { node.remove(); }, 1100); })(p);
+    }
   }
 
   // ── 렌더 ────────────────────────────────────────────────────
@@ -361,7 +544,11 @@
         el.enemy.classList.toggle('is-boss', isBoss);
         el.enemy.hidden = false;
         el.bossRing.hidden = !isBoss;
+        // 도감 기록 — 처음 만난 몬스터/보스
+        var ch = Chapters.chapterFor(state.stage);
+        recordSeen(isBoss ? (ch.id + ':boss:' + art.id) : (ch.id + ':' + art.id));
       }
+      sfx('hit');   // 교전 중 타격음 (audio 내부에서 스로틀)
       var ratio = state.enemyMaxHp > 0 ? Math.max(0, state.enemyHp / state.enemyMaxHp) : 0;
       el.enemyHpFill.style.width = (ratio * 100) + '%';
     }
@@ -407,6 +594,7 @@
     floatAccum += amount;
     if (floatCooldown > 0) return;
     floatCooldown = 0.25;
+    sfx('coin');
     var n = document.createElement('div');
     n.className = 'gold-float';
     n.textContent = '+' + fmt(floatAccum);
@@ -422,6 +610,7 @@
       if (ev.type === 'mob_kill') { needPanel = true; floatGold(ev.gold); }
       else if (ev.type === 'boss_clear') {
         toast('스테이지 ' + ev.stage + ' 돌파!', 'win');
+        sfx('clear'); shake();
         needPanel = true;
         var beforeSlots = Chars.slotsFor(ev.stage);
         if (Chars.slotsFor(state.stage) > beforeSlots) {
@@ -431,9 +620,10 @@
         }
         checkUnlocks();
         renderRelics();
+        renderBattle();
       }
-      else if (ev.type === 'boss_fail') { toast('아깝다! ⭐+' + ev.shards, 'fail'); renderRelics(); }
-      else if (ev.type === 'boss_start') { toast('보스 등장!'); }
+      else if (ev.type === 'boss_fail') { toast('아깝다! ⭐+' + ev.shards, 'fail'); sfx('fail'); renderRelics(); renderBattle(); }
+      else if (ev.type === 'boss_start') { toast('보스 등장!'); sfx('bossIn'); }
     }
     state.events.length = 0;
     return needPanel;
@@ -448,6 +638,10 @@
 
     if (simDt > 0) {
       if (floatCooldown > 0) floatCooldown -= dt;
+      /* 날짜 동기화는 반드시 step 보다 먼저 — 자정 직후의 처치·강화가 새 스냅숏에
+       * 흡수되어 진행도에서 사라지는 것을 막는다(codex 리뷰). */
+      dailyTimer += dt;
+      if (dailyTimer > 1) { syncDaily(); dailyTimer = 0; }
       Combat.step(state, simDt);
       var needPanel = consumeEvents();
       panelAccum += dt;
@@ -459,6 +653,7 @@
     }
     requestAnimationFrame(frame);
   }
+  var dailyTimer = 0;
 
   // ── 저장 ────────────────────────────────────────────────────
   function persist() {
@@ -525,8 +720,29 @@
     el.panelUpgrade.hidden = tab !== 'upgrade';
     el.panelParty.hidden = tab !== 'party';
     el.panelRelic.hidden = tab !== 'relic';
+    el.panelBattle.hidden = tab !== 'battle';
+    el.panelBook.hidden = tab !== 'book';
+    sfx('tap');
+    if (Audio) Audio.warm();
     if (tab === 'party') { el.partyDot.hidden = true; partyDirty = true; renderParty(); }
     if (tab === 'relic') { el.relicDot.hidden = true; renderRelics(); }
+    if (tab === 'battle') { el.battleDot.hidden = true; syncDaily(); renderBattle(); }
+    if (tab === 'book') { bookDirty = true; renderBook(); }
+  });
+
+  el.dungeonGo.addEventListener('click', runDungeon);
+  el.dungeonOk.addEventListener('click', function () { el.dungeonModal.hidden = true; });
+  el.exitBtn4.addEventListener('click', function () { persist(); window.GameBoot ? window.GameBoot.exit() : (location.href = '/'); });
+  el.exitBtn5.addEventListener('click', function () { persist(); window.GameBoot ? window.GameBoot.exit() : (location.href = '/'); });
+
+  function syncMuteBtn() {
+    el.muteBtn.textContent = Audio && Audio.isMuted() ? '🔇' : '🔊';
+  }
+  el.muteBtn.addEventListener('click', function () {
+    if (!Audio) return;
+    Audio.setMuted(!Audio.isMuted());
+    Audio.warm();
+    syncMuteBtn();
   });
 
   el.exitBtn3.addEventListener('click', function () {
@@ -635,14 +851,23 @@
   // ── 시작 ────────────────────────────────────────────────────
   buildUpgrades();
   buildRelics();
+  buildQuests();
   restore();
   Combat.sanitizeParty(state);
   Chars.unlockedAt(state.stage).forEach(function (id) { seenUnlocks[id] = true; });
+  state.collection.forEach(function (k) { collectionSet[k] = true; });
+  syncDaily();
   if (DEV) setupDev();
   renderPanel();
   renderParty();
   renderRelics();
+  renderBattle();
   renderArena(0);
+  syncMuteBtn();
+  document.addEventListener('pointerdown', function warmOnce() {
+    if (Audio) Audio.warm();
+    document.removeEventListener('pointerdown', warmOnce);
+  });
 
   /* 첫 방문에만 타이틀을 보여준다. 방치형은 "무엇을 하는 게임인지"가 한 화면에
    * 안 드러나면 그냥 구경만 하다 나간다 — 강화하라는 말을 처음에 한 번은 해야 한다. */
@@ -652,6 +877,8 @@
     el.intro.hidden = false;
     el.introStart.addEventListener('click', function () {
       el.intro.hidden = true;
+      if (Audio) Audio.warm();
+      sfx('tap');
       try { localStorage.setItem(Save.STORAGE_KEY + '-seen', '1'); } catch (e) {}
     });
   }

@@ -523,6 +523,122 @@ test('세이브 왕복과 마이그레이션', function () {
   assert.strictEqual(broken.note, 'corrupt');
 });
 
+// ── P4 던전 · 과제 · 도감 ─────────────────────────────────────
+test('던전은 결정론이고 전투력에 단조 증가한다', function () {
+  var Dungeon = require('../engine/dungeon.js');
+  var s = Combat.createState();
+  s.safeStage = 30; s.stage = 31;
+  s.up = { atk: 40, aspd: 15, gold: 10 };
+
+  var r1 = Dungeon.simulate(s);
+  var r2 = Dungeon.simulate(s);
+  assert.deepStrictEqual(r1, r2, '같은 상태면 같은 결과');
+  assert.ok(r1.kills > 0, '적정 전투력이면 최소 1마리는 잡는다 (kills=' + r1.kills + ')');
+  assert.ok(r1.kills < B.dungeonMaxBosses, '상한 아래여야 한다');
+  assert.strictEqual(r1.shards, r1.kills * (1 + Math.floor(30 / B.shardClearDiv)), '조각 보상 공식');
+
+  var stronger = Combat.createState();
+  stronger.safeStage = 30; stronger.stage = 31;
+  stronger.up = { atk: 60, aspd: 15, gold: 10 };
+  assert.ok(Dungeon.simulate(stronger).kills >= r1.kills, '더 강하면 더 많이 잡는다');
+
+  // 보상 적용
+  var before = { shards: s.shards, gold: s.gold };
+  Dungeon.applyReward(s, r1);
+  assert.strictEqual(s.shards, before.shards + r1.shards);
+  assert.ok(s.gold > before.gold);
+});
+
+test('던전 — 전투력 0 이어도 완주한다 (무한루프 방지)', function () {
+  var Dungeon = require('../engine/dungeon.js');
+  var s = Combat.createState();          // 초기 상태, safeStage 0
+  var r = Dungeon.simulate(s);
+  assert.ok(isFinite(r.kills) && r.kills >= 0, '결과가 유한해야 한다');
+});
+
+test('일일 과제 — 진행·수령·중복 방지', function () {
+  var Quests = require('../data/quests.js');
+  var s = Combat.createState();
+  s.stats.kills = 1000; s.stats.upgrades = 50; s.stats.bossTries = 3;
+  var daily = Quests.freshDaily('2026-8-15', s.stats);
+
+  var q = Quests.QUESTS[0];   // kills
+  assert.strictEqual(Quests.progressOf(q, s.stats, daily), 0, '스냅숏 직후 진행 0');
+  s.stats.kills += Quests.targetOf(q);
+  assert.ok(Quests.isDone(q, s.stats, daily), '목표 도달');
+
+  var shardsBefore = s.shards;
+  var got = Quests.claim(q, s, daily);
+  assert.strictEqual(got, Quests.rewardOf(q), '보상 지급');
+  assert.strictEqual(s.shards, shardsBefore + got);
+  assert.strictEqual(Quests.claim(q, s, daily), 0, '중복 수령 불가');
+
+  // 미달 과제는 수령 불가
+  var q2 = Quests.QUESTS[2];  // bossTries — 진행 0
+  assert.strictEqual(Quests.claim(q2, s, daily), 0, '미달 과제 수령 불가');
+
+  // 구세이브(스냅숏 없음) 방어
+  assert.strictEqual(Quests.progressOf(q, s.stats, null), 0);
+});
+
+test('세이브 v3 → v4 마이그레이션 (도감·과제·던전)', function () {
+  var legacy = JSON.stringify({ version: 3, stage: 50, shards: 12, relics: { hammer: 3, barn: 1, compass: 2 } });
+  var res = Save.load(legacy);
+  assert.ok(res.ok, 'v3 세이브를 읽을 수 있어야 한다');
+  assert.strictEqual(res.state.shards, 12, '조각 보존');
+  assert.strictEqual(res.state.relics.hammer, 3, '유물 보존');
+  assert.deepStrictEqual(res.state.collection, [], '도감은 빈 배열로 시작');
+  assert.strictEqual(res.state.daily, null, '과제는 null → 첫 프레임에 생성');
+
+  // 도감 왕복 + 중복/손상 방어
+  var s = Combat.createState();
+  s.collection = ['meadow:acorn', 'meadow:acorn', 'gears:boss:clocktower', 42, null];
+  var round = Save.load(Save.dump(s, 0));
+  assert.deepStrictEqual(round.state.collection, ['meadow:acorn', 'gears:boss:clocktower'],
+    '중복·비문자열은 걸러진다');
+
+  // 던전 상태 왕복
+  var d = Combat.createState();
+  d.dungeon = { date: '2026-8-15', runs: 2, best: 7 };
+  d.daily = { date: '2026-8-15', base: { kills: 1, upgrades: 2, bossTries: 3 }, claimed: { kills: true } };
+  var dr = Save.load(Save.dump(d, 0));
+  assert.deepStrictEqual(dr.state.dungeon, { date: '2026-8-15', runs: 2, best: 7 });
+  assert.strictEqual(dr.state.daily.claimed.kills, true, '수령 상태 보존');
+});
+
+test('조작 세이브가 과제·던전을 오염시키지 못한다 (codex 리뷰 프로브)', function () {
+  var Quests = require('../data/quests.js');
+  var Dungeon = require('../engine/dungeon.js');
+
+  // base 음수 극값 → 진행도 폭주로 즉시 수령되면 안 된다
+  var r1 = Save.load(JSON.stringify({
+    version: 4, daily: { date: 'x', base: { kills: -1e300, upgrades: 0, bossTries: 0 }, claimed: {} },
+  }));
+  assert.ok(r1.ok);
+  assert.strictEqual(Quests.progressOf(Quests.QUESTS[0], r1.state.stats, r1.state.daily), 0,
+    '오염된 base 는 진행 0 으로 방어');
+
+  // claimed 가 문자열이어도 던지지 않는다
+  var r2 = Save.load(JSON.stringify({
+    version: 4, daily: { date: 'x', base: { kills: 0, upgrades: 0, bossTries: 0 }, claimed: 'bad' },
+  }));
+  r2.state.stats.kills = 99999;
+  assert.doesNotThrow(function () { Quests.claim(Quests.QUESTS[0], r2.state, r2.state.daily); });
+
+  // 극단 스테이지 → 던전 보상이 NaN 으로 상태를 오염시키면 안 된다
+  var s = Combat.createState();
+  s.stage = 1e308; s.safeStage = 1e308;
+  var d = Dungeon.simulate(s);
+  Dungeon.applyReward(s, d);
+  assert.ok(isFinite(s.gold) && isFinite(s.shards) && isFinite(s.stats.goldEarned),
+    '보상 후에도 상태는 유한해야 한다');
+
+  // 세이브를 거치면 stage 자체가 상한으로 잘린다
+  var r3 = Save.load(JSON.stringify({ version: 4, stage: 1e308 }));
+  assert.ok(r3.state.stage <= B.maxStage, 'stage 상한 강제');
+  assert.ok(isFinite(Combat.mobHp(r3.state.stage)), '상한 안에서 mobHp 는 유한하다');
+});
+
 // ── 실행 ──────────────────────────────────────────────────────
 var pass = 0, fail = 0;
 tests.forEach(function (t) {

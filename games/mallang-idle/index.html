@@ -18,6 +18,7 @@
       <div class="hud-gold"><i class="coin"></i><b id="goldNum">0</b></div>
       <div class="hud-power">전투력 <b id="powerNum">0</b></div>
     </div>
+    <button class="mute-btn" id="muteBtn" aria-label="소리">🔊</button>
   </header>
 
   <section class="arena" id="arena">
@@ -52,6 +53,8 @@
     <button data-tab="upgrade" class="on">강화</button>
     <button data-tab="party">편성 <i class="dot" id="partyDot" hidden></i></button>
     <button data-tab="relic">유물 <i class="dot" id="relicDot" hidden></i></button>
+    <button data-tab="battle">도전 <i class="dot" id="battleDot" hidden></i></button>
+    <button data-tab="book">도감</button>
   </nav>
 
   <section class="panel" id="panelUpgrade">
@@ -82,6 +85,33 @@
     </div>
   </section>
 
+  <section class="panel" id="panelBattle" hidden>
+    <div class="dungeon-card">
+      <img class="dungeon-icon" id="dungeonIcon" src="assets/icon-dungeon.png" alt="" />
+      <div class="dungeon-body">
+        <div class="dungeon-name">별빛 시련</div>
+        <div class="dungeon-sub"><span id="dungeonRuns"></span> · 최고 <b id="dungeonBest">0</b>연승</div>
+      </div>
+      <button class="dungeon-go" id="dungeonGo">입장</button>
+    </div>
+    <div class="quests" id="questList"></div>
+    <div class="panel-foot">
+      <span class="dps-hint">매일 자정에 새로워져요</span>
+      <button class="exit" id="exitBtn4">나가기</button>
+    </div>
+  </section>
+
+  <section class="panel" id="panelBook" hidden>
+    <div class="panel-head">
+      <span class="panel-title">도감 <b id="bookCount"></b></span>
+    </div>
+    <div class="book-grid" id="bookGrid"></div>
+    <div class="panel-foot">
+      <span class="dps-hint" id="bookHint"></span>
+      <button class="exit" id="exitBtn5">나가기</button>
+    </div>
+  </section>
+
   <section class="panel" id="panelParty" hidden>
     <div class="panel-head">
       <span class="panel-title">편성 <b id="partySlots">1 / 1</b></span>
@@ -101,6 +131,16 @@
   <img class="intro-logo" src="assets/title-logo.png" alt="말랑프렌즈 키우기" />
   <h1 class="intro-title">말랑프렌즈 키우기</h1>
   <button id="introStart">시작하기</button>
+</div>
+
+<div class="modal" id="dungeonModal" hidden>
+  <div class="modal-card">
+    <h2 id="dungeonTitle">별빛 시련</h2>
+    <p class="modal-sub" id="dungeonSub"></p>
+    <div class="dungeon-result" id="dungeonKills"></div>
+    <div class="modal-gold"><span class="shard-count">⭐ <b id="dungeonShards">0</b></span><i class="coin"></i><b id="dungeonGold">0</b></div>
+    <button id="dungeonOk">받기</button>
+  </div>
 </div>
 
 <div class="modal" id="offlineModal" hidden>
@@ -144,13 +184,16 @@
 
 <script src="/games/registry.js"></script>
 <script src="/shared/bootstrap.js"></script>
-<!-- 로드 순서 주의: combat.js 가 characters.js 를 참조하므로 데이터가 먼저 와야 한다. -->
+<!-- 로드 순서 주의: combat.js 가 characters.js 를, dungeon/quests 가 combat/balance 를 참조한다. -->
 <script src="engine/balance.js"></script>
 <script src="engine/rng.js"></script>
 <script src="data/chapters.js"></script>
 <script src="data/characters.js"></script>
 <script src="engine/combat.js"></script>
 <script src="engine/save.js"></script>
+<script src="engine/dungeon.js"></script>
+<script src="data/quests.js"></script>
+<script src="audio.js"></script>
 <script src="game.js"></script>
 </body>
 </html>

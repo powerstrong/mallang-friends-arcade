@@ -60,6 +60,19 @@
     },
     maxRelicLevel: 10000,
 
+    // ── 별빛 시련 (보스 러시 던전, P4) ────────────────────────
+    dungeonRunsPerDay: 3,
+    dungeonBossTime: 15,      // 보스당 제한시간(초)
+    dungeonStartMul: 0.35,    // 첫 보스 = 본편 보스의 35% — 방금 그 층을 깬 유저가
+                              // 몇 연승은 하고 벽을 만나야 첫 경험이 성립한다
+    dungeonHpGrowth: 1.35,    // 연전마다 HP 배율
+    dungeonGoldSeconds: 30,   // 격파당 골드 = 파밍 30초치
+    dungeonMaxBosses: 200,    // 폭주 방지 상한
+
+    // ── 일일 과제 (P4) ────────────────────────────────────────
+    questRewards: { kills: 5, upgrades: 5, bossTries: 8 },   // 별조각
+    questTargets: { kills: 200, upgrades: 20, bossTries: 10 },
+
     // ── 표시 전용 ─────────────────────────────────────────────
     // 전투력 = DPS·골드배수의 가중합. 표시용이며 데미지 공식에 재투입되지 않는다.
     powerDpsWeight: 10,
@@ -67,6 +80,9 @@
 
     // 세이브 검증 상한 — 손상/조작된 값이 Infinity 로 번지는 것을 막는다.
     maxUpgradeLevel: 100000,
+    // mobHp = 30 × 1.18^stage 는 stage ≈ 4280 에서 double 을 넘는다(Infinity).
+    // 정상 플레이는 수백 층 규모이므로 4000 이면 실사용에 여유가 크다.
+    maxStage: 4000,
   };
 
   // 강화 축 목록 — UI·시뮬레이터·테스트가 공유한다.
@@ -78,9 +94,9 @@
 
   // 유물 축 — UI·시뮬레이터·테스트가 공유. bonus 키는 combat.partyBonus 와 같은 체계.
   var RELIC_AXES = [
-    { id: 'hammer',  name: '별의 망치',   emoji: '🔨', bonusText: '공격력',     effect: 'atk' },
-    { id: 'barn',    name: '별의 곳간',   emoji: '🧺', bonusText: '골드 획득',  effect: 'gold' },
-    { id: 'compass', name: '별의 나침반', emoji: '🧭', bonusText: '보스 피해',  effect: 'boss' },
+    { id: 'hammer',  name: '별의 망치',   icon: 'assets/icon-relic-hammer.png',  bonusText: '공격력',    effect: 'atk' },
+    { id: 'barn',    name: '별의 곳간',   icon: 'assets/icon-relic-barn.png',    bonusText: '골드 획득', effect: 'gold' },
+    { id: 'compass', name: '별의 나침반', icon: 'assets/icon-relic-compass.png', bonusText: '보스 피해', effect: 'boss' },
   ];
 
   // 시뮬레이터가 대역하는 "합리적인 플레이어"의 정책.
