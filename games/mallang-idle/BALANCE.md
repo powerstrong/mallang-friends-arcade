@@ -38,7 +38,7 @@ var BALANCE = {
 
   // ── 적 ────────────────────────────────────
   mobBaseHp: 30,
-  mobHpGrowth: 1.172,       // 스테이지당 지수
+  mobHpGrowth: 1.18,        // 스테이지당 지수
   bossHpMultiplier: 12,
   bossTimeLimit: 25,        // 초
   mobsPerStage: 10,
@@ -50,13 +50,18 @@ var BALANCE = {
 
   // ── 강화 비용 ─────────────────────────────
   costBase:   { atk: 20,    aspd: 60,   gold: 45 },
-  costGrowth: { atk: 1.135, aspd: 1.22, gold: 1.18 },
+  costGrowth: { atk: 1.15,  aspd: 1.22, gold: 1.18 },
 
   // ── 오프라인 ──────────────────────────────
   offlineEfficiency: 0.25,
   offlineMaxHours: 8,
 };
 ```
+
+**유물 (P3):** 별조각(보스 드랍, 실패에도 지급) + 유물 3종. 배수는 레벨당 곱연산
+(`pow(1+perLv, lv)`) — 선형이면 상대 이득이 줄어 지수 벽을 못 따라간다. 상수는
+`BALANCE.relics` / `shardClearDiv` / `shardFailDiv`. P2 편성 + P3 유물 도입 후
+`tune.js` 재서치로 mobHpGrowth 1.18 · goldGrowth 1.158 채택(2026-08-15).
 
 **채택 근거**: `tools/tune.js` 로 120개 조합을 평가한 1위 조합.
 초기값(`1.18 / 1.16 / 7 / 1.15`)은 5분 구간에 벽이 아예 없고(보스 실패 0회)

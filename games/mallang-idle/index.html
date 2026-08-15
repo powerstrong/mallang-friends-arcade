@@ -51,6 +51,7 @@
   <nav class="tabs" id="tabs">
     <button data-tab="upgrade" class="on">강화</button>
     <button data-tab="party">편성 <i class="dot" id="partyDot" hidden></i></button>
+    <button data-tab="relic">유물 <i class="dot" id="relicDot" hidden></i></button>
   </nav>
 
   <section class="panel" id="panelUpgrade">
@@ -69,6 +70,18 @@
     </div>
   </section>
 
+  <section class="panel" id="panelRelic" hidden>
+    <div class="panel-head">
+      <span class="panel-title">유물</span>
+      <span class="shard-count">⭐ <b id="shardNum">0</b></span>
+    </div>
+    <div class="upgrades" id="relicList"></div>
+    <div class="panel-foot">
+      <span class="dps-hint">별조각은 보스가 떨어뜨려요</span>
+      <button class="exit" id="exitBtn3">나가기</button>
+    </div>
+  </section>
+
   <section class="panel" id="panelParty" hidden>
     <div class="panel-head">
       <span class="panel-title">편성 <b id="partySlots">1 / 1</b></span>
@@ -83,13 +96,10 @@
 
 </div>
 
+<!-- 타이틀: 로고와 시작 버튼뿐. 조작법은 글이 아니라 첫 플레이의 코치마크가 가르친다. -->
 <div class="intro" id="intro" hidden>
   <img class="intro-logo" src="assets/title-logo.png" alt="말랑프렌즈 키우기" />
   <h1 class="intro-title">말랑프렌즈 키우기</h1>
-  <p class="intro-desc">
-    말랑친구가 알아서 몬스터를 물리쳐요.<br />
-    모은 골드로 <b>강화</b>하고, 보스를 <b>돌파</b>하세요.
-  </p>
   <button id="introStart">시작하기</button>
 </div>
 

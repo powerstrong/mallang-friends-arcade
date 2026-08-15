@@ -41,6 +41,8 @@
     tabs: $('tabs'), panelUpgrade: $('panelUpgrade'), panelParty: $('panelParty'),
     partyList: $('partyList'), partySlots: $('partySlots'), partyDot: $('partyDot'),
     partyBonusHint: $('partyBonusHint'), exitBtn2: $('exitBtn2'),
+    panelRelic: $('panelRelic'), relicList: $('relicList'), relicDot: $('relicDot'),
+    shardNum: $('shardNum'), exitBtn3: $('exitBtn3'),
     toastStack: $('toastStack'),
     offlineModal: $('offlineModal'), offlineGold: $('offlineGold'),
     offlineSub: $('offlineSub'), offlineOk: $('offlineOk'),
@@ -103,11 +105,44 @@
     return bulk;
   }
 
+  /* ── 튜토리얼 코치마크 ────────────────────────────────────────
+   * 글로 가르치지 않는다. 첫 강화가 가능해지는 순간 그 버튼 위에 손가락을 띄우고,
+   * 실제로 누르면 끝. 이 한 번의 탭이 인트로 문단 세 줄보다 많은 것을 가르친다. */
+  var TUT_KEY = Save.STORAGE_KEY + '-tut';
+  var tutDone = false;
+  try { tutDone = localStorage.getItem(TUT_KEY) === '1'; } catch (e) {}
+  var coachEl = null;
+
+  function showCoach(target) {
+    if (coachEl) return;
+    coachEl = document.createElement('div');
+    coachEl.className = 'coach';
+    coachEl.textContent = '👆';
+    target.style.position = 'relative';
+    target.appendChild(coachEl);
+  }
+
+  function finishTutorial() {
+    if (tutDone) return;
+    tutDone = true;
+    try { localStorage.setItem(TUT_KEY, '1'); } catch (e) {}
+    if (coachEl) { coachEl.remove(); coachEl = null; }
+  }
+
+  function syncCoach() {
+    if (tutDone || state.stats.upgrades > 0) { finishTutorial(); return; }
+    for (var i = 0; i < AXES.length; i++) {
+      var n = upNodes[AXES[i].id];
+      if (n && !n.btn.disabled) { showCoach(n.btn); return; }
+    }
+    if (coachEl) { coachEl.remove(); coachEl = null; }
+  }
+
   function onBuy(axisId) {
     var n = plannedCount(axisId);
     if (n <= 0) return;
     var got = Combat.buy(state, axisId, n);
-    if (got > 0) renderPanel();
+    if (got > 0) { finishTutorial(); renderPanel(); }
   }
 
   function effectText(axisId) {
@@ -188,10 +223,55 @@
       if (!seenUnlocks[unlocked[i]]) {
         seenUnlocks[unlocked[i]] = true;
         var c = Chars.byId(unlocked[i]);
-        if (state.t > 1 && c) { toast(c.name + ' 합류! 편성에서 넣어보세요', 'win'); news = true; }
+        if (state.t > 1 && c) { toast(c.name + ' 합류!', 'win'); news = true; }
       }
     }
     if (news) { el.partyDot.hidden = false; partyDirty = true; }
+  }
+
+  // ── 유물 ────────────────────────────────────────────────────
+  var relicNodes = {};
+
+  function buildRelics() {
+    el.relicList.innerHTML = '';
+    Bal.RELIC_AXES.forEach(function (r) {
+      var btn = document.createElement('button');
+      btn.className = 'up-btn';
+      btn.innerHTML =
+        '<span class="relic-emoji">' + r.emoji + '</span>' +
+        '<div><div class="up-name">' + r.name + ' <span class="up-lv"></span></div>' +
+        '<div class="up-eff"></div></div>' +
+        '<div><div class="up-cost shard">⭐<span></span></div></div>';
+      btn.addEventListener('click', function () {
+        if (Combat.buyRelic(state, r.id)) { renderRelics(); renderPanel(); persist(); }
+      });
+      el.relicList.appendChild(btn);
+      relicNodes[r.id] = {
+        btn: btn,
+        lv: btn.querySelector('.up-lv'),
+        eff: btn.querySelector('.up-eff'),
+        cost: btn.querySelector('.up-cost span'),
+      };
+    });
+  }
+
+  function renderRelics() {
+    el.shardNum.textContent = fmt(state.shards);
+    var anyAffordable = false;
+    Bal.RELIC_AXES.forEach(function (r) {
+      var n = relicNodes[r.id];
+      var lv = Combat.relicLv(state, r.id);
+      var cost = Combat.relicCost(state, r.id);
+      var can = state.shards >= cost;
+      if (can) anyAffordable = true;
+      n.lv.textContent = 'Lv.' + lv;
+      n.eff.textContent = r.bonusText + ' ×' + Combat.relicMul(state, r.id).toFixed(2);
+      n.cost.textContent = fmt(cost);
+      n.btn.disabled = !can;
+      n.btn.classList.toggle('can', can);
+    });
+    // 유물 탭이 닫혀 있을 때 살 수 있는 게 생기면 점으로 알린다.
+    if (anyAffordable && el.panelRelic.hidden) el.relicDot.hidden = false;
   }
 
   // ── 렌더 ────────────────────────────────────────────────────
@@ -243,6 +323,7 @@
       n.btn.classList.toggle('can', can);
     });
     el.dpsHint.textContent = 'DPS ' + fmt(Combat.dps(state));
+    syncCoach();
     renderHud();
   }
 
@@ -349,8 +430,9 @@
           partyDirty = true;
         }
         checkUnlocks();
+        renderRelics();
       }
-      else if (ev.type === 'boss_fail') { toast('시간 초과 — 조금 더 강해져야 해요', 'fail'); }
+      else if (ev.type === 'boss_fail') { toast('아깝다! ⭐+' + ev.shards, 'fail'); renderRelics(); }
       else if (ev.type === 'boss_start') { toast('보스 등장!'); }
     }
     state.events.length = 0;
@@ -442,7 +524,15 @@
     });
     el.panelUpgrade.hidden = tab !== 'upgrade';
     el.panelParty.hidden = tab !== 'party';
+    el.panelRelic.hidden = tab !== 'relic';
     if (tab === 'party') { el.partyDot.hidden = true; partyDirty = true; renderParty(); }
+    if (tab === 'relic') { el.relicDot.hidden = true; renderRelics(); }
+  });
+
+  el.exitBtn3.addEventListener('click', function () {
+    persist();
+    if (window.GameBoot) window.GameBoot.exit();
+    else location.href = '/';
   });
 
   el.exitBtn2.addEventListener('click', function () {
@@ -544,12 +634,14 @@
 
   // ── 시작 ────────────────────────────────────────────────────
   buildUpgrades();
+  buildRelics();
   restore();
   Combat.sanitizeParty(state);
   Chars.unlockedAt(state.stage).forEach(function (id) { seenUnlocks[id] = true; });
   if (DEV) setupDev();
   renderPanel();
   renderParty();
+  renderRelics();
   renderArena(0);
 
   /* 첫 방문에만 타이틀을 보여준다. 방치형은 "무엇을 하는 게임인지"가 한 화면에

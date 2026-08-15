@@ -17,7 +17,7 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function (Combat, Bal) {
   'use strict';
 
-  var CURRENT_VERSION = 2;
+  var CURRENT_VERSION = 3;
   var STORAGE_KEY = 'mallang-idle-save';
 
   /* 상태 → 저장 객체. 파생값(전투력·DPS)은 저장하지 않는다. 저장은 원본 데이터만
@@ -32,6 +32,12 @@
       gold: state.gold,
       up: { atk: state.up.atk, aspd: state.up.aspd, gold: state.up.gold },
       party: Array.isArray(state.party) ? state.party.slice() : [],
+      shards: state.shards,
+      relics: {
+        hammer: state.relics.hammer,
+        barn: state.relics.barn,
+        compass: state.relics.compass,
+      },
       playtime: state.t,
       stats: {
         kills: state.stats.kills,
@@ -74,6 +80,15 @@
       s.party = save.party.filter(function (id) { return typeof id === 'string'; });
     }
     Combat.sanitizeParty(s);
+    // 유물 — 레벨은 정수·범위 강제. 모르는 유물 id 는 버린다.
+    s.shards = num(save.shards, 0, 0);
+    if (save.relics && typeof save.relics === 'object') {
+      for (var rid in s.relics) {
+        if (Object.prototype.hasOwnProperty.call(s.relics, rid)) {
+          s.relics[rid] = int(save.relics[rid], 0, 0, B.maxRelicLevel);
+        }
+      }
+    }
     return s;
   }
 
@@ -109,6 +124,15 @@
     2: function (save) {
       if (!Array.isArray(save.party)) {
         save.party = ['rabbit'];
+      }
+      return save;
+    },
+
+    /* 3: P3 유물 도입. 별조각·유물 레벨 필드를 0 으로 채운다. */
+    3: function (save) {
+      if (typeof save.shards !== 'number') save.shards = 0;
+      if (!save.relics || typeof save.relics !== 'object') {
+        save.relics = { hammer: 0, barn: 0, compass: 0 };
       }
       return save;
     },

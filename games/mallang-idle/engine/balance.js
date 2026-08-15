@@ -24,7 +24,7 @@
 
     // ── 적 ────────────────────────────────────────────────────
     mobBaseHp: 30,
-    mobHpGrowth: 1.172,     // 스테이지당 지수 — goldGrowth 보다 높아야 벽이 생긴다
+    mobHpGrowth: 1.18,     // 스테이지당 지수 — goldGrowth 보다 높아야 벽이 생긴다
     bossHpMultiplier: 12,
     bossTimeLimit: 25,      // 초
     mobsPerStage: 10,
@@ -32,7 +32,7 @@
 
     // ── 보상 ──────────────────────────────────────────────────
     goldBase: 6,
-    goldGrowth: 1.15,       // 스테이지당 지수
+    goldGrowth: 1.158,       // 스테이지당 지수
 
     // ── 강화 비용 ─────────────────────────────────────────────
     costBase:   { atk: 20,   aspd: 60,   gold: 45 },
@@ -42,6 +42,23 @@
     offlineEfficiency: 0.25,
     offlineMaxHours: 8,
     offlineMinSeconds: 60,    // 이보다 짧게 비운 건 보상 팝업을 띄우지 않는다(골드는 준다)
+
+    // ── 유물 (P3 영구 성장축) ─────────────────────────────────
+    // 별조각: 보스가 주는 두 번째 재화. 실패해도 조각을 준다 — 벽에 막힌 시간이
+    // 그대로 성장이 되어, 벽에서 시도할 수단이 골드 강화 하나에서 둘로 늘어난다.
+    //
+    // 유물 배수는 레벨당 **곱연산**(pow)이다. 선형(+15%p/Lv)으로 두면 상대 이득이
+    // 레벨이 오를수록 줄어들어(14→15레벨 = ×1.048) 지수로 자라는 보스 HP 를 영구히
+    // 못 따라간다. 곱연산이어야 레벨 하나가 항상 같은 비율의 벽을 깎는다.
+    shardClearDiv: 10,        // 돌파 보상 = 1 + floor(stage / shardClearDiv)
+    shardFailDiv: 15,         // 실패 보상 = 1 + floor(stage / shardFailDiv) — 후반 벽에서도 수입 유지
+
+    relics: {
+      hammer:  { costBase: 8, costGrowth: 1.45, perLv: 0.08 },  // 공격 ×1.08/Lv
+      barn:    { costBase: 8, costGrowth: 1.45, perLv: 0.08 },  // 골드 ×1.08/Lv
+      compass: { costBase: 6, costGrowth: 1.35, perLv: 0.12 },  // 보스 피해 ×1.12/Lv
+    },
+    maxRelicLevel: 10000,
 
     // ── 표시 전용 ─────────────────────────────────────────────
     // 전투력 = DPS·골드배수의 가중합. 표시용이며 데미지 공식에 재투입되지 않는다.
@@ -59,6 +76,13 @@
     { id: 'gold', name: '골드 획득', desc: '몹이 주는 골드',   icon: 'assets/icon-gold.png' },
   ];
 
+  // 유물 축 — UI·시뮬레이터·테스트가 공유. bonus 키는 combat.partyBonus 와 같은 체계.
+  var RELIC_AXES = [
+    { id: 'hammer',  name: '별의 망치',   emoji: '🔨', bonusText: '공격력',     effect: 'atk' },
+    { id: 'barn',    name: '별의 곳간',   emoji: '🧺', bonusText: '골드 획득',  effect: 'gold' },
+    { id: 'compass', name: '별의 나침반', emoji: '🧭', bonusText: '보스 피해',  effect: 'boss' },
+  ];
+
   // 시뮬레이터가 대역하는 "합리적인 플레이어"의 정책.
   // 정책을 바꾸면 지표가 바뀐다 → 변경 시 커밋 메시지에 기록할 것.
   var SIM_POLICY = {
@@ -73,5 +97,5 @@
     idleThresholdSec: 30,
   };
 
-  return { BALANCE: BALANCE, AXES: AXES, SIM_POLICY: SIM_POLICY };
+  return { BALANCE: BALANCE, AXES: AXES, RELIC_AXES: RELIC_AXES, SIM_POLICY: SIM_POLICY };
 });

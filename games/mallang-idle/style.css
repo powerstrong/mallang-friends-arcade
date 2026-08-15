@@ -306,6 +306,9 @@ body {
 .up-btn:disabled { opacity: .5; cursor: default; }
 .up-btn.can { border-color: var(--accent); box-shadow: var(--shadow); }
 .up-icon { width: 34px; height: 34px; object-fit: contain; display: block; }
+.relic-emoji { font-size: 26px; width: 34px; text-align: center; display: block; }
+.shard-count { font-size: 14px; font-weight: 800; color: var(--gold-deep); }
+.up-cost.shard { color: var(--gold-deep); gap: 2px; }
 .up-btn:disabled .up-icon { filter: grayscale(.55); opacity: .8; }
 .up-name { font-size: 13.5px; font-weight: 800; display: flex; align-items: center; gap: 6px; }
 .up-lv { font-size: 11px; font-weight: 700; color: #fff; background: var(--accent); border-radius: 6px; padding: 1px 6px; }
@@ -418,6 +421,24 @@ body {
 .pc-skill { font-size: 11.5px; font-weight: 700; color: var(--accent-deep); }
 .pc-desc { font-size: 11px; color: var(--ink-soft); }
 
+/* ── 튜토리얼 코치마크 ─────────────────────────────────────── */
+.coach {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  font-size: 26px;
+  pointer-events: none;
+  z-index: 8;
+  transform: translateY(-50%) rotate(-15deg);
+  animation: coachTap .7s ease-in-out infinite;
+  filter: drop-shadow(0 2px 4px rgba(90, 60, 80, .35));
+}
+@keyframes coachTap {
+  0%, 100% { transform: translateY(-50%) rotate(-15deg) scale(1); }
+  50%      { transform: translateY(-38%) rotate(-15deg) scale(.88); }
+}
+@media (prefers-reduced-motion: reduce) { .coach { animation: none; } }
+
 /* ── 인트로 ────────────────────────────────────────────────── */
 .intro {
   position: fixed;
@@ -446,9 +467,8 @@ body {
   letter-spacing: -.03em;
   color: var(--accent-deep);
 }
-.intro-desc { margin: 8px 0 22px; font-size: 14px; line-height: 1.65; color: var(--ink-soft); }
-.intro-desc b { color: var(--accent-deep); }
 .intro button {
+  margin-top: 22px;
   font: inherit; font-size: 16px; font-weight: 800;
   width: 100%; max-width: 280px; padding: 13px;
   border: none; border-radius: 14px;

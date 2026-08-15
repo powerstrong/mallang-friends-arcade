@@ -53,14 +53,39 @@
   function aspd(lv)    { return Math.min(B.aspdCap, B.baseAspd * (1 + B.aspdPerLv * (lv - 1))); }
   function goldMul(lv) { return 1 + B.goldMulPerLv * (lv - 1); }
 
-  /* 편성 보너스가 반영된 실전 수치. aspd 상한은 보너스 적용 후에 건다 —
+  // ── 유물 보너스 (P3 영구 성장축) ─────────────────────────────
+  function relicLv(s, id) {
+    return (s && s.relics && isFinite(s.relics[id])) ? s.relics[id] : 0;
+  }
+  /* 레벨당 곱연산 — 레벨 하나가 항상 같은 비율의 벽을 깎는다(balance.js 주석 참고). */
+  function relicMul(s, id) {
+    var def = B.relics[id];
+    return def ? Math.pow(1 + def.perLv, relicLv(s, id)) : 1;
+  }
+  function relicCost(s, id) {
+    var def = B.relics[id];
+    return def ? Math.ceil(def.costBase * Math.pow(def.costGrowth, relicLv(s, id))) : Infinity;
+  }
+  function buyRelic(s, id) {
+    var def = B.relics[id];
+    if (!def) return false;
+    if (relicLv(s, id) >= B.maxRelicLevel) return false;
+    var cost = relicCost(s, id);
+    if (!(s.shards >= cost)) return false;
+    s.shards -= cost;
+    s.relics[id] = relicLv(s, id) + 1;
+    s.events.push({ type: 'relic', id: id, lv: s.relics[id], cost: cost });
+    return true;
+  }
+
+  /* 편성·유물 보너스가 반영된 실전 수치. aspd 상한은 보너스 적용 후에 건다 —
    * 그러지 않으면 상한에 닿은 뒤 병아리를 넣어도 아무 일도 일어나지 않는다. */
-  function effAtk(s)  { return atk(s.up.atk) * (1 + partyBonus(s).atkMul); }
+  function effAtk(s)  { return atk(s.up.atk) * (1 + partyBonus(s).atkMul) * relicMul(s, 'hammer'); }
   function effAspd(s) { return Math.min(B.aspdCap, aspd(s.up.aspd) * (1 + partyBonus(s).aspdMul)); }
   function dps(s)     { return effAtk(s) * effAspd(s); }
 
   /* 보스에게만 붙는 추가 피해. 일반몹 처치 속도는 그대로 두고 관문 돌파력만 올린다. */
-  function bossDps(s) { return dps(s) * (1 + partyBonus(s).bossMul); }
+  function bossDps(s) { return dps(s) * (1 + partyBonus(s).bossMul) * relicMul(s, 'compass'); }
 
   function advanceSeconds(s) {
     var mul = 1 - partyBonus(s).advanceMul;
@@ -72,7 +97,7 @@
   function bossHp(stage) { return mobHp(stage) * B.bossHpMultiplier; }
   function mobGold(s, stage) {
     return B.goldBase * Math.pow(B.goldGrowth, stage - 1) * goldMul(s.up.gold)
-         * (1 + partyBonus(s).goldMul);
+         * (1 + partyBonus(s).goldMul) * relicMul(s, 'barn');
   }
 
   function upgradeCost(axis, lv) {
@@ -85,8 +110,8 @@
     var pb = partyBonus(s);
     return Math.floor(
       dps(s) * B.powerDpsWeight +
-      goldMul(s.up.gold) * (1 + pb.goldMul) * B.powerGoldWeight +
-      (pb.bossMul + pb.advanceMul) * B.powerGoldWeight
+      goldMul(s.up.gold) * (1 + pb.goldMul) * relicMul(s, 'barn') * B.powerGoldWeight +
+      (pb.bossMul + pb.advanceMul + (relicMul(s, 'compass') - 1)) * B.powerGoldWeight
     );
   }
 
@@ -140,6 +165,8 @@
       gold: 0,
       up: { atk: 1, aspd: 1, gold: 1 },
       party: Chars ? [Chars.CHARACTERS[0].id] : [],   // 편성된 캐릭터 (슬롯 순서)
+      shards: 0,                                       // 별조각 — 보스가 주는 유물 재화
+      relics: { hammer: 0, barn: 0, compass: 0 },
       stats: {
         kills: 0, bossTries: 0, bossWins: 0, bossFails: 0,
         upgrades: 0, goldEarned: 0,
@@ -218,22 +245,28 @@
     if (kind === 'boss_kill') {
       s.enemyHp = 0;
       s.safeStage = s.stage;
+      var clearShards = 1 + Math.floor(s.stage / B.shardClearDiv);
+      s.shards += clearShards;
       s.stage++;
       s.mobIndex = 0;
       s.stats.bossWins++;
       s.phase = PHASE_ADVANCE;
       s.phaseT = 0;
-      s.events.push({ type: 'boss_clear', stage: s.safeStage });
+      s.events.push({ type: 'boss_clear', stage: s.safeStage, shards: clearShards });
       return;
     }
 
     if (kind === 'boss_timeout') {
-      // 실패해도 스테이지는 내려가지 않는다. 같은 구간을 다시 파밍하며 재도전한다.
+      /* 실패해도 스테이지는 내려가지 않고, 별조각 1개를 준다.
+       * 벽에 막힌 시간이 그대로 유물 성장이 되므로, 벽에서 할 수 있는 일이
+       * "골드 파밍" 하나에서 "골드 파밍 + 조각 모으기" 둘로 늘어난다(P3 게이트). */
+      var failShards = 1 + Math.floor(s.stage / B.shardFailDiv);
+      s.shards += failShards;
       s.mobIndex = 0;
       s.stats.bossFails++;
       s.phase = PHASE_ADVANCE;
       s.phaseT = 0;
-      s.events.push({ type: 'boss_fail', stage: s.stage });
+      s.events.push({ type: 'boss_fail', stage: s.stage, shards: failShards });
     }
   }
 
@@ -351,6 +384,7 @@
     atk: atk, aspd: aspd, goldMul: goldMul, dps: dps, power: power,
     effAtk: effAtk, effAspd: effAspd, bossDps: bossDps, advanceSeconds: advanceSeconds,
     partyBonus: partyBonus, sanitizeParty: sanitizeParty, NO_BONUS: NO_BONUS,
+    relicLv: relicLv, relicMul: relicMul, relicCost: relicCost, buyRelic: buyRelic,
     mobHp: mobHp, bossHp: bossHp, mobGold: mobGold, goldPerSec: goldPerSec,
     upgradeCost: upgradeCost, bulkCost: bulkCost, affordable: affordable,
     buy: buy, canBuyAnything: canBuyAnything,

@@ -37,7 +37,7 @@ function bestParty(state, stuck) {
   var unlocked = Chars.unlockedAt(state.stage);
   if (unlocked.length <= slots) return unlocked.slice();
 
-  var probe = { up: state.up, stage: state.stage, party: [] };
+  var probe = { up: state.up, stage: state.stage, relics: state.relics, party: [] };
   var best = null;
   combinations(unlocked, slots).forEach(function (combo) {
     probe.party = combo;
@@ -63,12 +63,14 @@ function bestAxis(state, dpsOnly) {
     var cost = Combat.upgradeCost(axis, state.up[axis]);
     if (state.gold < cost) continue;
 
-    /* 얕은 probe — clone 없이 up 만 바꿔 골드/초를 다시 계산한다.
-     * party 를 반드시 함께 넘겨야 한다. 빠뜨리면 보너스가 빠진 probe 와 보너스가 실린
-     * base 를 비교하게 되어 모든 강화의 이득이 음수가 되고, 시뮬이 한 번도 강화하지 않는다. */
+    /* 얕은 probe — up 만 바꾸고 나머지 보너스 원천(party·relics)은 실제 상태를 공유한다.
+     * 하나라도 빠뜨리면 보너스 빠진 probe 와 보너스 실린 base 를 비교하게 되어 모든
+     * 강화의 이득이 음수가 되고 시뮬이 강화를 멈춘다 — party(P2)와 relics(P3)에서
+     * 각각 실제로 터졌던 버그다. */
     var probeUp = { atk: state.up.atk, aspd: state.up.aspd, gold: state.up.gold };
     probeUp[axis] += 1;
-    var gain = Combat.goldPerSec({ up: probeUp, party: state.party, stage: stage }, stage) - base;
+    var probe = { up: probeUp, party: state.party, relics: state.relics, stage: stage };
+    var gain = Combat.goldPerSec(probe, stage) - base;
     if (!(gain > 0)) continue;
 
     var weight = (axis === 'gold') ? 1 : POLICY.dpsBonusWeight;
@@ -113,6 +115,27 @@ function decide(state, dpsOnly) {
     var pick = bestAxis(state, dpsOnly);
     if (!pick) break;
     if (!Combat.buy(state, pick.axis, 1)) break;
+    bought++;
+  }
+  return bought;
+}
+
+/* 별조각 소비 정책 — 벽에 막혀 있으면 나침반(보스 피해)에 몰고,
+ * 아니면 망치/곳간 중 싼 쪽을 산다. 실제 플레이어의 직관과 같다. */
+function spendShards(state, stuck) {
+  var bought = 0;
+  for (var n = 0; n < 20; n++) {
+    var id;
+    if (stuck) {
+      id = 'compass';
+      if (Combat.relicCost(state, id) > state.shards) {
+        // 나침반이 아직 비싸면 골드 쪽이라도 굴린다
+        id = Combat.relicCost(state, 'hammer') <= Combat.relicCost(state, 'barn') ? 'hammer' : 'barn';
+      }
+    } else {
+      id = Combat.relicCost(state, 'hammer') <= Combat.relicCost(state, 'barn') ? 'hammer' : 'barn';
+    }
+    if (!Combat.buyRelic(state, id)) break;
     bought++;
   }
   return bought;
@@ -174,7 +197,8 @@ function run(opts) {
           var wall = s.t - firstFailAt;
           if (wall > m.longestWall) { m.longestWall = wall; m.longestWallStage = ev.stage; }
         }
-        m.clearRatios.push((Combat.dps(s) * B.bossTimeLimit) / Combat.bossHp(ev.stage));
+        // 보스 상대 실효 DPS(나침반·라떼 포함) 기준 — 관문을 실제로 재는 값
+        m.clearRatios.push((Combat.bossDps(s) * B.bossTimeLimit) / Combat.bossHp(ev.stage));
         stageEnteredAt = s.t;
         firstFailAt = null;
         stuck = false;
@@ -194,6 +218,7 @@ function run(opts) {
     }
 
     var bought = decide(s, dpsOnly);
+    spendShards(s, dpsOnly);
     if (bought > 0 && m.firstUpgradeAt == null) m.firstUpgradeAt = s.t;
 
     if (s.t >= nextGoldSampleAt) {
@@ -264,6 +289,7 @@ function report(m) {
   lines.push('유휴 비율       ' + (m.idleRatio * 100).toFixed(1) + '%');
   lines.push('돌파 여유비     ' + (m.avgClearRatio == null ? '—' : m.avgClearRatio.toFixed(2)) + '   (1.0 = 제한시간 딱 맞춤)');
   lines.push('총 골드         ' + fmtNum(s.stats.goldEarned));
+  lines.push('유물            망치 ' + s.relics.hammer + ' · 곳간 ' + s.relics.barn + ' · 나침반 ' + s.relics.compass + '  (조각 ' + Math.floor(s.shards) + ')');
   lines.push('최종 DPS        ' + fmtNum(Combat.dps(s)));
   lines.push('전투력          ' + fmtNum(Combat.power(s)));
   return lines.join('\n');
