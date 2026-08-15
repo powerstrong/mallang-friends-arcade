@@ -14,9 +14,38 @@
 
 var Combat = require('../engine/combat.js');
 var Bal = require('../engine/balance.js');
+var Chars = require('../data/characters.js');
 var B = Bal.BALANCE;
 var AXES = Bal.AXES;
 var POLICY = Bal.SIM_POLICY;
+
+/* ── 편성 정책 ───────────────────────────────────────────────
+ * 슬롯이 열리거나 새 친구가 해금되면 다시 짠다. 후보 조합을 전부 만들어
+ * "지금 상황에서의 골드/초"로 점수를 매기되, 보스에 막혀 있으면 돌파력(보스 DPS)을
+ * 기준으로 고른다 — 실제 플레이어가 하는 판단과 같다. */
+function combinations(arr, k) {
+  var out = [];
+  (function pick(start, cur) {
+    if (cur.length === k) { out.push(cur.slice()); return; }
+    for (var i = start; i < arr.length; i++) { cur.push(arr[i]); pick(i + 1, cur); cur.pop(); }
+  })(0, []);
+  return out;
+}
+
+function bestParty(state, stuck) {
+  var slots = Chars.slotsFor(state.stage);
+  var unlocked = Chars.unlockedAt(state.stage);
+  if (unlocked.length <= slots) return unlocked.slice();
+
+  var probe = { up: state.up, stage: state.stage, party: [] };
+  var best = null;
+  combinations(unlocked, slots).forEach(function (combo) {
+    probe.party = combo;
+    var score = stuck ? Combat.bossDps(probe) : Combat.goldPerSec(probe, state.stage);
+    if (!best || score > best.score) best = { score: score, combo: combo };
+  });
+  return best ? best.combo : unlocked.slice(0, slots);
+}
 
 /* ── 플레이어 대역 정책 ──────────────────────────────────────────
  * 모든 축의 가치를 "골드/초 증가량 ÷ 비용"이라는 하나의 척도로 환산한다.
@@ -34,10 +63,12 @@ function bestAxis(state, dpsOnly) {
     var cost = Combat.upgradeCost(axis, state.up[axis]);
     if (state.gold < cost) continue;
 
-    // 얕은 probe — clone 없이 up 만 바꿔 골드/초를 다시 계산한다.
+    /* 얕은 probe — clone 없이 up 만 바꿔 골드/초를 다시 계산한다.
+     * party 를 반드시 함께 넘겨야 한다. 빠뜨리면 보너스가 빠진 probe 와 보너스가 실린
+     * base 를 비교하게 되어 모든 강화의 이득이 음수가 되고, 시뮬이 한 번도 강화하지 않는다. */
     var probeUp = { atk: state.up.atk, aspd: state.up.aspd, gold: state.up.gold };
     probeUp[axis] += 1;
-    var gain = Combat.goldPerSec({ up: probeUp }, stage) - base;
+    var gain = Combat.goldPerSec({ up: probeUp, party: state.party, stage: stage }, stage) - base;
     if (!(gain > 0)) continue;
 
     var weight = (axis === 'gold') ? 1 : POLICY.dpsBonusWeight;
@@ -108,6 +139,8 @@ function run(opts) {
     goldPerMinSamples: [],
   };
 
+  m.partyChanges = 0;
+  var lastPartyKey = '';
   var stageEnteredAt = 0;
   var firstFailAt = null;      // 현재 스테이지에서 처음 보스에 실패한 시각
   var stuck = false;           // 이번 스테이지에서 보스를 한 번이라도 놓쳤는가
@@ -149,6 +182,17 @@ function run(opts) {
     }
     s.events.length = 0;
 
+    // 해금·슬롯 상황이 바뀌었으면 편성을 다시 짠다.
+    var key = s.stage + '|' + (dpsOnly ? 'b' : 'f');
+    if (key !== lastPartyKey) {
+      lastPartyKey = key;
+      var want = bestParty(s, dpsOnly);
+      if (want.join(',') !== s.party.join(',')) {
+        s.party = want;
+        m.partyChanges++;
+      }
+    }
+
     var bought = decide(s, dpsOnly);
     if (bought > 0 && m.firstUpgradeAt == null) m.firstUpgradeAt = s.t;
 
@@ -172,6 +216,7 @@ function run(opts) {
 
   m.idleRatio = m.idleSeconds / duration;
   m.avgStageDwell = avg(m.stageDwell);
+  m.bossFailCount = s.stats.bossFails;
   m.avgClearRatio = avg(m.clearRatios);
   m.finalStage = s.stage;
   m.finalSafeStage = s.safeStage;

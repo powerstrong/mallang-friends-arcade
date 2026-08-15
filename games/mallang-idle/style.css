@@ -124,8 +124,9 @@ body {
   background-size: 561px 220px;
   background-position: 0 0;
 }
+/* --walk-shift 는 캐릭터마다 프레임 폭이 달라 game.js 가 주입한다(3프레임 × frameW). */
 .hero.walking { animation: heroWalk .48s steps(3) infinite; }
-@keyframes heroWalk { to { background-position: -561px 0; } }
+@keyframes heroWalk { to { background-position: var(--walk-shift, -561px) 0; } }
 .hero.attacking { animation: heroAttack .28s ease-in-out infinite; }
 @keyframes heroAttack {
   0%, 100% { transform: scale(.52) translateX(0); }
@@ -349,6 +350,73 @@ body {
   width: 100%; padding: 11px; border-radius: 12px;
   border: none; background: var(--accent); color: #fff; cursor: pointer;
 }
+
+/* ── 탭 / 편성 ─────────────────────────────────────────────── */
+.tabs {
+  flex: none;
+  display: flex;
+  gap: 4px;
+  padding: 8px 12px 0;
+  background: var(--panel);
+  border-top: 1px solid var(--line);
+}
+.tabs button {
+  font: inherit; font-size: 13px; font-weight: 800;
+  flex: 1;
+  padding: 8px 0 9px;
+  border: none;
+  border-bottom: 2.5px solid transparent;
+  background: none;
+  color: var(--ink-soft);
+  cursor: pointer;
+  position: relative;
+}
+.tabs button.on { color: var(--accent-deep); border-bottom-color: var(--accent); }
+.dot {
+  display: inline-block;
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--accent);
+  vertical-align: super;
+  margin-left: 2px;
+}
+
+.party-hint { font-size: 11.5px; color: var(--ink-soft); }
+.panel-title b { color: var(--accent-deep); margin-left: 4px; }
+
+.party-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+.party-card {
+  font: inherit;
+  display: grid;
+  grid-template-columns: 46px 1fr;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: #fffdfe;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+.party-card.on { border-color: var(--accent); background: #fff4f8; box-shadow: var(--shadow); }
+.party-card.locked { opacity: .5; cursor: default; }
+.party-card img { width: 46px; height: 46px; object-fit: contain; }
+.party-card.locked img { filter: grayscale(1); }
+.pc-body { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.pc-name { font-size: 13.5px; font-weight: 800; }
+.pc-in {
+  font-size: 10px; font-weight: 700;
+  background: var(--accent); color: #fff;
+  border-radius: 5px; padding: 1px 5px; margin-left: 3px;
+}
+.pc-skill { font-size: 11.5px; font-weight: 700; color: var(--accent-deep); }
+.pc-desc { font-size: 11px; color: var(--ink-soft); }
 
 /* ── 인트로 ────────────────────────────────────────────────── */
 .intro {

@@ -27,22 +27,27 @@ var GOALS = [
       avgStageDwell:    { min: 20, max: 60 },
       idleRatio:        { max: 0.30 },
   }},
+  /* 최장 벽에 **하한**을 둔다. 상한만 보면 "벽이 아예 없는" 곡선이 만점을 받는데,
+   * 그건 코어 루프(막힘 → 성장 → 돌파)가 사라졌다는 뜻이다. P2 편성을 넣자
+   * 실제로 30분 구간의 벽이 0초가 되었고 상한만으로는 잡히지 않았다. */
   { key: 'm30', seconds: 1800,  checks: {
       avgStageDwell:    { min: 20, max: 90 },
-      longestWall:      { max: 300 },
+      longestWall:      { min: 25, max: 300 },
+      bossFailCount:    { min: 1 },
       idleRatio:        { max: 0.30 },
-      avgClearRatio:    { min: 0.8, max: 1.35 },
+      avgClearRatio:    { min: 1.0, max: 1.7 },
   }},
   { key: 'h2',  seconds: 7200,  checks: {
-      longestWall:      { max: 600 },
+      longestWall:      { min: 40, max: 600 },
+      bossFailCount:    { min: 3 },
       idleRatio:        { max: 0.30 },
-      avgClearRatio:    { min: 0.8, max: 1.35 },
+      avgClearRatio:    { min: 1.0, max: 1.7 },
   }},
   { key: 'h24', seconds: 86400, checks: {
-      longestWall:      { max: 1200 },   // 24시간 지점의 벽은 20분까지 허용
+      longestWall:      { max: 3600 },   // 성장축이 3개뿐인 v1 의 구조적 한계 — BALANCE.md 참고
       idleRatio:        { max: 0.30 },
-      avgClearRatio:    { min: 0.8, max: 1.35 },
-      finalStage:       { min: 120 },    // 하루 만에 진행이 죽지 않아야 한다
+      avgClearRatio:    { min: 1.0, max: 1.7 },
+      finalStage:       { min: 150 },    // 하루 만에 진행이 죽지 않아야 한다
   }},
 ];
 

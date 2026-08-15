@@ -64,7 +64,7 @@
       id: 'core',
       name: '군단 심장부',
       tagline: '대장이 기다리고 있다',
-      from: 131, to: null,
+      from: 131, to: 180,
       bg: 'assets/bg-machine.jpg',
       accent: '#7f8fc9',
       mobs: [
@@ -73,6 +73,20 @@
         { id: 'mech-chick',   name: '강화 병아리', art: 'assets/enemy-mech-chick.png' },
       ],
       boss: { id: 'mech-general', name: '기계군단 대장', art: 'assets/boss-mechgeneral.png' },
+    },
+    {
+      id: 'garden',
+      name: '되찾은 하늘 정원',
+      tagline: '다시 찾아온 평화, 그 위로',
+      from: 181, to: null,
+      bg: 'assets/bg-garden.jpg',
+      accent: '#ef9fc0',
+      mobs: [
+        { id: 'petalfairy', name: '꽃잎 요정',   art: 'assets/mob-petalfairy.png' },
+        { id: 'honeybee',   name: '꿀벌 아기',   art: 'assets/mob-honeybee.png' },
+        { id: 'cloudsheep', name: '구름 양',     art: 'assets/mob-cloudsheep.png' },
+      ],
+      boss: { id: 'flowerqueen', name: '꽃의 여왕', art: 'assets/boss-flowerqueen.png' },
     },
   ];
 

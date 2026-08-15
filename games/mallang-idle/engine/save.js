@@ -17,7 +17,7 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function (Combat, Bal) {
   'use strict';
 
-  var CURRENT_VERSION = 1;
+  var CURRENT_VERSION = 2;
   var STORAGE_KEY = 'mallang-idle-save';
 
   /* 상태 → 저장 객체. 파생값(전투력·DPS)은 저장하지 않는다. 저장은 원본 데이터만
@@ -31,6 +31,7 @@
       mobIndex: state.mobIndex,
       gold: state.gold,
       up: { atk: state.up.atk, aspd: state.up.aspd, gold: state.up.gold },
+      party: Array.isArray(state.party) ? state.party.slice() : [],
       playtime: state.t,
       stats: {
         kills: state.stats.kills,
@@ -68,6 +69,11 @@
         }
       }
     }
+    // 편성은 문자열 배열만 받고, 해금·슬롯 규칙으로 다시 걸러낸다.
+    if (Array.isArray(save.party)) {
+      s.party = save.party.filter(function (id) { return typeof id === 'string'; });
+    }
+    Combat.sanitizeParty(s);
     return s;
   }
 
@@ -97,7 +103,15 @@
      * 변환할 것은 없지만, "변환 함수가 없으면 실패"라는 규칙을 지키기 위해
      * 명시적으로 등록해 둔다. */
     1: function (save) { return save; },
-    // 2: function (save) { save.pets = []; return save; },
+
+    /* 2: P2 편성 도입. v1 세이브에는 party 가 없다 — 기본 캐릭터 한 명으로 채운다.
+     * 진행도(stage/gold/up)는 그대로 살린다. */
+    2: function (save) {
+      if (!Array.isArray(save.party)) {
+        save.party = ['rabbit'];
+      }
+      return save;
+    },
   };
 
   /* 알 수 없는 상위 버전을 만나면 덮어쓰지 않는다 — 신버전에서 저장한 데이터를

@@ -48,7 +48,12 @@
     <div class="toast-stack" id="toastStack"></div>
   </section>
 
-  <section class="panel">
+  <nav class="tabs" id="tabs">
+    <button data-tab="upgrade" class="on">강화</button>
+    <button data-tab="party">편성 <i class="dot" id="partyDot" hidden></i></button>
+  </nav>
+
+  <section class="panel" id="panelUpgrade">
     <div class="panel-head">
       <span class="panel-title">강화</span>
       <div class="bulk" id="bulkToggle">
@@ -61,6 +66,18 @@
     <div class="panel-foot">
       <span class="dps-hint" id="dpsHint">DPS 0</span>
       <button class="exit" id="exitBtn">나가기</button>
+    </div>
+  </section>
+
+  <section class="panel" id="panelParty" hidden>
+    <div class="panel-head">
+      <span class="panel-title">편성 <b id="partySlots">1 / 1</b></span>
+      <span class="party-hint">탭해서 넣고 빼요</span>
+    </div>
+    <div class="party-list" id="partyList"></div>
+    <div class="panel-foot">
+      <span class="dps-hint" id="partyBonusHint"></span>
+      <button class="exit" id="exitBtn2">나가기</button>
     </div>
   </section>
 
@@ -117,11 +134,13 @@
 
 <script src="/games/registry.js"></script>
 <script src="/shared/bootstrap.js"></script>
+<!-- 로드 순서 주의: combat.js 가 characters.js 를 참조하므로 데이터가 먼저 와야 한다. -->
 <script src="engine/balance.js"></script>
 <script src="engine/rng.js"></script>
+<script src="data/chapters.js"></script>
+<script src="data/characters.js"></script>
 <script src="engine/combat.js"></script>
 <script src="engine/save.js"></script>
-<script src="data/chapters.js"></script>
 <script src="game.js"></script>
 </body>
 </html>

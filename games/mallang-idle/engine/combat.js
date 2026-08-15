@@ -15,11 +15,12 @@
  */
 (function (root, factory) {
   var api = factory(
-    typeof require === 'function' ? require('./balance.js') : root.MallangIdleBalance
+    typeof require === 'function' ? require('./balance.js') : root.MallangIdleBalance,
+    typeof require === 'function' ? require('../data/characters.js') : root.MallangIdleCharacters
   );
   if (typeof module === 'object' && module.exports) module.exports = api;
   root.MallangIdleCombat = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function (Bal) {
+})(typeof globalThis !== 'undefined' ? globalThis : this, function (Bal, Chars) {
   'use strict';
 
   var B = Bal.BALANCE;
@@ -29,17 +30,49 @@
   var PHASE_FIGHT   = 'fight';    // 일반몹과 교전 중
   var PHASE_BOSS    = 'boss';     // 보스 관문
 
+  // ── 파티 보너스 ──────────────────────────────────────────────
+  /* 편성된 캐릭터의 패시브를 합산한다. 곱이 아니라 합으로 쌓아 세 명을 넣어도
+   * 배수가 폭주하지 않게 한다(같은 축을 겹쳐도 선형). */
+  var NO_BONUS = { atkMul: 0, aspdMul: 0, goldMul: 0, bossMul: 0, advanceMul: 0 };
+
+  function partyBonus(s) {
+    var out = { atkMul: 0, aspdMul: 0, goldMul: 0, bossMul: 0, advanceMul: 0 };
+    var party = s && s.party;
+    if (!party || !party.length || !Chars) return out;
+    for (var i = 0; i < party.length; i++) {
+      var c = Chars.byId(party[i]);
+      if (!c || !c.skill) continue;
+      if (out[c.skill.key] === undefined) continue;
+      out[c.skill.key] += c.skill.value;
+    }
+    return out;
+  }
+
   // ── 파생 수치 ────────────────────────────────────────────────
   function atk(lv)     { return B.baseAtk * Math.pow(B.atkGrowth, lv - 1); }
   function aspd(lv)    { return Math.min(B.aspdCap, B.baseAspd * (1 + B.aspdPerLv * (lv - 1))); }
   function goldMul(lv) { return 1 + B.goldMulPerLv * (lv - 1); }
 
-  function dps(s)      { return atk(s.up.atk) * aspd(s.up.aspd); }
+  /* 편성 보너스가 반영된 실전 수치. aspd 상한은 보너스 적용 후에 건다 —
+   * 그러지 않으면 상한에 닿은 뒤 병아리를 넣어도 아무 일도 일어나지 않는다. */
+  function effAtk(s)  { return atk(s.up.atk) * (1 + partyBonus(s).atkMul); }
+  function effAspd(s) { return Math.min(B.aspdCap, aspd(s.up.aspd) * (1 + partyBonus(s).aspdMul)); }
+  function dps(s)     { return effAtk(s) * effAspd(s); }
+
+  /* 보스에게만 붙는 추가 피해. 일반몹 처치 속도는 그대로 두고 관문 돌파력만 올린다. */
+  function bossDps(s) { return dps(s) * (1 + partyBonus(s).bossMul); }
+
+  function advanceSeconds(s) {
+    var mul = 1 - partyBonus(s).advanceMul;
+    if (!(mul > 0.1)) mul = 0.1;
+    return B.advanceSeconds * mul;
+  }
 
   function mobHp(stage)  { return B.mobBaseHp * Math.pow(B.mobHpGrowth, stage - 1); }
   function bossHp(stage) { return mobHp(stage) * B.bossHpMultiplier; }
   function mobGold(s, stage) {
-    return B.goldBase * Math.pow(B.goldGrowth, stage - 1) * goldMul(s.up.gold);
+    return B.goldBase * Math.pow(B.goldGrowth, stage - 1) * goldMul(s.up.gold)
+         * (1 + partyBonus(s).goldMul);
   }
 
   function upgradeCost(axis, lv) {
@@ -49,7 +82,38 @@
   /* 전투력 — 표시 전용 파생 지표.
    * 이 값이 데미지 공식에 다시 곱해지는 구조는 금지한다(../CORE_LOOP.md 6절). */
   function power(s) {
-    return Math.floor(dps(s) * B.powerDpsWeight + goldMul(s.up.gold) * B.powerGoldWeight);
+    var pb = partyBonus(s);
+    return Math.floor(
+      dps(s) * B.powerDpsWeight +
+      goldMul(s.up.gold) * (1 + pb.goldMul) * B.powerGoldWeight +
+      (pb.bossMul + pb.advanceMul) * B.powerGoldWeight
+    );
+  }
+
+  /* 편성이 유효한지 정리한다 — 해금되지 않은 캐릭터, 중복, 슬롯 초과를 걷어낸다.
+   * 세이브를 손으로 고쳤거나 슬롯이 아직 안 열린 상태에서도 안전해야 한다. */
+  function sanitizeParty(s) {
+    if (!Chars) return [];
+    var slots = Chars.slotsFor(s.stage);
+    var unlocked = Chars.unlockedAt(s.stage);
+    var seen = {};
+    var out = [];
+    var src = Array.isArray(s.party) ? s.party : [];
+    for (var i = 0; i < src.length && out.length < slots; i++) {
+      var id = src[i];
+      if (seen[id]) continue;
+      if (unlocked.indexOf(id) === -1) continue;
+      seen[id] = 1;
+      out.push(id);
+    }
+    /* 빈 슬롯은 해금된 친구로 채운다. 슬롯이 열렸는데 비워두면 유저가 편성 화면에
+     * 들어가기 전까지 손해만 보는데, 방치형에서 그런 마찰은 그냥 손실이다.
+     * 채워진 뒤에는 언제든 탭으로 바꿀 수 있다. */
+    for (var j = 0; j < unlocked.length && out.length < slots; j++) {
+      if (!seen[unlocked[j]]) { seen[unlocked[j]] = 1; out.push(unlocked[j]); }
+    }
+    s.party = out;
+    return out;
   }
 
   /* 현재 편성으로 특정 스테이지를 파밍할 때의 골드/초.
@@ -57,7 +121,7 @@
   function goldPerSec(s, stage) {
     var d = dps(s);
     if (d <= 0) return 0;
-    var cycle = B.advanceSeconds + mobHp(stage) / d;
+    var cycle = advanceSeconds(s) + mobHp(stage) / d;
     return mobGold(s, stage) / cycle;
   }
 
@@ -75,6 +139,7 @@
       bossT: 0,             // 보스 제한시간 경과
       gold: 0,
       up: { atk: 1, aspd: 1, gold: 1 },
+      party: Chars ? [Chars.CHARACTERS[0].id] : [],   // 편성된 캐릭터 (슬롯 순서)
       stats: {
         kills: 0, bossTries: 0, bossWins: 0, bossFails: 0,
         upgrades: 0, goldEarned: 0,
@@ -93,10 +158,10 @@
    * 승패를 뒤집었다(같은 상황에서 dt=0.5 는 승리, dt=0.25 는 실패). */
   function nextEvent(s) {
     var d = dps(s);
-    if (s.phase === PHASE_ADVANCE) return { t: B.advanceSeconds - s.phaseT, kind: 'spawn' };
+    if (s.phase === PHASE_ADVANCE) return { t: advanceSeconds(s) - s.phaseT, kind: 'spawn' };
     if (s.phase === PHASE_FIGHT)   return { t: s.enemyHp / d, kind: 'kill' };
     if (s.phase === PHASE_BOSS) {
-      var tKill = s.enemyHp / d;
+      var tKill = s.enemyHp / bossDps(s);
       var tOut = B.bossTimeLimit - s.bossT;
       // 동시에 도달하면 플레이어에게 유리하게 — 제한시간 안에 잡은 것으로 본다.
       return tKill <= tOut ? { t: tKill, kind: 'boss_kill' } : { t: tOut, kind: 'boss_timeout' };
@@ -108,9 +173,11 @@
     s.t += dt;
     if (s.phase === PHASE_ADVANCE) {
       s.phaseT += dt;
+    } else if (s.phase === PHASE_BOSS) {
+      s.enemyHp -= bossDps(s) * dt;
+      s.bossT += dt;
     } else {
       s.enemyHp -= dps(s) * dt;
-      if (s.phase === PHASE_BOSS) s.bossT += dt;
     }
   }
 
@@ -282,6 +349,8 @@
     PHASE_ADVANCE: PHASE_ADVANCE, PHASE_FIGHT: PHASE_FIGHT, PHASE_BOSS: PHASE_BOSS,
     createState: createState, clone: clone, step: step,
     atk: atk, aspd: aspd, goldMul: goldMul, dps: dps, power: power,
+    effAtk: effAtk, effAspd: effAspd, bossDps: bossDps, advanceSeconds: advanceSeconds,
+    partyBonus: partyBonus, sanitizeParty: sanitizeParty, NO_BONUS: NO_BONUS,
     mobHp: mobHp, bossHp: bossHp, mobGold: mobGold, goldPerSec: goldPerSec,
     upgradeCost: upgradeCost, bulkCost: bulkCost, affordable: affordable,
     buy: buy, canBuyAnything: canBuyAnything,

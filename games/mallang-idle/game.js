@@ -11,6 +11,7 @@
   var Combat = window.MallangIdleCombat;
   var Save = window.MallangIdleSave;
   var Chapters = window.MallangIdleChapters;
+  var Chars = window.MallangIdleCharacters;
   var Bal = window.MallangIdleBalance;
   var B = Bal.BALANCE;
   var AXES = Bal.AXES;
@@ -37,6 +38,9 @@
     upgrades: $('upgrades'), bulkToggle: $('bulkToggle'),
     stageProgress: $('stageProgress'), dpsHint: $('dpsHint'), exitBtn: $('exitBtn'),
     field: document.querySelector('.field'), intro: $('intro'), introStart: $('introStart'),
+    tabs: $('tabs'), panelUpgrade: $('panelUpgrade'), panelParty: $('panelParty'),
+    partyList: $('partyList'), partySlots: $('partySlots'), partyDot: $('partyDot'),
+    partyBonusHint: $('partyBonusHint'), exitBtn2: $('exitBtn2'),
     toastStack: $('toastStack'),
     offlineModal: $('offlineModal'), offlineGold: $('offlineGold'),
     offlineSub: $('offlineSub'), offlineOk: $('offlineOk'),
@@ -115,11 +119,102 @@
     return '골드 x' + Combat.goldMul(state.up.gold).toFixed(2);
   }
 
+  // ── 편성 ────────────────────────────────────────────────────
+  var seenUnlocks = {};       // 새 친구 해금 뱃지를 한 번만 띄우기 위한 표시
+  var partyDirty = true;
+
+  function toggleMember(id) {
+    var slots = Chars.slotsFor(state.stage);
+    var idx = state.party.indexOf(id);
+    if (idx >= 0) {
+      if (state.party.length <= 1) { toast('최소 한 명은 있어야 해요'); return; }
+      state.party.splice(idx, 1);
+    } else {
+      if (state.party.length >= slots) {
+        // 슬롯이 꽉 찼으면 가장 오래된 자리를 비운다 — 탭 한 번으로 교체되게.
+        state.party.shift();
+      }
+      state.party.push(id);
+    }
+    Combat.sanitizeParty(state);
+    partyDirty = true;
+    renderParty();
+    renderPanel();
+    persist();
+  }
+
+  function renderParty() {
+    if (!partyDirty) return;
+    partyDirty = false;
+
+    var slots = Chars.slotsFor(state.stage);
+    var unlocked = Chars.unlockedAt(state.stage);
+    el.partySlots.textContent = state.party.length + ' / ' + slots;
+
+    el.partyList.innerHTML = '';
+    Chars.CHARACTERS.forEach(function (c) {
+      var isUnlocked = unlocked.indexOf(c.id) !== -1;
+      var inParty = state.party.indexOf(c.id) !== -1;
+
+      var card = document.createElement('button');
+      card.className = 'party-card' + (inParty ? ' on' : '') + (isUnlocked ? '' : ' locked');
+      card.disabled = !isUnlocked;
+      card.innerHTML =
+        '<img src="' + c.portrait + '" alt="" />' +
+        '<div class="pc-body">' +
+          '<div class="pc-name">' + c.name + (inParty ? ' <span class="pc-in">편성</span>' : '') + '</div>' +
+          '<div class="pc-skill">' + (isUnlocked ? c.skillText : '스테이지 ' + c.unlockStage + ' 에서 만나요') + '</div>' +
+          '<div class="pc-desc">' + (isUnlocked ? c.desc : '') + '</div>' +
+        '</div>';
+      if (isUnlocked) card.addEventListener('click', function () { toggleMember(c.id); });
+      el.partyList.appendChild(card);
+    });
+
+    var pb = Combat.partyBonus(state);
+    var parts = [];
+    if (pb.atkMul)     parts.push('공격 +' + Math.round(pb.atkMul * 100) + '%');
+    if (pb.aspdMul)    parts.push('속도 +' + Math.round(pb.aspdMul * 100) + '%');
+    if (pb.goldMul)    parts.push('골드 +' + Math.round(pb.goldMul * 100) + '%');
+    if (pb.bossMul)    parts.push('보스 +' + Math.round(pb.bossMul * 100) + '%');
+    if (pb.advanceMul) parts.push('이동 -' + Math.round(pb.advanceMul * 100) + '%');
+    el.partyBonusHint.textContent = parts.join(' · ') || '보너스 없음';
+  }
+
+  /* 새 친구가 해금되거나 슬롯이 열리면 편성 탭에 점을 찍어 알린다. */
+  function checkUnlocks() {
+    var unlocked = Chars.unlockedAt(state.stage);
+    var news = false;
+    for (var i = 0; i < unlocked.length; i++) {
+      if (!seenUnlocks[unlocked[i]]) {
+        seenUnlocks[unlocked[i]] = true;
+        var c = Chars.byId(unlocked[i]);
+        if (state.t > 1 && c) { toast(c.name + ' 합류! 편성에서 넣어보세요', 'win'); news = true; }
+      }
+    }
+    if (news) { el.partyDot.hidden = false; partyDirty = true; }
+  }
+
   // ── 렌더 ────────────────────────────────────────────────────
   var bgOffset = 0;
   var lastEnemyKey = '';
 
+  /* 화면에 서는 주인공은 편성 1번 자리의 친구다. 프레임 폭이 캐릭터마다 달라
+   * background-size 까지 같이 바꿔야 워크사이클이 어긋나지 않는다. */
+  var lastHeroId = '';
+  function renderHero() {
+    var id = state.party && state.party[0];
+    if (!id || id === lastHeroId) return;
+    var c = Chars.byId(id);
+    if (!c) return;
+    lastHeroId = id;
+    el.hero.style.width = c.frameW + 'px';
+    el.hero.style.backgroundImage = "url('" + c.walk + "')";
+    el.hero.style.backgroundSize = (c.frameW * 3) + 'px 220px';
+    el.hero.style.setProperty('--walk-shift', '-' + (c.frameW * 3) + 'px');
+  }
+
   function renderHud() {
+    renderHero();
     el.stageNum.textContent = state.stage;
     el.goldNum.textContent = fmt(state.gold);
     el.powerNum.textContent = fmt(Combat.power(state));
@@ -244,7 +339,17 @@
     for (var i = 0; i < state.events.length; i++) {
       var ev = state.events[i];
       if (ev.type === 'mob_kill') { needPanel = true; floatGold(ev.gold); }
-      else if (ev.type === 'boss_clear') { toast('스테이지 ' + ev.stage + ' 돌파!', 'win'); needPanel = true; }
+      else if (ev.type === 'boss_clear') {
+        toast('스테이지 ' + ev.stage + ' 돌파!', 'win');
+        needPanel = true;
+        var beforeSlots = Chars.slotsFor(ev.stage);
+        if (Chars.slotsFor(state.stage) > beforeSlots) {
+          toast('편성 자리가 늘어났어요!', 'win');
+          el.partyDot.hidden = false;
+          partyDirty = true;
+        }
+        checkUnlocks();
+      }
       else if (ev.type === 'boss_fail') { toast('시간 초과 — 조금 더 강해져야 해요', 'fail'); }
       else if (ev.type === 'boss_start') { toast('보스 등장!'); }
     }
@@ -327,6 +432,23 @@
       c.classList.toggle('on', c.getAttribute('data-bulk') === b);
     });
     renderPanel();
+  });
+
+  el.tabs.addEventListener('click', function (e) {
+    var tab = e.target.getAttribute('data-tab');
+    if (!tab) return;
+    Array.prototype.forEach.call(el.tabs.children, function (c) {
+      c.classList.toggle('on', c.getAttribute('data-tab') === tab);
+    });
+    el.panelUpgrade.hidden = tab !== 'upgrade';
+    el.panelParty.hidden = tab !== 'party';
+    if (tab === 'party') { el.partyDot.hidden = true; partyDirty = true; renderParty(); }
+  });
+
+  el.exitBtn2.addEventListener('click', function () {
+    persist();
+    if (window.GameBoot) window.GameBoot.exit();
+    else location.href = '/';
   });
 
   el.offlineOk.addEventListener('click', function () {
@@ -423,8 +545,11 @@
   // ── 시작 ────────────────────────────────────────────────────
   buildUpgrades();
   restore();
+  Combat.sanitizeParty(state);
+  Chars.unlockedAt(state.stage).forEach(function (id) { seenUnlocks[id] = true; });
   if (DEV) setupDev();
   renderPanel();
+  renderParty();
   renderArena(0);
 
   /* 첫 방문에만 타이틀을 보여준다. 방치형은 "무엇을 하는 게임인지"가 한 화면에

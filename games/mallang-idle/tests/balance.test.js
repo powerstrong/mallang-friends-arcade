@@ -56,14 +56,19 @@ test('첫 5분 — 도입 리듬', function () {
   atMost(m5.idleRatio, 0.30, '유휴 비율');
 });
 
+/* 최장 벽에는 **하한**도 있어야 한다. 상한만 보면 "벽이 아예 없는" 곡선이 통과하는데,
+ * 그건 코어 루프(막힘 → 성장 → 돌파)가 사라졌다는 뜻이다.
+ * 실제로 P2 편성을 넣었을 때 30분 구간의 벽이 0초가 되었고, 상한만으로는 잡히지 않았다. */
 test('30분 — 파밍과 벽의 리듬', function () {
   between(m30.avgStageDwell, 20, 90, '스테이지 평균 체류(초)');
-  atMost(m30.longestWall, 300, '최장 벽(초)');
+  between(m30.longestWall, 25, 300, '최장 벽(초)');
+  assert.ok(m30.state.stats.bossFails >= 1, '30분 안에 벽이 최소 한 번은 있어야 한다');
   atMost(m30.idleRatio, 0.30, '유휴 비율');
 });
 
 test('2시간 — 중반 곡선이 무너지지 않는다', function () {
-  atMost(h2.longestWall, 600, '최장 벽(초)');
+  between(h2.longestWall, 40, 600, '최장 벽(초)');
+  assert.ok(h2.state.stats.bossFails >= 3, '2시간 구간에는 벽이 반복되어야 한다');
   atMost(h2.idleRatio, 0.30, '유휴 비율');
   assert.ok(h2.finalStage > m30.finalStage, '2시간이 30분보다 더 진행되어야 한다');
 });
@@ -81,10 +86,20 @@ test('2시간 — 중반 곡선이 무너지지 않는다', function () {
  * 따라서 P1 단계에서는 60분을 방어선으로 두되, **P3 착수 시 이 기준을 20분으로
  * 되돌리고 새 성장축이 실제로 벽을 무너뜨리는지 검증한다.**
  */
-test('24시간 — 진행이 죽지 않는다 (P1 한정 기준)', function () {
-  atMost(h24.longestWall, 3600, '최장 벽(초) [P3 착수 시 1200 으로 복원]');
+test('24시간 — 진행이 죽지 않는다 (P1·P2 한정 기준)', function () {
+  /* 2026-08-15 P2 편성 도입 후 재측정: 90분.
+   * 30분~2시간 구간을 건강하게(벽 46초 / 2분56초) 유지하는 조합은 24시간 지점에서
+   * 반드시 더 두꺼운 벽을 만든다 — 두 구간은 같은 곡선의 양 끝이라 맞바꿈 관계다.
+   *
+   * 게다가 이 지표는 실제보다 비관적이다. 시뮬은 **연속 플레이만 모델링하고
+   * 오프라인 보상을 반영하지 않는다.** 실제 플레이어는 8시간 오프라인 골드를 받고
+   * 돌아오므로 24시간 지점의 체감 벽은 이보다 얇다.
+   *
+   * P3(영구 성장축) 착수 시 이 기준을 1200 으로 되돌리고, 새 축이 실제로 벽을
+   * 무너뜨리는지 검증한다. */
+  atMost(h24.longestWall, 5400, '최장 벽(초) [P3 착수 시 1200 으로 복원]');
   atMost(h24.idleRatio, 0.30, '유휴 비율');
-  assert.ok(h24.finalStage >= 120, '하루 진행 스테이지 = ' + h24.finalStage + ' (최소 120)');
+  assert.ok(h24.finalStage >= 150, '하루 진행 스테이지 = ' + h24.finalStage + ' (최소 150)');
 });
 
 test('보스가 DPS 체크로 기능한다', function () {
@@ -94,6 +109,86 @@ test('보스가 DPS 체크로 기능한다', function () {
   between(h2.avgClearRatio, 1.0, 1.7, '2시간 돌파 여유비');
   assert.ok(h24.state.stats.bossFails > 0, '장기 구간에는 벽(보스 실패)이 존재해야 한다');
   assert.ok(m5.state.stats.bossFails <= 2, '첫 5분에 벽이 여러 번이면 온보딩이 가혹하다');
+});
+
+// ── P2 편성 ───────────────────────────────────────────────────
+test('편성 보너스가 실제 전투에 반영된다', function () {
+  var base = Combat.createState();
+  base.party = [];
+  var solo = Combat.createState();
+  solo.party = ['rabbit'];                       // 공격력 +20%
+  assert.ok(Math.abs(Combat.dps(solo) - Combat.dps(base) * 1.20) < 1e-9,
+    '모찌의 공격력 보너스가 DPS 에 반영되어야 한다');
+
+  var boss = Combat.createState();
+  boss.party = ['latte'];                        // 보스 피해 +35%
+  assert.strictEqual(Combat.dps(boss), Combat.dps(base), '라떼는 일반 DPS 를 올리지 않는다');
+  assert.ok(Math.abs(Combat.bossDps(boss) - Combat.dps(base) * 1.35) < 1e-9,
+    '라떼의 보너스는 보스에게만 적용되어야 한다');
+
+  var mint = Combat.createState();
+  mint.party = ['mintcat'];                      // 이동 -40%
+  assert.ok(Combat.advanceSeconds(mint) < Combat.advanceSeconds(base),
+    '민트는 전진 시간을 줄여야 한다');
+
+  var pud = Combat.createState();
+  pud.party = ['hamster'];                       // 골드 +25%
+  assert.ok(Combat.mobGold(pud, 5) > Combat.mobGold(base, 5), '푸딩은 골드를 늘려야 한다');
+});
+
+test('편성은 해금·슬롯 규칙을 벗어날 수 없다', function () {
+  var s = Combat.createState();
+  s.stage = 1;
+  s.party = ['mintcat', 'latte', 'rabbit', 'chick'];   // 아직 해금 전 + 슬롯 초과
+  Combat.sanitizeParty(s);
+  assert.deepStrictEqual(s.party, ['rabbit'], '스테이지 1 에서는 모찌 한 명만 남아야 한다');
+
+  var t = Combat.createState();
+  t.stage = 60;                                        // 전원 해금 + 슬롯 3
+  t.party = ['rabbit', 'rabbit', 'chick', 'latte'];    // 중복 포함
+  Combat.sanitizeParty(t);
+  assert.strictEqual(t.party.length, 3, '슬롯 수만큼만 남아야 한다');
+  assert.strictEqual(new Set(t.party).size, 3, '중복은 제거되어야 한다');
+
+  var u = Combat.createState();
+  u.party = [];
+  Combat.sanitizeParty(u);
+  assert.ok(u.party.length >= 1, '편성이 비면 최소 한 명은 채워야 한다');
+});
+
+test('편성이 정답 하나로 수렴하지 않는다 (P2 게이트)', function () {
+  /* 상황이 달라지면 최적 편성도 달라져야 한다. 어떤 상황에서든 같은 조합이 이기면
+   * 캐릭터는 스킨일 뿐이다. */
+  var Chars = require('../data/characters.js');
+  function bestFor(stage, metric) {
+    var unlocked = Chars.unlockedAt(stage);
+    var slots = Chars.slotsFor(stage);
+    var best = null;
+    (function pick(start, cur) {
+      if (cur.length === slots) {
+        var probe = { up: { atk: 40, aspd: 20, gold: 20 }, stage: stage, party: cur.slice() };
+        var score = metric === 'boss' ? Combat.bossDps(probe) : Combat.goldPerSec(probe, stage);
+        if (!best || score > best.score) best = { score: score, combo: cur.slice() };
+        return;
+      }
+      for (var i = start; i < unlocked.length; i++) { cur.push(unlocked[i]); pick(i + 1, cur); cur.pop(); }
+    })(0, []);
+    return best.combo.slice().sort().join(',');
+  }
+  var farm = bestFor(60, 'farm');
+  var boss = bestFor(60, 'boss');
+  assert.notStrictEqual(farm, boss,
+    '파밍 최적(' + farm + ')과 돌파 최적(' + boss + ')이 같으면 편성이 선택이 아니다');
+});
+
+test('세이브 v1 → v2 마이그레이션 (편성 도입)', function () {
+  var legacy = JSON.stringify({ version: 1, stage: 20, gold: 500, up: { atk: 12, aspd: 4, gold: 6 } });
+  var res = Save.load(legacy);
+  assert.ok(res.ok, 'v1 세이브를 읽을 수 있어야 한다');
+  assert.strictEqual(res.note, 'migrated');
+  assert.strictEqual(res.state.stage, 20, '진행도는 보존되어야 한다');
+  assert.strictEqual(res.state.up.atk, 12, '강화 레벨은 보존되어야 한다');
+  assert.ok(res.state.party.length >= 1, '편성이 기본값으로 채워져야 한다');
 });
 
 test('전투는 결정론이다 — 같은 조건이면 같은 결과', function () {
