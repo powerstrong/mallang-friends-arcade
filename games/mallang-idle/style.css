@@ -2,6 +2,11 @@
  * 다른 부스 게임과 같은 규칙: game-shell 최대폭 430px, 화면 높이는
  * 100vh → 100dvh → var(--app-h) 3단 폴백 (일부 모바일 브라우저의 dvh 함정 회피). */
 
+/* hidden 속성은 UA 스타일(display:none)로만 숨긴다. 아래에서 클래스에 display:flex
+ * 등을 주는 순간 그게 이겨서 "hidden 인데 화면에 보이는" 요소가 된다 — 실제로
+ * 인트로 오버레이가 시작하기를 눌러도 사라지지 않는 사고가 났다. 전역 가드 필수. */
+[hidden] { display: none !important; }
+
 :root {
   --shell-w: 430px;
   --ink: #43324a;

@@ -155,6 +155,14 @@ UMD 패턴을 따라 브라우저와 Node에서 같은 파일을 쓴다.
 `requestAnimationFrame` 이 정지하므로 게임 시간이 흐르지 않는다. 코드 버그가 아니다.
 `?dev=1` 로 열고 `window.__mallangIdle` 훅을 쓰면 창을 띄우지 않고 검증할 수 있다.
 
+**표시/숨김 검증은 반드시 computed style 로** — `el.hidden` 속성값과
+프로그램적 `el.click()` 만으로 검증하면 "hidden 인데 화면에 보이는" 결함을 놓친다.
+`hidden` 속성은 UA 의 `display:none` 으로만 숨기므로, 클래스가 `display:flex` 를 주면
+그게 이긴다. 실제로 인트로 오버레이가 시작하기를 눌러도 안 사라지는 사고가 배포에서
+발견됐다(자동화는 전부 통과했는데). 가드는 style.css 최상단
+`[hidden] { display:none !important; }` — 지우지 말 것. 오버레이·모달 검증은
+`getComputedStyle().display` 와 `document.elementFromPoint()` 기반 좌표 클릭으로 한다.
+
 ```js
 var H = window.__mallangIdle;
 H.advance(60);        // 60초를 밀고 렌더까지 갱신
