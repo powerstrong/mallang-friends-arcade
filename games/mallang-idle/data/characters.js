@@ -31,7 +31,7 @@
     },
     {
       id: 'chick', name: '피치 병아리', unlockStage: 5,
-      walk: 'assets/hero-chick-walk.png', frameW: 165,
+      walk: 'assets/hero-chick-walk.png', frameW: 188,
       portrait: 'assets/portrait-chick.png',
       atk: 'assets/atk-chick.png', atkW: 301,
       skill: { key: 'aspdMul', value: 0.18 },
