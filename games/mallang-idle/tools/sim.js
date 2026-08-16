@@ -6,6 +6,9 @@
  *
  *   node games/mallang-idle/tools/sim.js --minutes=30
  *   node games/mallang-idle/tools/sim.js --hours=24 --json
+ *   node games/mallang-idle/tools/sim.js --hours=24 --sessions=15/120
+ *     (--sessions=활동분/오프라인분 — "15분 접속 + 120분 오프라인" 반복의 세션 모델.
+ *      연속 24h 시뮬은 방치형의 실제 리듬보다 벽 지표가 비관적으로 나온다)
  *
  * 게임 화면과 같은 engine/combat.js 를 쓴다. 전투 로직을 여기에 다시 구현하면
  * 지표가 거짓말을 하게 되므로 절대 복제하지 않는다.
@@ -155,6 +158,15 @@ function run(opts) {
   opts = opts || {};
   var duration = opts.seconds || 300;
   var questModel = opts.questModel || 'upper';
+  /* opts.sessions = { activeSec, gapSec } — 오프라인 세션 모델.
+   * [activeSec 동안 기존 로직대로 활동 → gapSec 동안 오프라인] 을 반복하고,
+   * 벽시계(활동+오프라인)가 duration 에 도달하면 끝낸다. 오프라인 구간은 엔진의
+   * Combat.offlineReward 만 받는다(효율·8h 상한도 엔진이 건다). 값은 시뮬 정책이지
+   * 게임 밸런스가 아니므로 BALANCE 가 아니라 호출자(CLI 인자)가 준다. */
+  var sessions = opts.sessions || null;
+  if (sessions && !(sessions.activeSec > 0 && sessions.gapSec > 0)) {
+    throw new Error('opts.sessions 는 { activeSec > 0, gapSec > 0 } 이어야 한다');
+  }
   var dt = POLICY.decisionInterval;
 
   var s = Combat.createState();
@@ -162,16 +174,23 @@ function run(opts) {
   var m = {
     duration: duration,
     questModel: questModel,
+    sessions: sessions,    // null 이면 연속 플레이(기존) 모델
     firstUpgradeAt: null,
     firstBossAt: null,
     firstBossClearAt: null,
     idleSeconds: 0,
     stageDwell: [],        // 스테이지별 체류 시간
+    /* 벽 지표(longestWall·wallSeconds)는 s.t 의 차이로 재므로 **활동(플레이) 시간
+     * 기준**이다. 세션 모델에서 오프라인 gap 은 s.t 에 흐르지 않으니 자동으로
+     * "활동 중에 체감한 벽"만 남는다 — 오프라인으로 넘기는 벽은 정체감이 아니므로
+     * 이것이 의도된 정의다. */
     longestWall: 0,        // 보스 첫 실패 → 돌파까지 가장 오래 걸린 시간
     longestWallStage: null,
     wallSeconds: 0,        // 벽에 막혀 있던 총 시간 — 장기 정체감의 정직한 지표
     clearRatios: [],       // 돌파 시점의 (dps * bossTimeLimit) / bossHp
     goldPerMinSamples: [],
+    activeSeconds: 0,      // 총 활동 시간 — 루프 종료 후 s.t 로 확정
+    offlineGold: 0,        // 오프라인 보상으로 받은 골드 총량
   };
 
   m.partyChanges = 0;
@@ -191,8 +210,28 @@ function run(opts) {
   var stuck = false;           // 이번 스테이지에서 보스를 한 번이라도 놓쳤는가
   var lastGoldEarned = 0;
   var nextGoldSampleAt = 60;
+  /* 벽시계 = s.t(활동 시간) + offlineSec(오프라인 gap 누적).
+   * s.t 는 엔진의 "플레이 시간"이므로 오프라인 gap 을 절대 더하지 않는다 — 더하면
+   * 전투 상태와 벽 지표가 오염된다. 연속 모드에서는 offlineSec 이 항상 0 이라
+   * 아래의 모든 `s.t + offlineSec` 이 기존 `s.t` 와 부동소수까지 동일하다
+   * (opts.sessions 없이는 기존 동작이 그대로 보존된다는 뜻이다). */
+  var offlineSec = 0;
+  var sessionActiveT = 0;    // 이번 접속에서 소비한 활동 시간 (세션 모델 전용)
 
-  while (s.t < duration) {
+  while (s.t + offlineSec < duration) {
+    /* 세션 모델 — 접속 창(activeSec)을 다 썼으면 gapSec 을 오프라인으로 흘려보낸다.
+     * 전투·스테이지·s.t 는 멈춘 채 엔진의 오프라인 보상만 골드로 들어온다. */
+    if (sessions && sessionActiveT >= sessions.activeSec) {
+      var gap = Math.min(sessions.gapSec, duration - (s.t + offlineSec));
+      var off = Combat.offlineReward(s, gap);
+      s.gold += off.gold;
+      s.stats.goldEarned += off.gold;
+      m.offlineGold += off.gold;
+      offlineSec += gap;
+      sessionActiveT = 0;
+      continue;    // 벽시계가 흘렀다 — 종료·일일 콘텐츠 조건을 새로 평가한다
+    }
+
     var dpsOnly = POLICY.bossStuckDpsOnly && stuck;
 
     /* 유휴 = 다음 강화까지 대기가 임계를 넘는 시간.
@@ -200,9 +239,11 @@ function run(opts) {
      * 골드가 모이는 짧은 대기는 정상이고, 문제는 하염없이 기다리는 구간이다. */
     if (waitForNextUpgrade(s, dpsOnly) > POLICY.idleThresholdSec) m.idleSeconds += dt;
 
-    // 마지막 구간이 duration 을 넘지 않도록 자른다 — 요청한 시간만 정확히 시뮬한다.
-    var stepDt = Math.min(dt, duration - s.t);
+    // 마지막 구간이 duration(벽시계)·접속 창을 넘지 않도록 자른다.
+    var stepDt = Math.min(dt, duration - (s.t + offlineSec));
+    if (sessions) stepDt = Math.min(stepDt, sessions.activeSec - sessionActiveT);
     Combat.step(s, stepDt);
+    sessionActiveT += stepDt;
 
     // 이번 구간에 일어난 이벤트 처리
     for (var i = 0; i < s.events.length; i++) {
@@ -240,9 +281,12 @@ function run(opts) {
       }
     }
 
-    // 하루 단위 콘텐츠 보상 — 던전은 해금된 날부터 하루에 한 번 (두 모델 공통)
-    if (s.stage >= B.dungeonUnlockStage && s.t >= nextDailyAt) {
-      nextDailyAt = s.t + 86400;
+    // 하루 단위 콘텐츠 보상 — 던전은 해금된 날부터 하루에 한 번 (두 모델 공통).
+    // "하루"의 기준은 벽시계다 — 오프라인으로 흘러도 날짜는 간다(연속 모드에서는
+    // s.t == 벽시계라 기존과 동일). 다음 날을 "지금 + 24h"로 다시 잡으므로
+    // 며칠을 건너뛰어도 지난 날의 던전 횟수가 몰아서 지급되지는 않는다(실제 게임과 같다).
+    if (s.stage >= B.dungeonUnlockStage && s.t + offlineSec >= nextDailyAt) {
+      nextDailyAt = s.t + offlineSec + 86400;
       for (var dr = 0; dr < B.dungeonRunsPerDay; dr++) {
         var dres = Dungeon.simulate(s);
         Dungeon.applyReward(s, dres);
@@ -256,7 +300,11 @@ function run(opts) {
 
     // baseline 과제 — 실제 진행도로 판정하고, 채운 순간 수령한다 (game.js 와 같은 API)
     if (questModel === 'baseline') {
-      if (s.t >= nextQuestDayAt) {
+      /* 날짜 리셋도 벽시계 기준. while 인 이유: 세션 모델의 긴 gap 은 하루 경계를
+       * 한 번에 여러 개 넘을 수 있는데, if 로 하루씩만 따라가면 리셋이 벽시계에
+       * 뒤처져 이후 접속마다 반복 발화한다. 연속 모드에서는 dt(0.5s)가 하루를
+       * 넘을 수 없어 두 번 돌 일이 없다 — 기존 if 와 동일하게 동작한다. */
+      while (s.t + offlineSec >= nextQuestDayAt) {
         simDay++;
         simDaily = Quests.freshDaily('day' + simDay, s.stats);
         nextQuestDayAt += 86400;
@@ -290,6 +338,8 @@ function run(opts) {
     m.unresolvedWall = 0;
   }
 
+  m.activeSeconds = s.t;   // 총 활동 시간 — 세션 모델에서는 duration(벽시계)보다 작다
+  m.offlineGoldRatio = s.stats.goldEarned > 0 ? m.offlineGold / s.stats.goldEarned : 0;
   m.idleRatio = m.idleSeconds / duration;
   /* 벽 비율 — idleRatio 는 "살 것이 없는 시간"만 재서 67분짜리 벽에서도 0 이 나온다
    * (골드는 계속 흐르니까). 장기 정체감은 벽 체류 시간으로 따로 잰다(codex P2). */
@@ -315,6 +365,7 @@ function fmtTime(sec) {
   if (sec == null) return '—';
   if (sec < 60) return sec.toFixed(1) + 's';
   var mm = Math.floor(sec / 60), ss = Math.round(sec % 60);
+  if (ss === 60) { mm += 1; ss = 0; }   // 59.99…s 가 "Xm 60s" 로 찍히는 반올림 경계
   return mm + 'm ' + String(ss).padStart(2, '0') + 's';
 }
 
@@ -330,6 +381,7 @@ function report(m) {
   var s = m.state;
   var lines = [];
   lines.push('=== simulate ' + fmtTime(m.duration) +
+    (m.sessions ? '  [세션 ' + fmtTime(m.sessions.activeSec) + ' 접속 + ' + fmtTime(m.sessions.gapSec) + ' 오프라인]' : '') +
     (m.questModel === 'baseline'
       ? '  [baseline — 과제는 실제 달성분만]'
       : '  [upper-bound — 과제 전액 즉시 수령]') + ' ===');
@@ -346,6 +398,11 @@ function report(m) {
   lines.push('벽 체류         ' + fmtTime(m.wallSeconds) + '  (' + (m.wallRatio * 100).toFixed(1) + '%)');
   lines.push('유휴 비율       ' + (m.idleRatio * 100).toFixed(1) + '%');
   lines.push('돌파 여유비     ' + (m.avgClearRatio == null ? '—' : m.avgClearRatio.toFixed(2)) + '   (1.0 = 제한시간 딱 맞춤)');
+  if (m.sessions) {
+    // 세션 모델 전용 줄 — 위의 벽·체류 지표는 활동 시간 기준으로 읽어야 한다
+    lines.push('활동 시간       ' + fmtTime(m.activeSeconds) + '  (벽시계의 ' + (m.activeSeconds / m.duration * 100).toFixed(1) + '%)');
+    lines.push('오프라인 골드   ' + fmtNum(m.offlineGold) + '  (총 골드의 ' + (m.offlineGoldRatio * 100).toFixed(1) + '%)');
+  }
   lines.push('총 골드         ' + fmtNum(s.stats.goldEarned));
   lines.push('유물            망치 ' + s.relics.hammer + ' · 곳간 ' + s.relics.barn + ' · 나침반 ' + s.relics.compass + '  (조각 ' + Math.floor(s.shards) + ')');
   lines.push('최종 DPS        ' + fmtNum(Combat.dps(s)));
@@ -355,12 +412,16 @@ function report(m) {
 
 /* ── CLI ────────────────────────────────────────────────────── */
 function parseArgs(argv) {
-  var o = { seconds: 300, json: false, model: 'both' };
+  var o = { seconds: 300, json: false, model: 'both', sessions: null };
   argv.forEach(function (a) {
     var mm;
     if ((mm = a.match(/^--minutes=([\d.]+)$/))) o.seconds = parseFloat(mm[1]) * 60;
     else if ((mm = a.match(/^--hours=([\d.]+)$/))) o.seconds = parseFloat(mm[1]) * 3600;
     else if ((mm = a.match(/^--seconds=([\d.]+)$/))) o.seconds = parseFloat(mm[1]);
+    // --sessions=15/120 : "15분 접속 + 120분 오프라인" 반복 (분 단위, 시뮬 정책 인자)
+    else if ((mm = a.match(/^--sessions=([\d.]+)\/([\d.]+)$/))) {
+      o.sessions = { activeSec: parseFloat(mm[1]) * 60, gapSec: parseFloat(mm[2]) * 60 };
+    }
     else if ((mm = a.match(/^--model=(baseline|upper|both)$/))) o.model = mm[1];
     else if (a === '--json') o.json = true;
   });
@@ -380,7 +441,7 @@ if (require.main === module) {
   var opts = parseArgs(process.argv.slice(2));
   var models = opts.model === 'both' ? ['baseline', 'upper'] : [opts.model];
   var results = models.map(function (qm) {
-    return run({ seconds: opts.seconds, questModel: qm });
+    return run({ seconds: opts.seconds, questModel: qm, sessions: opts.sessions });
   });
   if (opts.json) {
     var out = {};

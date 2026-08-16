@@ -390,6 +390,23 @@ test('오프라인은 스테이지를 진행시키지 않는다', function () {
   assert.strictEqual(s.stage, before, '오프라인 보상은 골드만 준다');
 });
 
+test('오프라인 세션 모델이 완주하고 오프라인 골드가 흐른다 (tools/sim.js opts.sessions)', function () {
+  /* 24h 를 "15분 접속 + 120분 오프라인" 반복으로 돌린다.
+   * 이 모델은 이제 막 생겼으므로 수치를 고정하지 않는다 — 완주와 방향 불변조건만 본다.
+   * (opts.sessions 가 없을 때의 기존 동작 보존은 위의 연속 모드 회귀 테스트들이
+   *  무변경으로 통과하는 것 자체가 증거다.) */
+  var sm = Sim.run({ seconds: 86400, sessions: { activeSec: 15 * 60, gapSec: 120 * 60 } });
+  assert.ok(isFinite(sm.state.gold) && sm.state.gold >= 0, '골드는 유한·비음수여야 한다');
+  assert.ok(sm.offlineGold > 0, '오프라인 골드가 흘러야 한다 (offlineGold=' + sm.offlineGold + ')');
+  assert.ok(sm.offlineGoldRatio > 0 && sm.offlineGoldRatio < 1,
+    '오프라인 골드 비율은 0~1 사이여야 한다 (' + sm.offlineGoldRatio + ')');
+  assert.ok(sm.activeSeconds > 0 && sm.activeSeconds < 86400,
+    '활동 시간은 0 과 벽시계 총량 사이여야 한다 (' + sm.activeSeconds + ')');
+  assert.ok(sm.finalStage >= 1 && sm.finalStage <= h24.finalStage,
+    '활동이 연속 24h 보다 적으니 도달 스테이지(' + sm.finalStage +
+    ')는 연속 모델(' + h24.finalStage + ') 이하여야 한다');
+});
+
 test('일괄 강화 비용이 개별 합과 일치한다', function () {
   var s = Combat.createState();
   s.gold = 1e12;
