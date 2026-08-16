@@ -76,7 +76,7 @@
     muteBtn: $('muteBtn'),
     toastStack: $('toastStack'),
     offlineModal: $('offlineModal'), offlineGold: $('offlineGold'),
-    offlineSub: $('offlineSub'), offlineOk: $('offlineOk'),
+    offlineSub: $('offlineSub'), offlineOk: $('offlineOk'), offlineHint: $('offlineHint'),
     tabModal: $('tabModal'), tabReload: $('tabReload'), tabResume: $('tabResume'),
     partyHint: $('partyHint'),
     devPanel: $('devPanel'),
@@ -171,7 +171,12 @@
     if (coachEl) { coachEl.remove(); coachEl = null; }
   }
 
+  /* 실효 공속이 상한에 닿았는가 — 편성 보너스(피치) 포함. 상한 이후의 ASPD 레벨은
+   * 효과가 없으므로 구매를 막는다(codex 리뷰 #4: MAX 가 골드를 허공에 태우던 문제). */
+  function aspdMaxed() { return Combat.effAspd(state) >= B.aspdCap - 1e-9; }
+
   function onBuy(axisId) {
+    if (axisId === 'aspd' && aspdMaxed()) return;
     var n = plannedCount(axisId);
     if (n <= 0) return;
     var got = Combat.buy(state, axisId, n);
@@ -181,8 +186,9 @@
   function effectText(axisId) {
     if (axisId === 'atk')  return '공격력 ' + fmt(Combat.atk(state.up.atk));
     if (axisId === 'aspd') {
-      var a = Combat.aspd(state.up.aspd);
-      return '초당 ' + a.toFixed(2) + '회' + (a >= B.aspdCap ? ' (최대)' : '');
+      // 표시도 실효값(편성 포함) — 표시는 5.0 미만인데 실제는 최대인 불일치를 없앤다
+      var a = Combat.effAspd(state);
+      return '초당 ' + a.toFixed(2) + '회' + (aspdMaxed() ? ' (최대)' : '');
     }
     return '골드 x' + Combat.goldMul(state.up.gold).toFixed(2);
   }
@@ -790,8 +796,9 @@
       var imp = spawnFx('fx-impact' + (crit ? ' crit' : ''), p.x + jx, p.y + jy, 340);
       if (imp) imp.style.setProperty('--rot', Math.floor(Math.random() * 70 - 35) + 'deg');
 
-      spawnFx('fx-dmg' + (crit ? ' crit' : ''), p.x + jx, p.y + jy - 28, 640,
-        fmt(dmg) + (crit ? '!' : ''));
+      /* 5타 강조는 콤보 리듬 연출이다 — '!' 를 붙이면 크리티컬(추가 피해)로 읽히는데
+       * 실제 피해 증가는 없다(codex 리뷰 #5). 숫자는 언제나 실제 누적 피해다. */
+      spawnFx('fx-dmg' + (crit ? ' crit' : ''), p.x + jx, p.y + jy - 28, 640, fmt(dmg));
 
       el.enemy.classList.remove('squash');
       void el.enemy.offsetWidth;
@@ -871,7 +878,9 @@
 
   function updateCombatFx(dt) {
     var fighting = state.phase !== Combat.PHASE_ADVANCE && !el.enemy.hidden;
-    dmgSince += Combat.dps(state) * dt * speedMul * (state.phase === Combat.PHASE_BOSS ? (1 + Combat.partyBonus(state).bossMul) : 1);
+    /* 데미지 숫자는 실제 깎이는 HP 와 같아야 한다 — 보스전은 bossDps(라떼+나침반
+     * 전부 포함). 이전에는 bossMul 만 곱해 나침반 유저의 숫자가 실제보다 작았다. */
+    dmgSince += (state.phase === Combat.PHASE_BOSS ? Combat.bossDps(state) : Combat.dps(state)) * dt * speedMul;
     if (!fighting) { dmgSince = 0; return; }
 
     // 타격 틱: 공속을 따르되 눈이 따라갈 상한(초당 4회)을 둔다
@@ -931,22 +940,44 @@
     AXES.forEach(function (axis) {
       var n = upNodes[axis.id];
       var lv = state.up[axis.id];
+      var maxed = axis.id === 'aspd' && aspdMaxed();
       var count = plannedCount(axis.id);
       var cost = count > 0 ? Combat.bulkCost(state, axis.id, count) : Combat.upgradeCost(axis.id, lv);
-      var can = count > 0 && cost <= state.gold;
+      var can = !maxed && count > 0 && cost <= state.gold;
 
       n.lv.textContent = 'Lv.' + lv;
       n.eff.textContent = effectText(axis.id);
-      n.cost.textContent = fmt(cost);
-      n.cnt.textContent = (bulk === 'max')
-        ? (count > 0 ? '+' + count + '레벨' : '골드 부족')
-        : '+' + count + '레벨';
+      n.cost.textContent = maxed ? '—' : fmt(cost);
+      n.cnt.textContent = maxed
+        ? '최대 도달'
+        : (bulk === 'max')
+          ? (count > 0 ? '+' + count + '레벨' : '골드 부족')
+          : '+' + count + '레벨';
       n.btn.disabled = !can;
       n.btn.classList.toggle('can', can);
     });
     el.dpsHint.textContent = 'DPS ' + fmt(Combat.dps(state));
+    syncTabVisibility();
     syncCoach();
     renderHud();
+  }
+
+  /* 탭 점진 공개(codex 리뷰 #10) — 처음에는 강화만 보인다. 편성은 첫 동료가
+   * 생겼을 때, 유물은 첫 조각을 얻었을 때, 도전은 던전 해금, 도감은 첫 수집
+   * 몇 종부터. 전부 상태에서 파생되므로 복귀 유저는 즉시 다 열려 있다. */
+  var tabBtns = null;
+  function syncTabVisibility() {
+    if (!tabBtns) {
+      tabBtns = {};
+      Array.prototype.forEach.call(el.tabs.children, function (c) {
+        tabBtns[c.getAttribute('data-tab')] = c;
+      });
+    }
+    var r = state.relics;
+    tabBtns.party.hidden = Chars.unlockedAt(state.stage).length <= 1;
+    tabBtns.relic.hidden = !(state.shards > 0 || (r && (r.hammer || r.barn || r.compass)));
+    tabBtns.battle.hidden = state.stage < B.dungeonUnlockStage;
+    tabBtns.book.hidden = (state.collection || []).length < 3;
   }
 
   /* 매 프레임 바뀌는 것은 배경 위치·적 HP·보스 타이머뿐이다. 나머지(클래스 토글,
@@ -1222,6 +1253,15 @@
     el.offlineSub.textContent =
       fmtDuration(reward.seconds) + ' 동안 ' + reward.farmStage + '스테이지에서 모았어요' +
       (reward.cappedBy === 'max' ? ' (최대 ' + B.offlineMaxHours + '시간)' : '');
+    /* 복귀를 행동으로 잇는다(codex 리뷰 #8) — 받은 골드로 지금 몇 레벨을 올릴 수
+     * 있는지 보여준다. 골드는 grantOffline 에서 이미 더해진 상태다. */
+    var best = 0;
+    for (var i = 0; i < AXES.length; i++) {
+      var a = Combat.affordable(state, AXES[i].id, null);
+      if (a > best) best = a;
+    }
+    el.offlineHint.hidden = !(best > 0);
+    if (best > 0) el.offlineHint.textContent = '지금 바로 강화 +' + fmt(best) + '레벨 가능!';
     el.offlineModal.hidden = false;
   }
 
