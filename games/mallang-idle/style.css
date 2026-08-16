@@ -219,13 +219,14 @@ body {
 
 /* 타격 순간 — 움츠렸다(예비 동작) 튀어나가 때리고 돌아온다.
  * 접촉은 40% 지점(≈120ms) — game.js 의 임팩트 타이밍과 맞물린다. 히트스톱이
- * 이 애니메이션을 접촉 자세에서 잠깐 얼리므로 "맞는 순간"이 또렷하게 남는다. */
+ * 이 애니메이션을 접촉 자세에서 잠깐 얼리므로 "맞는 순간"이 또렷하게 남는다.
+ * 돌진 거리 --lunge 는 game.js syncLunge 가 매 타격 실측으로 넣는다(접점 통일). */
 .hero.strike { animation: heroStrike .3s cubic-bezier(.3, 1.2, .5, 1) !important; }
 @keyframes heroStrike {
   0%   { transform: scale(var(--sc, .40)) translateX(0); }
   16%  { transform: scale(var(--sc, .40)) translateX(-13px) rotate(-6deg) scaleX(.96) scaleY(1.05); }
-  40%  { transform: scale(var(--sc, .40)) translateX(64px) rotate(7deg) scaleY(.92); }
-  58%  { transform: scale(var(--sc, .40)) translateX(48px) rotate(3deg) scaleY(1.07); }
+  40%  { transform: scale(var(--sc, .40)) translateX(var(--lunge, 64px)) rotate(7deg) scaleY(.92); }
+  58%  { transform: scale(var(--sc, .40)) translateX(calc(var(--lunge, 64px) * .75)) rotate(3deg) scaleY(1.07); }
   100% { transform: scale(var(--sc, .40)) translateX(0); }
 }
 

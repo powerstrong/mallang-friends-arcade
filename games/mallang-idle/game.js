@@ -67,6 +67,7 @@
     shardNum: $('shardNum'), exitBtn3: $('exitBtn3'),
     panelBattle: $('panelBattle'), battleDot: $('battleDot'), questList: $('questList'),
     dungeonRuns: $('dungeonRuns'), dungeonBest: $('dungeonBest'), dungeonGo: $('dungeonGo'),
+    dungeonPreview: $('dungeonPreview'),
     dungeonModal: $('dungeonModal'), dungeonSub: $('dungeonSub'), dungeonKills: $('dungeonKills'),
     dungeonShards: $('dungeonShards'), dungeonGold: $('dungeonGold'), dungeonOk: $('dungeonOk'),
     exitBtn4: $('exitBtn4'),
@@ -373,6 +374,20 @@
     });
   }
 
+  /* 던전 사전 정보(6차 백로그) — 결과가 결정론이므로 "예상"은 곧 정답이다.
+   * 들어가기 전에 기준층과 보상 규모를 보여 주면 "지금 갈까, 더 크고 갈까"가
+   * 진짜 선택이 된다. simulate 는 싸지만 프레임마다 돌릴 이유는 없어 메모한다. */
+  var dgPrevKey = '', dgPrevText = '';
+  function dungeonPreviewText() {
+    var key = state.safeStage + '|' + Math.round(Combat.bossDps(state));
+    if (key !== dgPrevKey) {
+      var r = Dungeon.simulate(state);
+      dgPrevKey = key;
+      dgPrevText = r.baseStage + '층 기준 · 예상 ' + r.kills + '연승 ⭐' + fmt(r.shards);
+    }
+    return dgPrevText;
+  }
+
   function renderBattle() {
     if (!state.daily || !state.dungeon) return;
     var locked = state.stage < B.dungeonUnlockStage;
@@ -383,6 +398,7 @@
       el.dungeonBest.textContent = state.dungeon.best;
       el.dungeonGo.disabled = true;
       el.dungeonGo.textContent = '잠김';
+      el.dungeonPreview.hidden = true;
       return renderQuests();
     }
     var left = B.dungeonRunsPerDay - state.dungeon.runs;
@@ -390,6 +406,8 @@
     el.dungeonBest.textContent = state.dungeon.best;
     el.dungeonGo.disabled = left <= 0;
     el.dungeonGo.textContent = left > 0 ? '입장' : '내일 다시';
+    el.dungeonPreview.hidden = left <= 0;
+    if (left > 0) el.dungeonPreview.textContent = dungeonPreviewText();
     renderQuests();
   }
 
@@ -755,6 +773,7 @@
     void el.hero.offsetWidth;
     el.hero.classList.add('strike');
     swapToAttackPose();
+    syncLunge();
     sfx('hit');
     var p = enemyPoint();     // 좌표는 지금 고정 — 접촉까지 적이 바뀌어도 빈 곳에 안 찍힌다
     // 돌진이 시작되는 발밑에서 먼지가 퐁 — 출발의 무게
@@ -791,6 +810,22 @@
     /* 연타 시 이전 복원 타이머가 다음 타격의 공격 포즈를 중간에 되돌리는 경합 방지 */
     clearTimeout(restoreTimer);
     restoreTimer = setTimeout(restoreWalkPose, 320);
+  }
+
+  /* 타격 접점 통일(6차 백로그) — 돌진 거리가 고정 64px 이면 캐릭터 폭(139~301px)에
+   * 따라 주먹이 적을 뚫거나 허공에 멈춘다. 매 타격마다 실제 간격을 재서 주먹이
+   * 적 몸에 살짝(12px) 파고드는 지점까지만 나아가게 한다. translateX 는 scale(--sc)
+   * 안에서 움직이므로 스케일로 나눠 보정한다. 보스전은 원거리 대시 상한을 둔다. */
+  function syncLunge() {
+    var hr = el.hero.getBoundingClientRect();
+    var er = el.enemyArt.getBoundingClientRect();
+    if (!hr.width || !er.width) return;
+    var sc = parseFloat(getComputedStyle(el.hero).getPropertyValue('--sc')) || 0.4;
+    var gap = er.left - hr.right;
+    var reach = (gap + 12) / sc;
+    if (!isFinite(reach)) return;
+    reach = Math.max(24, Math.min(170, Math.round(reach)));
+    el.hero.style.setProperty('--lunge', reach + 'px');
   }
 
   /* 공격 포즈 스왑 — 전용 공격 스프라이트가 있으면 타격 동안 그 포즈로 바꾼다. */

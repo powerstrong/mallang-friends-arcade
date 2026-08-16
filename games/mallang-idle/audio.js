@@ -68,7 +68,7 @@
     return noiseBuf;
   }
 
-  function thud(dur, vol, filterFreq, when) {
+  function thud(dur, vol, filterFreq, when, dest) {
     if (muted) return;
     var c = ac();
     if (!c) return;
@@ -81,7 +81,7 @@
     var gain = c.createGain();
     gain.gain.setValueAtTime(vol || 0.1, t0);
     gain.gain.exponentialRampToValueAtTime(0.0005, t0 + dur);
-    src.connect(filter).connect(gain).connect(c.destination);
+    src.connect(filter).connect(gain).connect(dest || c.destination);
     src.start(t0);
     src.stop(t0 + dur + 0.02);
   }
@@ -153,6 +153,18 @@
 
   var bgm = { mood: null, timer: null, step: 0, nextAt: 0 };
 
+  /* BGM 전용 마스터 게인 — 무드 전환 크로스페이드(정확히는 딥 전환)가 여기 걸린다.
+   * 효과음은 이 버스를 타지 않으므로 전환 중에도 또렷하게 들린다. */
+  var bgmGain = null;
+  function bgmBus(c) {
+    if (!bgmGain) {
+      bgmGain = c.createGain();
+      bgmGain.gain.value = 1;
+      bgmGain.connect(c.destination);
+    }
+    return bgmGain;
+  }
+
   function noteFreq(root, scale, idx) {
     var oct = Math.floor(idx / scale.length);
     var semi = scale[((idx % scale.length) + scale.length) % scale.length];
@@ -167,7 +179,7 @@
     gain.gain.setValueAtTime(0.0001, t0);
     gain.gain.linearRampToValueAtTime(vol, t0 + 0.015);
     gain.gain.exponentialRampToValueAtTime(0.0005, t0 + dur);
-    osc.connect(gain).connect(c.destination);
+    osc.connect(gain).connect(bgmBus(c));
     osc.start(t0);
     osc.stop(t0 + dur + 0.02);
   }
@@ -188,7 +200,7 @@
       var b = m.bass[i], l = m.lead[i];
       if (b != null) bgmVoice(c, noteFreq(m.root / 2, m.scale, b), t0, stepDur * 1.8, 'triangle', 0.05);
       if (l != null) bgmVoice(c, noteFreq(m.root, m.scale, l), t0, stepDur * 0.9, 'square', 0.022);
-      if (m.hat[i]) thud(0.03, 0.014, 6000, t0);
+      if (m.hat[i]) thud(0.03, 0.014, 6000, t0, bgmBus(c));
       bgm.step++;
       bgm.nextAt += stepDur;
     }
@@ -196,12 +208,29 @@
 
   function bgmSet(mood) {
     if (mood === bgm.mood) return;
+    var had = bgm.mood;
     bgm.mood = mood || null;
     bgm.step = 0;
-    var c = mood ? ac() : null;
+    var c = mood ? ac() : ctx;   // 끌 때도 살아 있는 컨텍스트가 있으면 페이드아웃에 쓴다
     bgm.nextAt = c ? c.currentTime + 0.05 : 0;
-    if (bgm.mood && !bgm.timer) bgm.timer = setInterval(bgmTick, 120);
+    /* 음소거 중에는 타이머를 만들지 않는다 — 음소거 해제(setMuted)가 되살린다 */
+    if (bgm.mood && !bgm.timer && !muted) bgm.timer = setInterval(bgmTick, 120);
     if (!bgm.mood && bgm.timer) { clearInterval(bgm.timer); bgm.timer = null; }
+    /* 무드 전환 크로스페이드(6차 백로그) — 이전 트랙의 꼬리를 0.12s 로 접고
+     * 새 무드의 첫 마디를 0.3s 에 걸쳐 올린다. 예약된 옛 노트는 버스에서 잦아든다. */
+    if (c && had && bgmGain) {
+      var g = bgmGain.gain;
+      var t = c.currentTime;
+      g.cancelScheduledValues(t);
+      g.setValueAtTime(Math.max(0.0001, g.value), t);
+      g.linearRampToValueAtTime(0.0001, t + 0.12);
+      if (bgm.mood) {
+        g.linearRampToValueAtTime(1, t + 0.42);
+        bgm.nextAt = t + 0.14;   // 새 무드는 딥의 바닥을 지난 뒤 시작
+      } else {
+        g.linearRampToValueAtTime(1, t + 0.6);   // 다음 재생을 위해 복원해 둔다
+      }
+    }
   }
 
   window.MallangIdleAudio = {
@@ -213,7 +242,10 @@
     setMuted: function (m) {
       muted = !!m;
       try { localStorage.setItem(MUTE_KEY, muted ? '1' : '0'); } catch (e) {}
+      /* 음소거 중에는 120ms 타이머도 세우지 않는다(6차 백로그) — 무드는 기억해 둔다 */
+      if (muted && bgm.timer) { clearInterval(bgm.timer); bgm.timer = null; }
       if (!muted && bgm.mood) {
+        if (!bgm.timer) bgm.timer = setInterval(bgmTick, 120);
         // 음소거 해제 — 밀린 스텝을 몰아서 찍지 않도록 클록을 리셋
         var c = ac();
         if (c) bgm.nextAt = c.currentTime + 0.05;
