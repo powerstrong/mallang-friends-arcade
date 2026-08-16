@@ -149,6 +149,18 @@
       lead: [7, null, null, 6, null, null, 5, null, 7, null, null, 6, null, 5, 4, null],
       hat:  [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
     },
+    starsea: { // 에올리안 자장가 — 밤바다의 반짝임
+      root: 247, bpm: 84, scale: [0, 2, 3, 5, 7, 8, 10],
+      bass: [0, null, null, null, null, null, 3, null, 5, null, null, null, 4, null, null, null],
+      lead: [7, null, 9, null, null, 7, null, 5, null, 7, null, 10, null, 9, null, 7],
+      hat:  [0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 1],
+    },
+    moonfactory: { // 화성 단음계 — 절뚝이며 도는 라인
+      root: 208, bpm: 108, scale: [0, 2, 3, 5, 7, 8, 11],
+      bass: [0, null, 0, null, null, 0, null, 3, 2, null, 2, null, null, 4, 3, null],
+      lead: [null, 4, null, null, 5, null, 4, null, null, 7, null, 5, null, null, 2, null],
+      hat:  [1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1],
+    },
   };
 
   var bgm = { mood: null, timer: null, step: 0, nextAt: 0 };

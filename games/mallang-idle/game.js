@@ -21,7 +21,10 @@
   function sfx(name) { if (Audio) Audio.play(name); }
 
   /* BGM 무드 = 현재 페이즈(보스) 우선, 아니면 챕터. core 는 machine 트랙을 잇는다. */
-  var BGM_BY_CHAPTER = { meadow: 'meadow', gears: 'gears', machine: 'machine', core: 'machine', garden: 'garden' };
+  var BGM_BY_CHAPTER = {
+    meadow: 'meadow', gears: 'gears', machine: 'machine', core: 'machine',
+    garden: 'garden', starsea: 'starsea', moonfactory: 'moonfactory',
+  };
   function syncBgm() {
     if (!Audio || !gameStarted) return;
     var mood = state.phase === Combat.PHASE_BOSS
@@ -263,6 +266,7 @@
     if (pb.goldMul)    parts.push('골드 +' + Math.round(pb.goldMul * 100) + '%');
     if (pb.bossMul)    parts.push('보스 +' + Math.round(pb.bossMul * 100) + '%');
     if (pb.advanceMul) parts.push('이동 -' + Math.round(pb.advanceMul * 100) + '%');
+    if (pb.shardMul)   parts.push('별조각 +' + Math.round(pb.shardMul * 100) + '%');
     el.partyBonusHint.textContent = parts.join(' · ') || '보너스 없음';
   }
 
@@ -656,6 +660,7 @@
   var AMBIENT_ART = {
     meadow: 'assets/pt-petal.png', garden: 'assets/pt-petal.png',
     gears: 'assets/pt-gear.png', machine: 'assets/pt-gear.png', core: 'assets/pt-gear.png',
+    starsea: 'assets/fx-star.png', moonfactory: 'assets/pt-gear.png',
   };
   var reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   function updateAmbient(dt) {

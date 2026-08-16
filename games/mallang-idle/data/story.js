@@ -82,6 +82,23 @@
         { who: 'rabbit',  text: '끝났어… 어? 하늘에서 빛이 내려온다?' },
       ],
     },
+    /* ── 2막: 별빛 바다 → 달 공장 ── */
+    {
+      id: 'ch-starsea', trigger: { type: 'chapter', chapter: 'starsea' },
+      lines: [
+        { who: 'otter',  text: '별조각이 반짝여! 바다가 부르고 있어!' },
+        { who: 'narr',   text: '모아 온 별조각들이 떠올라 바다 위에 길을 놓는다.' },
+        { who: 'rabbit', text: '기계군단은 어디서 왔을까? 별길을 따라가 보자!' },
+      ],
+    },
+    {
+      id: 'ch-moonfactory', trigger: { type: 'chapter', chapter: 'moonfactory' },
+      lines: [
+        { who: 'mintcat', text: '…달이야. 기계 소리가 아직 들려.' },
+        { who: 'otter',  text: '고장 난 공장이 혼자서 계속 돌고 있어!' },
+        { who: 'rabbit', text: '군단이 태어난 곳이구나. 여기서 끝내자!' },
+      ],
+    },
     {
       id: 'join-chick', trigger: { type: 'join', char: 'chick' },
       lines: [{ who: 'chick', text: '나도 갈래! 콕콕 쪼아 줄 거야!' }],
@@ -98,6 +115,11 @@
       id: 'join-mintcat', trigger: { type: 'join', char: 'mintcat' },
       lines: [{ who: 'mintcat', text: '…따라와 주지. 빠르게 가자.' }],
     },
+    /* 수달은 기계 전선에서 구출되어 합류한다 — 구출 서사가 편성 화면까지 이어진다 */
+    {
+      id: 'join-otter', trigger: { type: 'join', char: 'otter' },
+      lines: [{ who: 'otter', text: '구해줘서 고마워! 별조각은 내가 다 찾아올게~' }],
+    },
   ];
 
   /* 보스 첫 조우 도발 — 말풍선 한 줄, 전투를 멈추지 않는다 */
@@ -107,6 +129,8 @@
     machine: '말랑한 것은 전부 부품이 된다.',
     core:    '여기까지 온 말랑이는 네가 처음이다.',
     garden:  '이 정원의 아름다움, 견딜 수 있겠니?',
+    starsea: '이 바다를 건너려는 자, 그 마음을 보여라.',
+    moonfactory: '생산 라인을 방해하는 불량품은… 회수한다.',
   };
 
   function sceneFor(type, key) {

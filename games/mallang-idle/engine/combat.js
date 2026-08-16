@@ -33,10 +33,10 @@
   // ── 파티 보너스 ──────────────────────────────────────────────
   /* 편성된 캐릭터의 패시브를 합산한다. 곱이 아니라 합으로 쌓아 세 명을 넣어도
    * 배수가 폭주하지 않게 한다(같은 축을 겹쳐도 선형). */
-  var NO_BONUS = { atkMul: 0, aspdMul: 0, goldMul: 0, bossMul: 0, advanceMul: 0 };
+  var NO_BONUS = { atkMul: 0, aspdMul: 0, goldMul: 0, bossMul: 0, advanceMul: 0, shardMul: 0 };
 
   function partyBonus(s) {
-    var out = { atkMul: 0, aspdMul: 0, goldMul: 0, bossMul: 0, advanceMul: 0 };
+    var out = { atkMul: 0, aspdMul: 0, goldMul: 0, bossMul: 0, advanceMul: 0, shardMul: 0 };
     var party = s && s.party;
     if (!party || !party.length || !Chars) return out;
     for (var i = 0; i < party.length; i++) {
@@ -111,7 +111,7 @@
     return Math.floor(
       dps(s) * B.powerDpsWeight +
       goldMul(s.up.gold) * (1 + pb.goldMul) * relicMul(s, 'barn') * B.powerGoldWeight +
-      (pb.bossMul + pb.advanceMul + (relicMul(s, 'compass') - 1)) * B.powerGoldWeight
+      (pb.bossMul + pb.advanceMul + pb.shardMul + (relicMul(s, 'compass') - 1)) * B.powerGoldWeight
     );
   }
 
@@ -249,7 +249,8 @@
     if (kind === 'boss_kill') {
       s.enemyHp = 0;
       s.safeStage = s.stage;
-      var clearShards = 1 + Math.floor(s.stage / B.shardClearDiv);
+      /* 별사탕(shardMul) 편성 시 조각 수입이 늘어난다 — floor 로 정수 유지 */
+      var clearShards = Math.floor((1 + Math.floor(s.stage / B.shardClearDiv)) * (1 + partyBonus(s).shardMul));
       s.shards += clearShards;
       s.stage++;
       s.mobIndex = 0;
@@ -264,7 +265,7 @@
       /* 실패해도 스테이지는 내려가지 않고, 별조각 1개를 준다.
        * 벽에 막힌 시간이 그대로 유물 성장이 되므로, 벽에서 할 수 있는 일이
        * "골드 파밍" 하나에서 "골드 파밍 + 조각 모으기" 둘로 늘어난다(P3 게이트). */
-      var failShards = 1 + Math.floor(s.stage / B.shardFailDiv);
+      var failShards = Math.floor((1 + Math.floor(s.stage / B.shardFailDiv)) * (1 + partyBonus(s).shardMul));
       s.shards += failShards;
       s.mobIndex = 0;
       s.stats.bossFails++;

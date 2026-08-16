@@ -82,7 +82,7 @@
       id: 'garden',
       name: '되찾은 하늘 정원',
       tagline: '다시 찾아온 평화, 그 위로',
-      from: 181, to: null,
+      from: 181, to: 210,
       bg: 'assets/bg-garden.jpg',
       fg: 'assets/fg-meadow.png',
       accent: '#ef9fc0',
@@ -92,6 +92,40 @@
         { id: 'cloudsheep', name: '구름 양',     art: 'assets/mob-cloudsheep.png' },
       ],
       boss: { id: 'flowerqueen', name: '꽃의 여왕', art: 'assets/boss-flowerqueen.png' },
+    },
+    /* ── 2막: 별조각의 근원을 찾아서 ─────────────────────────────
+     * 정원 에필로그 뒤에 새 궁금증을 연다: 그 많던 별조각과 기계군단은
+     * 어디서 왔는가. 별빛 바다를 건너 달의 고장난 공장에 닿는다 —
+     * moonfactory 가 무한 꼬리 챕터인 것도 서사가 설명한다("공장은 멈추지 않는다"). */
+    {
+      id: 'starsea',
+      name: '별빛 바다',
+      tagline: '별조각이 가리키는 곳으로',
+      from: 211, to: 270,
+      bg: 'assets/bg-starsea.jpg',
+      fg: 'assets/fg-starsea.png',
+      accent: '#7f9ce0',
+      mobs: [
+        { id: 'stardrop',  name: '별똥 아기',   art: 'assets/mob-stardrop.png' },
+        { id: 'moonjelly', name: '달빛 해파리', art: 'assets/mob-moonjelly.png' },
+        { id: 'comet',     name: '꼬마 혜성',   art: 'assets/mob-comet.png' },
+      ],
+      boss: { id: 'starwhale', name: '별고래', art: 'assets/boss-starwhale.png' },
+    },
+    {
+      id: 'moonfactory',
+      name: '고장난 달 공장',
+      tagline: '기계군단이 태어난 곳',
+      from: 271, to: null,
+      bg: 'assets/bg-moonfactory.jpg',
+      fg: 'assets/fg-moonfactory.png',
+      accent: '#a89bc9',
+      mobs: [
+        { id: 'scrapscout',  name: '부서진 정찰기', art: 'assets/mob-scrapscout.png' },
+        { id: 'boltsprite',  name: '나사 요정',     art: 'assets/mob-boltsprite.png' },
+        { id: 'dustpuff',    name: '달먼지 뭉치',   art: 'assets/mob-dustpuff.png' },
+      ],
+      boss: { id: 'moonoverseer', name: '달의 감독관', art: 'assets/boss-moonoverseer.png' },
     },
   ];
 

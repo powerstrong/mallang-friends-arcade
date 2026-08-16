@@ -28,7 +28,8 @@
   function simulate(state) {
     var baseStage = state.safeStage > 0 ? state.safeStage : 1;
     var dps = Combat.bossDps(state);
-    var shardPerKill = 1 + Math.floor(baseStage / B.shardClearDiv);
+    /* 별사탕(shardMul) 편성은 던전 조각에도 적용 — 본편 보스와 같은 규칙 */
+    var shardPerKill = Math.floor((1 + Math.floor(baseStage / B.shardClearDiv)) * (1 + Combat.partyBonus(state).shardMul));
     var goldPerKill = Combat.goldPerSec(state, baseStage) * B.dungeonGoldSeconds;
     // 손상 세이브(극단 스테이지)에서 지수 계산이 Infinity/NaN 으로 번지면
     // 보상을 통해 상태 전체가 오염된다. 여기서 끊는다.
