@@ -22,7 +22,7 @@
   var CHARACTERS = [
     {
       id: 'rabbit', name: '모찌 토끼', unlockStage: 1,
-      walk: 'assets/hero-rabbit-walk.png', frameW: 187,
+      walk: 'assets/hero-rabbit-walk.png', frameW: 151,
       portrait: 'assets/portrait-rabbit.png',
       atk: 'assets/atk-rabbit.png', atkW: 265,
       skill: { key: 'atkMul', value: 0.20 },
@@ -31,7 +31,7 @@
     },
     {
       id: 'chick', name: '피치 병아리', unlockStage: 5,
-      walk: 'assets/hero-chick-walk.png', frameW: 176,
+      walk: 'assets/hero-chick-walk.png', frameW: 165,
       portrait: 'assets/portrait-chick.png',
       atk: 'assets/atk-chick.png', atkW: 301,
       skill: { key: 'aspdMul', value: 0.18 },
@@ -49,7 +49,7 @@
     },
     {
       id: 'latte', name: '라떼 퍼피', unlockStage: 30,
-      walk: 'assets/hero-latte-walk.png', frameW: 170,
+      walk: 'assets/hero-latte-walk.png', frameW: 139,
       portrait: 'assets/portrait-latte.png',
       atk: 'assets/atk-latte.png', atkW: 253,
       skill: { key: 'bossMul', value: 0.35 },
@@ -58,7 +58,7 @@
     },
     {
       id: 'mintcat', name: '민트 키튼', unlockStage: 50,
-      walk: 'assets/hero-mintcat-walk.png', frameW: 233,
+      walk: 'assets/hero-mintcat-walk.png', frameW: 202,
       portrait: 'assets/portrait-mintcat.png',
       atk: 'assets/atk-mintcat.png', atkW: 258,
       skill: { key: 'advanceMul', value: 0.40 },

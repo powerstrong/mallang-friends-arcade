@@ -871,6 +871,9 @@
         n.classList.toggle('walking', walking);
         n.classList.toggle('fighting', !walking);
       });
+      // 교전 대형 — 적에게 다가선다 (멀리서 허공 펀치 금지)
+      el.field.classList.toggle('engaged', !walking);
+      el.field.classList.toggle('vs-boss', phase === Combat.PHASE_BOSS);
     }
 
     if (walking) {
@@ -1031,12 +1034,33 @@
 
   // ── 저장 ────────────────────────────────────────────────────
   /* 리셋 직후에는 저장을 막는다 — Reset 이 키를 지우고 reload 하는 사이에
-   * pagehide 의 persist 가 세이브를 되살리는 경합이 실제로 있었다. */
+   * pagehide 의 persist 가 세이브를 되살리는 경합이 실제로 있었다.
+   *
+   * 멀티탭 가드: 두 탭이 같은 세이브를 5초마다 번갈아 덮어쓰면 한쪽 진행이
+   * 조용히 사라진다. 내가 마지막으로 쓴 시각(lastWroteAt)보다 새로운 저장이
+   * 발견되면 다른 탭이 이어받은 것이다 — 이 탭은 일시정지하고 덮어쓰지 않는다. */
   var suppressPersist = false;
+  var lastWroteAt = 0;
+  function otherTabTookOver() {
+    var raw = null;
+    try { raw = localStorage.getItem(Save.STORAGE_KEY); } catch (e) { return false; }
+    if (!raw || !lastWroteAt) return false;
+    var m = /"lastSaveAt"\s*:\s*(\d+)/.exec(raw);
+    return !!(m && Number(m[1]) > lastWroteAt);
+  }
   function persist() {
     if (suppressPersist) return;
-    try { localStorage.setItem(Save.STORAGE_KEY, Save.dump(state, Date.now())); }
-    catch (e) { /* 저장 불가 — 진행은 계속한다 */ }
+    if (otherTabTookOver()) {
+      suppressPersist = true;
+      gameStarted = false;
+      toast('다른 탭에서 게임이 열렸어요 — 이 탭은 쉬어갈게요', 'fail');
+      return;
+    }
+    var now = Date.now();
+    try {
+      localStorage.setItem(Save.STORAGE_KEY, Save.dump(state, now));
+      lastWroteAt = now;
+    } catch (e) { /* 저장 불가 — 진행은 계속한다 */ }
   }
 
   function restore() {
@@ -1056,7 +1080,10 @@
     state = res.state;
 
     var lastAt = res.save && res.save.lastSaveAt;
-    if (lastAt) grantOffline((Date.now() - lastAt) / 1000);
+    if (lastAt) {
+      lastWroteAt = lastAt;      // 멀티탭 가드 기준점 — 이 시각 이후의 타 탭 저장을 감지
+      grantOffline((Date.now() - lastAt) / 1000);
+    }
   }
 
   /* 자리를 비운 시간만큼 골드를 지급한다. 지급과 팝업 노출은 분리한다 —

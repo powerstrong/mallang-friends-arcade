@@ -128,9 +128,18 @@ body {
   background-position: 0 0;
   background-repeat: no-repeat;
 }
+/* 위치 — 전진 중엔 왼쪽 대형, 교전이 시작되면 적 앞까지 다가선다.
+ * 멀리서 허공에 펀치하는 그림을 막는 핵심 규칙. 보스는 몸집이 커서 덜 붙는다. */
+.hero, .follower { transition: left .45s cubic-bezier(.3, .8, .4, 1); }
 .hero { left: 17%; --sc: .40; z-index: 2; }
 .follower.f1 { left: 7%;  --sc: .30; bottom: 2px; z-index: 1; opacity: .96; }
 .follower.f2 { left: -1%; --sc: .26; bottom: 4px; z-index: 0; opacity: .92; }
+.field.engaged .hero { left: 38%; }
+.field.engaged .follower.f1 { left: 25%; }
+.field.engaged .follower.f2 { left: 14%; }
+.field.engaged.vs-boss .hero { left: 17%; }
+.field.engaged.vs-boss .follower.f1 { left: 7%; }
+.field.engaged.vs-boss .follower.f2 { left: -2%; }
 
 /* 접지 그림자 — 스프라이트가 공중에 뜬 느낌을 없앤다 */
 .hero::after, .follower::after {
@@ -197,8 +206,8 @@ body {
 .hero.strike { animation: heroStrike .24s cubic-bezier(.3, 1.4, .6, 1) !important; }
 @keyframes heroStrike {
   0%   { transform: scale(var(--sc, .40)) translateX(0); }
-  38%  { transform: scale(var(--sc, .40)) translateX(46px) rotate(4deg) scaleY(.96); }
-  62%  { transform: scale(var(--sc, .40)) translateX(38px) rotate(2deg) scaleY(1.04); }
+  38%  { transform: scale(var(--sc, .40)) translateX(58px) rotate(4deg) scaleY(.96); }
+  62%  { transform: scale(var(--sc, .40)) translateX(46px) rotate(2deg) scaleY(1.04); }
   100% { transform: scale(var(--sc, .40)) translateX(0); }
 }
 
@@ -617,7 +626,7 @@ body {
 .fg-layer {
   position: absolute;
   left: 0; right: 0; bottom: 0;
-  height: 15%;
+  height: 10%;   /* 15% 는 캐릭터 발과 몸 아래를 가렸다 — 발목까지만 잠기게 */
   background-repeat: repeat-x;
   background-position: 0 bottom;
   background-size: auto 100%;
