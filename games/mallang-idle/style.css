@@ -297,7 +297,7 @@ body {
 /* 보스 등장 링 — 적 발밑에 깔린다 */
 .boss-ring {
   position: absolute;
-  right: 4%;
+  right: 7%;   /* 적(right 12%) 중심에 맞춤 — 4% 는 오른쪽으로 치우쳤다(codex) */
   bottom: -14px;
   width: 150px;
   height: auto;
@@ -567,7 +567,8 @@ body {
 .dungeon-sub b { color: #6f4fd6; }
 .dungeon-go {
   font: inherit; font-size: 14px; font-weight: 800;
-  padding: 9px 18px; border-radius: 11px;
+  padding: 12px 18px; border-radius: 11px;
+  min-height: 44px;
   border: none; background: #8b68e8; color: #fff; cursor: pointer;
   box-shadow: 0 3px 8px rgba(111, 79, 214, .3);
 }
@@ -594,7 +595,8 @@ body {
 .quest-bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .3s; }
 .quest-claim {
   font: inherit; font-size: 12px; font-weight: 800;
-  padding: 6px 11px; border-radius: 9px;
+  padding: 12px 13px; border-radius: 9px;
+  min-height: 42px;
   border: none; background: var(--gold); color: #fff; cursor: pointer;
   white-space: nowrap;
 }

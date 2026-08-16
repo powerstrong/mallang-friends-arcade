@@ -86,7 +86,7 @@
     src.stop(t0 + dur + 0.02);
   }
 
-  var lastHit = 0;
+  var lastHit = 0, lastKill = 0;
   var SFX = {
     /* 타격 — 초당 수 회 울리므로 스로틀해서 따닥거림을 막는다 */
     hit: function () {
@@ -95,7 +95,12 @@
       lastHit = now;
       thud(0.06, 0.07, 1200);
     },
-    kill:     function () { tone(660, 0.09, { type: 'square', vol: 0.05, slide: 990 }); },
+    kill:     function () {
+      var now = Date.now();
+      if (now - lastKill < 120) return;
+      lastKill = now;
+      tone(660, 0.09, { type: 'square', vol: 0.05, slide: 990 });
+    },
     coin:     function () { tone(988, 0.07, { type: 'triangle', vol: 0.07 }); tone(1319, 0.09, { type: 'triangle', vol: 0.07, delay: 0.06 }); },
     upgrade:  function () { tone(523, 0.08, { type: 'triangle', vol: 0.1 }); tone(784, 0.12, { type: 'triangle', vol: 0.1, delay: 0.07 }); },
     relic:    function () { tone(880, 0.1, { vol: 0.09 }); tone(1109, 0.12, { vol: 0.09, delay: 0.08 }); tone(1319, 0.16, { vol: 0.09, delay: 0.16 }); },
@@ -173,6 +178,9 @@
     if (!c) return;
     var m = MOODS[bgm.mood];
     var stepDur = 60 / m.bpm / 4;
+    /* 숨김 탭 복귀 — nextAt 이 과거로 밀려 있으면 밀린 스텝 수천 개를 한 틱에
+     * 예약해 프리즈+소리 폭발이 난다(codex HIGH). 0.5초 이상 밀렸으면 재기준화. */
+    if (bgm.nextAt < c.currentTime - 0.5) bgm.nextAt = c.currentTime + 0.05;
     // 룩어헤드 0.3초 — 타이머가 늦어도 오디오 클록 기준으로 정확히 찍힌다
     while (bgm.nextAt < c.currentTime + 0.3) {
       var t0 = Math.max(bgm.nextAt, c.currentTime + 0.01);

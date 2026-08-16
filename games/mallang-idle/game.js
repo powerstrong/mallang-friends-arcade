@@ -197,7 +197,9 @@
     } else {
       if (state.party.length >= slots) {
         // 슬롯이 꽉 찼으면 가장 오래된 자리를 비운다 — 탭 한 번으로 교체되게.
-        state.party.shift();
+        var outc = Chars.byId(state.party.shift());
+        var inc = Chars.byId(id);
+        if (outc && inc) toast(outc.name + ' → ' + inc.name + ' 교체');
       }
       state.party.push(id);
     }
@@ -558,12 +560,16 @@
   }
 
   function endStory() {
+    var wasRescue = storyScene.id.indexOf('rescue-') === 0;
+    var wasChapter = storyScene.trigger && storyScene.trigger.type === 'chapter';
     markStory(storyScene.id);
     storyScene = null;
     storyActive = false;
     el.storyOverlay.hidden = true;
     lastFrame = 0;                    // 컷신 동안의 시간이 첫 dt 로 밀리지 않게
-    if (storyQueue.length) nextSceneFromQueue();
+    if (wasRescue) heartBurst();      // 구출의 하트는 컷신이 걷힌 무대 위에서
+    if (storyQueue.length) { nextSceneFromQueue(); return; }
+    if (wasChapter && pendingBanner) { chapterBanner(pendingBanner); pendingBanner = null; }
   }
 
   /* 보스 첫 조우 도발 — 말풍선 한 줄, 전투는 계속 흐른다 */
@@ -584,6 +590,7 @@
 
   /* 챕터 배너 — 진입 순간 "어디에 왔는지"를 크게 보여준다 */
   var bannerReady = false;
+  var pendingBanner = null;
   function chapterBanner(ch) {
     if (!bannerReady) return;      // 부팅 첫 렌더에는 띄우지 않는다
     el.chapterBannerName.textContent = ch.name;
@@ -603,7 +610,9 @@
     meadow: 'assets/pt-petal.png', garden: 'assets/pt-petal.png',
     gears: 'assets/pt-gear.png', machine: 'assets/pt-gear.png', core: 'assets/pt-gear.png',
   };
+  var reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   function updateAmbient(dt) {
+    if (reducedMotion) return;   // 애니메이션이 없으면 animationend 도 없다 — 생성 자체를 생략
     ambientTimer += dt;
     if (ambientTimer < 0.8) return;
     ambientTimer = 0;
@@ -686,8 +695,16 @@
     if (text != null) n.textContent = text;
     n.style.left = x + 'px';
     n.style.top = y + 'px';
+    /* 제거는 반드시 dispose 한 곳으로 — TTL 과 onfinish 가 각자 지우면 fxCount 가
+     * 이중 감소해 음수로 내려가고 FX_CAP 이 무력화된다(codex 리뷰). */
+    n.__dispose = function () {
+      if (n.__done) return;
+      n.__done = true;
+      n.remove();
+      fxCount--;
+    };
     el.fxLayer.appendChild(n);
-    setTimeout(function () { n.remove(); fxCount--; }, ttl);
+    setTimeout(n.__dispose, ttl);
     return n;
   }
 
@@ -709,9 +726,9 @@
     el.hero.classList.add('strike');
     swapToAttackPose();
     sfx('hit');
+    var p = enemyPoint();     // 좌표는 지금 고정 — 90ms 사이 적이 바뀌어도 빈 곳에 안 찍힌다
 
     setTimeout(function () {
-      var p = enemyPoint();
       var jx = (Math.random() - 0.5) * 26, jy = (Math.random() - 0.5) * 20;
 
       var slash = spawnFx('fx-slash', p.x + jx - 6, p.y + jy - 4, 240);
@@ -776,10 +793,9 @@
       { transform: 'translate(' + (dx * 0.5) + 'px,' + (dy * 0.5 - 34) + 'px) rotate(180deg)' },
       { transform: 'translate(' + dx + 'px,' + dy + 'px) rotate(360deg)' },
     ], { duration: 430, easing: 'linear' }).onfinish = function () {
-      star.remove(); fxCount--;
+      star.__dispose();
       spawnFx('fx-impact small', to.x, to.y, 280);
     };
-    // animate 의 onfinish 가 제거를 담당하므로 spawnFx 의 타이머 제거와 중복돼도 안전하다
   }
 
   function updateCombatFx(dt) {
@@ -819,7 +835,10 @@
       el.chapterName.textContent = ch.name;
       el.bgLayer.style.backgroundImage = "url('" + ch.bg + "')";
       el.fgLayer.style.backgroundImage = ch.fg ? "url('" + ch.fg + "')" : 'none';
-      chapterBanner(ch);
+      // 이 챕터 컷신이 곧 뜬다면 배너는 컷신이 끝난 뒤에 (겹치면 배너가 안 보인다)
+      var chScene = Story && Story.sceneFor('chapter', ch.id);
+      if (chScene && state.storySeen.indexOf(chScene.id) === -1) pendingBanner = ch;
+      else chapterBanner(ch);
       queueStory('chapter', ch.id);
       syncBgm();
     }
@@ -986,8 +1005,7 @@
         /* 챕터 피날레(마지막 스테이지) 돌파 — 구출 연출: 하트가 터지고 컷신이 이어진다 */
         var endedCh = Chapters.chapterFor(ev.stage);
         if (endedCh.to != null && ev.stage === endedCh.to) {
-          heartBurst();
-          queueStory('rescue', endedCh.id);
+          queueStory('rescue', endedCh.id);   // 하트는 컷신이 끝나는 순간(endStory) 터진다
         }
       }
       else if (ev.type === 'boss_fail') { toast('아깝다! ⭐+' + ev.shards, 'fail'); sfx('fail'); renderRelics(); renderBattle(); syncBgm(); }
@@ -1122,7 +1140,8 @@
     c.setAttribute('aria-selected', c.classList.contains('on') ? 'true' : 'false');
   });
   el.tabs.addEventListener('click', function (e) {
-    var tab = e.target.getAttribute('data-tab');
+    var btn = e.target.closest ? e.target.closest('[data-tab]') : null;
+    var tab = btn && btn.getAttribute('data-tab');
     if (!tab) return;
     Array.prototype.forEach.call(el.tabs.children, function (c) {
       var on = c.getAttribute('data-tab') === tab;
@@ -1281,6 +1300,7 @@
   buildRelics();
   buildQuests();
   restore();
+  el.chapterName.textContent = '';   // 초기 HTML 과 같아도 첫 챕터 배경·전경이 반드시 적용되게
   Combat.sanitizeParty(state);
   Chars.unlockedAt(state.stage).forEach(function (id) { seenUnlocks[id] = true; });
   state.collection.forEach(function (k) { collectionSet[k] = true; });
@@ -1319,6 +1339,11 @@
     // 복귀 유저 — 현재 챕터 컷신을 아직 못 봤다면(구세이브) 지금 보여준다
     queueStory('chapter', Chapters.chapterFor(state.stage).id);
   }
+  /* 구출 컷신 유실 복구(codex HIGH) — 컷신 도중 새로고침하면 boss_clear(피날레)가
+   * 다시 오지 않아 장면이 영영 사라진다. 진행도가 피날레를 지났는데 미시청이면 재큐. */
+  Chapters.CHAPTERS.forEach(function (ch) {
+    if (ch.to != null && state.safeStage >= ch.to) queueStory('rescue', ch.id);
+  });
   bannerReady = true;
 
   requestAnimationFrame(frame);
