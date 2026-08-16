@@ -43,6 +43,7 @@
     upgrades: $('upgrades'), bulkToggle: $('bulkToggle'),
     stageProgress: $('stageProgress'), dpsHint: $('dpsHint'), exitBtn: $('exitBtn'),
     follower1: $('follower1'), follower2: $('follower2'), fxLayer: $('fxLayer'), bossNeed: $('bossNeed'),
+    fgLayer: $('fgLayer'), ambientLayer: $('ambientLayer'), speedLines: $('speedLines'),
     field: document.querySelector('.field'), intro: $('intro'), introStart: $('introStart'),
     tabs: $('tabs'), panelUpgrade: $('panelUpgrade'), panelParty: $('panelParty'),
     partyList: $('partyList'), partySlots: $('partySlots'), partyDot: $('partyDot'),
@@ -473,6 +474,42 @@
     }
   }
 
+  // ── 앰비언트 파티클 — 챕터마다 공기가 다르다 ─────────────────
+  /* 들판·정원엔 꽃잎이, 기계 구간엔 톱니가 흩날린다. 저비용: 동시 8개 상한,
+   * 순수 장식이라 결정론과 무관(표현 계층 Math.random 허용). */
+  var ambientTimer = 0, ambientCount = 0;
+  var AMBIENT_ART = {
+    meadow: 'assets/pt-petal.png', garden: 'assets/pt-petal.png',
+    gears: 'assets/pt-gear.png', machine: 'assets/pt-gear.png', core: 'assets/pt-gear.png',
+  };
+  function updateAmbient(dt) {
+    ambientTimer += dt;
+    if (ambientTimer < 0.8) return;
+    ambientTimer = 0;
+    if (ambientCount >= 8) return;
+    var art = AMBIENT_ART[Chapters.chapterFor(state.stage).id];
+    if (!art) return;
+    ambientCount++;
+    var n = document.createElement('img');
+    n.className = 'ambient-pt';
+    n.src = art;
+    n.style.left = (Math.random() * 100) + '%';
+    n.style.setProperty('--drift', (Math.random() * 60 - 30) + 'px');
+    n.style.setProperty('--dur', (3.5 + Math.random() * 2.5) + 's');
+    n.style.setProperty('--sz', (10 + Math.random() * 10) + 'px');
+    el.ambientLayer.appendChild(n);
+    n.addEventListener('animationend', function () { n.remove(); ambientCount--; });
+  }
+
+  /* 보스 격파 순간의 방사형 집중선 — 화면 전체가 "빰!" 하고 반응한다 */
+  function speedLineFlash() {
+    el.speedLines.hidden = false;
+    el.speedLines.classList.remove('flash');
+    void el.speedLines.offsetWidth;
+    el.speedLines.classList.add('flash');
+    setTimeout(function () { el.speedLines.hidden = true; }, 480);
+  }
+
   // ── 렌더 ────────────────────────────────────────────────────
   var bgOffset = 0;
   var lastEnemyKey = '';
@@ -526,19 +563,64 @@
     return { x: er.left + er.width * 0.5 - fr.left, y: er.top + er.height * 0.55 - fr.top };
   }
 
+  /* 타격 한 사이클: 돌진(0) → 접촉(90ms) 순간에 임팩트·검격·데미지·넉백·히트스톱.
+   * 접촉과 이펙트를 같은 프레임에 맞추는 것이 타격감의 절반이고, 나머지 절반은
+   * 접촉 직후 온 세상이 55ms 멈추는 히트스톱이다. */
+  var strikeCount = 0;
   function heroStrikeFx(dmg) {
+    strikeCount++;
+    var crit = strikeCount % 5 === 0;          // 표현 전용 — 5타마다 강조 연출
     el.hero.classList.remove('strike');
     void el.hero.offsetWidth;
     el.hero.classList.add('strike');
+    swapToAttackPose();
     sfx('hit');
-    var p = enemyPoint();
-    var jx = (Math.random() - 0.5) * 26, jy = (Math.random() - 0.5) * 20;
-    var imp = spawnFx('fx-impact', p.x + jx, p.y + jy, 320);
-    if (imp) imp.style.setProperty('--rot', Math.floor(Math.random() * 70 - 35) + 'deg');
-    spawnFx('fx-dmg', p.x + jx, p.y + jy - 26, 620, fmt(dmg));
-    el.enemy.classList.remove('squash');
-    void el.enemy.offsetWidth;
-    el.enemy.classList.add('squash');
+
+    setTimeout(function () {
+      var p = enemyPoint();
+      var jx = (Math.random() - 0.5) * 26, jy = (Math.random() - 0.5) * 20;
+
+      var slash = spawnFx('fx-slash', p.x + jx - 6, p.y + jy - 4, 240);
+      if (slash) slash.style.setProperty('--rot', Math.floor(Math.random() * 50 - 25) + 'deg');
+
+      var imp = spawnFx('fx-impact' + (crit ? ' crit' : ''), p.x + jx, p.y + jy, 340);
+      if (imp) imp.style.setProperty('--rot', Math.floor(Math.random() * 70 - 35) + 'deg');
+
+      spawnFx('fx-dmg' + (crit ? ' crit' : ''), p.x + jx, p.y + jy - 28, 640,
+        fmt(dmg) + (crit ? '!' : ''));
+
+      el.enemy.classList.remove('squash');
+      void el.enemy.offsetWidth;
+      el.enemy.classList.add('squash');
+
+      // 히트스톱 — 접촉 순간 모두가 잠깐 멈춘다
+      el.arena.classList.add('hitstop');
+      setTimeout(function () { el.arena.classList.remove('hitstop'); }, crit ? 90 : 55);
+      if (crit) {
+        el.arena.classList.remove('microshake');
+        void el.arena.offsetWidth;
+        el.arena.classList.add('microshake');
+      }
+    }, 90);
+
+    setTimeout(restoreWalkPose, 240);
+  }
+
+  /* 공격 포즈 스왑 — 전용 공격 스프라이트가 있으면 타격 동안 그 포즈로 바꾼다. */
+  var poseSwapped = false;
+  function swapToAttackPose() {
+    var c = Chars.byId(state.party[0]);
+    if (!c || !c.atk) return;
+    el.hero.style.backgroundImage = "url('" + c.atk + "')";
+    el.hero.style.width = c.atkW + 'px';
+    el.hero.style.backgroundSize = c.atkW + 'px 220px';
+    poseSwapped = true;
+  }
+  function restoreWalkPose() {
+    if (!poseSwapped) return;
+    poseSwapped = false;
+    var c = Chars.byId(state.party[0]);
+    if (c) applySprite(el.hero, c);
   }
 
   /* 지원 사격 — 2·3번 동료가 자기 주기로 별을 던진다. 데미지는 이미 DPS 에
@@ -602,6 +684,7 @@
     if (el.chapterName.textContent !== ch.name) {
       el.chapterName.textContent = ch.name;
       el.bgLayer.style.backgroundImage = "url('" + ch.bg + "')";
+      el.fgLayer.style.backgroundImage = ch.fg ? "url('" + ch.fg + "')" : 'none';
     }
   }
 
@@ -637,11 +720,13 @@
     var phaseChanged = phase !== lastPhase;
     lastPhase = phase;
 
-    // 배경 스크롤 — 전진 중에만 흐른다.
+    // 배경 스크롤 — 전진 중에만 흐른다. 전경은 1.8배 빨리 흘러 깊이감을 만든다(시차).
     if (walking) {
       bgOffset -= dt * 90;
       el.bgLayer.style.backgroundPositionX = bgOffset + 'px';
+      el.fgLayer.style.backgroundPositionX = (bgOffset * 1.8) + 'px';
     }
+    updateAmbient(dt);
     if (phaseChanged) {
       el.hero.classList.toggle('walking', walking);
       el.hero.classList.toggle('fighting', !walking);
@@ -746,7 +831,7 @@
       }
       else if (ev.type === 'boss_clear') {
         toast('스테이지 ' + ev.stage + ' 돌파!', 'win');
-        sfx('clear'); shake();
+        sfx('clear'); shake(); speedLineFlash();
         needPanel = true;
         var beforeSlots = Chars.slotsFor(ev.stage);
         if (Chars.slotsFor(state.stage) > beforeSlots) {

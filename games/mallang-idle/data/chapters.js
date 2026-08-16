@@ -24,6 +24,7 @@
       tagline: '오늘도 평화로운 산책길',
       from: 1, to: 30,
       bg: 'assets/bg-meadow.jpg',
+      fg: 'assets/fg-meadow.png',
       accent: '#7fc99a',
       mobs: [
         { id: 'acorn',     name: '말썽 도토리', art: 'assets/mob-acorn.png' },
@@ -38,6 +39,7 @@
       tagline: '어딘가에서 톱니 소리가 들린다',
       from: 31, to: 70,
       bg: 'assets/bg-gears.jpg',
+      fg: 'assets/fg-meadow.png',
       accent: '#c9a87f',
       mobs: [
         { id: 'gearbug',    name: '톱니 벌레',   art: 'assets/mob-gearbug.png' },
@@ -52,6 +54,7 @@
       tagline: '말랑한 것들을 지켜야 한다',
       from: 71, to: 130,
       bg: 'assets/bg-machine.jpg',
+      fg: 'assets/fg-machine.png',
       accent: '#8fa6c9',
       mobs: [
         { id: 'mech-chick',   name: '기계 병아리', art: 'assets/enemy-mech-chick.png' },
@@ -66,6 +69,7 @@
       tagline: '대장이 기다리고 있다',
       from: 131, to: 180,
       bg: 'assets/bg-machine.jpg',
+      fg: 'assets/fg-machine.png',
       accent: '#7f8fc9',
       mobs: [
         { id: 'mech-hamster', name: '강화 햄스터', art: 'assets/enemy-mech-hamster.png' },
@@ -80,6 +84,7 @@
       tagline: '다시 찾아온 평화, 그 위로',
       from: 181, to: null,
       bg: 'assets/bg-garden.jpg',
+      fg: 'assets/fg-meadow.png',
       accent: '#ef9fc0',
       mobs: [
         { id: 'petalfairy', name: '꽃잎 요정',   art: 'assets/mob-petalfairy.png' },

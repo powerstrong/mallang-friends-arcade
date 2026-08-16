@@ -132,6 +132,56 @@ body {
 .follower.f1 { left: 7%;  --sc: .30; bottom: 2px; z-index: 1; opacity: .96; }
 .follower.f2 { left: -1%; --sc: .26; bottom: 4px; z-index: 0; opacity: .92; }
 
+/* 접지 그림자 — 스프라이트가 공중에 뜬 느낌을 없앤다 */
+.hero::after, .follower::after {
+  content: '';
+  position: absolute;
+  left: 50%; bottom: -7px;
+  width: 72%; height: 20px;
+  transform: translateX(-50%);
+  background: radial-gradient(ellipse, rgba(70, 45, 70, .26), transparent 68%);
+  pointer-events: none;
+}
+.enemy::after {
+  content: '';
+  position: absolute;
+  left: 50%; bottom: -8px;
+  width: 76px; height: 18px;
+  transform: translateX(-50%);
+  background: radial-gradient(ellipse, rgba(70, 45, 70, .24), transparent 68%);
+  pointer-events: none;
+  z-index: -1;
+}
+.enemy.is-boss::after { width: 120px; height: 24px; }
+
+/* 보스 오라 — 등 뒤에서 숨쉬는 붉은 기운 */
+.enemy.is-boss::before {
+  content: '';
+  position: absolute;
+  left: 50%; bottom: -6px;
+  width: 190px; height: 190px;
+  transform: translateX(-50%);
+  background: radial-gradient(circle at 50% 78%, rgba(224, 90, 90, .30), rgba(224, 90, 90, .10) 45%, transparent 68%);
+  pointer-events: none;
+  z-index: -2;
+  animation: bossAura 1.7s ease-in-out infinite;
+}
+@keyframes bossAura {
+  0%, 100% { opacity: .75; transform: translateX(-50%) scale(1); }
+  50%      { opacity: 1;   transform: translateX(-50%) scale(1.08); }
+}
+
+/* 히트스톱 — 접촉 순간 모든 애니메이션이 잠깐 멈춘다 (타격감의 핵심) */
+.arena.hitstop .hero, .arena.hitstop .follower,
+.arena.hitstop .enemy img, .arena.hitstop .fx-layer > * { animation-play-state: paused !important; }
+
+.arena.microshake { animation: microShake .16s ease-out; }
+@keyframes microShake {
+  0%, 100% { transform: translate(0, 0); }
+  40% { transform: translate(2px, -1px); }
+  70% { transform: translate(-2px, 1px); }
+}
+
 /* --walk-shift = -(3프레임 × frameW) */
 .hero.walking, .follower.walking { animation: heroWalk .48s steps(3) infinite; }
 @keyframes heroWalk { to { background-position: var(--walk-shift, -561px) 0; } }
@@ -178,13 +228,27 @@ body {
 }
 .enemy.is-boss img { height: 148px; }
 
-/* 등장 — 몹은 폴짝 튀어나오고, 보스는 위에서 쿵 */
-.enemy img.spawn-in { animation: spawnIn .3s cubic-bezier(.2, 1.4, .5, 1); }
+/* 등장(한 번) 뒤에는 아이들 모션이 이어진다 — 가만히 서 있는 몹은 죽은 그림이다 */
+.enemy img.spawn-in {
+  animation: spawnIn .3s cubic-bezier(.2, 1.4, .5, 1),
+             enemyIdle 1.9s ease-in-out .35s infinite;
+}
+@keyframes enemyIdle {
+  0%, 100% { transform: scaleX(-1) translateY(0) rotate(0deg); }
+  50%      { transform: scaleX(-1) translateY(-4px) rotate(-2deg); }
+}
 @keyframes spawnIn {
   0%   { transform: scaleX(-1) scale(.4) translateY(14px); opacity: 0; }
   100% { transform: scaleX(-1) scale(1) translateY(0); opacity: 1; }
 }
-.enemy img.boss-in { animation: bossIn .45s cubic-bezier(.25, 1.3, .45, 1); }
+.enemy img.boss-in {
+  animation: bossIn .45s cubic-bezier(.25, 1.3, .45, 1),
+             bossIdle 2.4s ease-in-out .5s infinite;
+}
+@keyframes bossIdle {
+  0%, 100% { transform: scaleX(-1) translateY(0) scale(1); }
+  50%      { transform: scaleX(-1) translateY(-3px) scale(1.015); }
+}
 @keyframes bossIn {
   0%   { transform: scaleX(-1) translateY(-110px) scale(1.15); opacity: 0; }
   55%  { transform: scaleX(-1) translateY(0) scale(1) scaleY(.9); opacity: 1; }
@@ -192,11 +256,12 @@ body {
   100% { transform: scaleX(-1) scaleY(1); }
 }
 
-/* 피격 — 찌부 + 밀려남 + 번쩍 */
-.enemy.squash img { animation: enemySquash .16s ease-out !important; }
+/* 피격 — 찌부 + 넉백 + 번쩍. 넉백이 커야 무게가 실린다 */
+.enemy.squash img { animation: enemySquash .18s ease-out !important; }
 @keyframes enemySquash {
   0%   { transform: scaleX(-1); filter: drop-shadow(0 3px 4px rgba(90,60,80,.18)) brightness(1); }
-  40%  { transform: scaleX(-1.12) scaleY(.88) translateX(-7px); filter: drop-shadow(0 3px 4px rgba(90,60,80,.18)) brightness(1.8); }
+  35%  { transform: scaleX(-1.16) scaleY(.84) translateX(-13px) rotate(3deg); filter: drop-shadow(0 3px 4px rgba(90,60,80,.18)) brightness(2); }
+  70%  { transform: scaleX(-.96) scaleY(1.06) translateX(-3px); filter: drop-shadow(0 3px 4px rgba(90,60,80,.18)) brightness(1.2); }
   100% { transform: scaleX(-1); filter: drop-shadow(0 3px 4px rgba(90,60,80,.18)) brightness(1); }
 }
 .enemy-name { font-size: 11px; font-weight: 700; color: var(--ink); background: rgba(255,255,255,.82); padding: 1px 8px; border-radius: 8px; }
@@ -539,6 +604,56 @@ body {
 .book-cell.unseen img { filter: brightness(0) opacity(.25); }
 .book-cell.unseen span { color: #c9bcc9; }
 
+/* ── 시차 전경·앰비언트·집중선 ─────────────────────────────── */
+.fg-layer {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 15%;
+  background-repeat: repeat-x;
+  background-position: 0 bottom;
+  background-size: auto 100%;
+  pointer-events: none;
+  z-index: 4;
+  opacity: .95;
+  will-change: background-position;
+}
+.ambient-layer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 1;
+}
+.ambient-pt {
+  position: absolute;
+  top: -24px;
+  width: var(--sz, 14px);
+  height: auto;
+  opacity: 0;
+  animation: ambientFall var(--dur, 4.5s) linear forwards;
+}
+@keyframes ambientFall {
+  0%   { opacity: 0; transform: translate(0, 0) rotate(0); }
+  12%  { opacity: .85; }
+  85%  { opacity: .7; }
+  100% { opacity: 0; transform: translate(var(--drift, 20px), 78vh) rotate(280deg); }
+}
+.speedlines {
+  position: absolute;
+  inset: 0;
+  width: 100%; height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+  z-index: 5;
+  mix-blend-mode: screen;
+}
+.speedlines.flash { animation: linesFlash .48s ease-out forwards; }
+@keyframes linesFlash {
+  0%   { opacity: 0; transform: scale(1.12); }
+  25%  { opacity: .9; transform: scale(1.04); }
+  100% { opacity: 0; transform: scale(1); }
+}
+
 /* ── 전투 이펙트 레이어 ────────────────────────────────────── */
 .fx-layer {
   position: absolute;
@@ -548,28 +663,39 @@ body {
 }
 .fx-layer > * { position: absolute; transform: translate(-50%, -50%); }
 
+/* 임팩트 — 4프레임 플립북(fx-impact-sheet)을 steps 로 재생. 프레임 크기는 JS 주입 없이
+ * 시트를 배경으로 깔고 background-position 을 넘긴다. */
 .fx-impact {
-  width: 76px; height: 76px;
-  background: url('assets/fx-impact.png') center / contain no-repeat;
-  animation: impactPop .3s ease-out forwards;
+  width: 84px; height: 84px;
+  background: url('assets/fx-impact-sheet.png') 0 0 / 400% 100% no-repeat;
+  animation: impactFlip .32s steps(4) forwards, impactFade .32s linear forwards;
   rotate: var(--rot, 0deg);
 }
-.fx-impact.small { width: 46px; height: 46px; }
-@keyframes impactPop {
-  0%   { transform: translate(-50%, -50%) scale(.35); opacity: 0; }
-  30%  { transform: translate(-50%, -50%) scale(1.12); opacity: 1; }
-  100% { transform: translate(-50%, -50%) scale(.92); opacity: 0; }
+.fx-impact.small { width: 50px; height: 50px; }
+.fx-impact.crit { width: 118px; height: 118px; }
+@keyframes impactFlip { to { background-position: -400% 0; } }
+@keyframes impactFade { 0% { opacity: 0; } 12% { opacity: 1; } 85% { opacity: 1; } 100% { opacity: 0; } }
+
+/* 검격 궤적 — 휘두른 방향으로 늘어났다 사라진다 */
+.fx-slash {
+  width: 110px; height: 110px;
+  background: url('assets/fx-slash.png') center / contain no-repeat;
+  animation: slashSweep .24s ease-out forwards;
+  rotate: var(--rot, 0deg);
+}
+@keyframes slashSweep {
+  0%   { transform: translate(-50%, -50%) scale(.5) rotate(-18deg); opacity: 0; }
+  30%  { transform: translate(-50%, -50%) scale(1.05) rotate(0); opacity: 1; }
+  100% { transform: translate(-50%, -50%) scale(1.2) rotate(14deg); opacity: 0; }
 }
 
+/* 처치 펑 — 4프레임 플립북 */
 .fx-poof {
-  width: 96px; height: 96px;
-  background: url('assets/fx-poof.png') center / contain no-repeat;
-  animation: poofOut .44s ease-out forwards;
+  width: 110px; height: 110px;
+  background: url('assets/fx-poof-sheet.png') 0 0 / 400% 100% no-repeat;
+  animation: poofFlip .44s steps(4) forwards, impactFade .44s linear forwards;
 }
-@keyframes poofOut {
-  0%   { transform: translate(-50%, -50%) scale(.5); opacity: .95; }
-  100% { transform: translate(-50%, -50%) scale(1.35) translateY(-14px); opacity: 0; }
-}
+@keyframes poofFlip { to { background-position: -400% 0; } }
 
 .fx-proj {
   width: 40px; height: 40px;
@@ -587,6 +713,12 @@ body {
   font-variant-numeric: tabular-nums;
   animation: dmgPop .6s cubic-bezier(.2, .9, .4, 1) forwards;
   white-space: nowrap;
+}
+.fx-dmg.crit {
+  font-size: 24px;
+  color: #ffe9a8;
+  -webkit-text-stroke: 4px #c47a12;
+  text-shadow: 0 2px 8px rgba(200, 130, 20, .5);
 }
 @keyframes dmgPop {
   0%   { transform: translate(-50%, -50%) scale(.6); opacity: 0; }
@@ -630,10 +762,11 @@ body {
   100% { opacity: 0; transform: translate(var(--dx, 0), 90px) rotate(240deg); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .arena.shake, .confetti, .hero.strike, .hero.fighting, .follower.fighting,
-  .follower.cast, .enemy.squash img, .enemy img.spawn-in, .enemy img.boss-in,
-  .fx-impact, .fx-poof { animation: none; }
-  .confetti, .fx-impact, .fx-poof, .fx-proj { display: none; }
+  .arena.shake, .arena.microshake, .confetti, .hero.strike, .hero.fighting,
+  .follower.fighting, .follower.cast, .enemy.squash img, .enemy img.spawn-in,
+  .enemy img.boss-in, .enemy.is-boss::before, .fx-impact, .fx-poof, .fx-slash,
+  .ambient-pt, .speedlines.flash { animation: none; }
+  .confetti, .fx-impact, .fx-poof, .fx-proj, .fx-slash, .ambient-pt, .speedlines { display: none; }
 }
 
 /* HUD 음소거 버튼 — 44px 터치 타깃 */
