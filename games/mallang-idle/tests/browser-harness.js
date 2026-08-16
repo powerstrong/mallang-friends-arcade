@@ -20,11 +20,14 @@ var childProcess = require('child_process');
 var ROOT = path.join(__dirname, '..', '..', '..');   // 저장소 루트 (/games, /shared 서빙)
 
 var BROWSERS = [
+  process.env.CHROME_PATH || '',
   'C:/Program Files/Google/Chrome/Application/chrome.exe',
   'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe',
   'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
   'C:/Program Files/Microsoft/Edge/Application/msedge.exe',
-  process.env.CHROME_PATH || '',
+  /* 리눅스 CI·컨테이너 — Playwright 번들 크로미움과 배포판 표준 경로 */
+  '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
+  '/usr/bin/chromium', '/usr/bin/chromium-browser', '/usr/bin/google-chrome',
 ].filter(Boolean);
 
 var MIME = {
@@ -50,15 +53,22 @@ function serveStatic() {
   });
 }
 
-function launchBrowser(exe, profileDir) {
+function launchBrowser(exe, profileDir, extraArgs) {
   return new Promise(function (resolve, reject) {
-    var proc = childProcess.spawn(exe, [
+    var args = [
       '--headless=new', '--remote-debugging-port=0',
       '--user-data-dir=' + profileDir,
       '--no-first-run', '--no-default-browser-check', '--disable-gpu',
       '--force-device-scale-factor=1', '--window-size=390,900',
-      '--mute-audio', 'about:blank',
-    ], { stdio: ['ignore', 'ignore', 'pipe'] });
+      '--mute-audio',
+    ];
+    /* 컨테이너·CI 는 보통 root 로 돈다 — 크로미움은 root 에서 샌드박스를 거부하고
+     * 아예 뜨지 않는다. 임시 프로필로 로컬 정적 파일만 여는 테스트 하니스이므로
+     * 이 경우에 한해 샌드박스를 끈다(그러지 않으면 실브라우저 회귀를 못 돌린다). */
+    if (typeof process.getuid === 'function' && process.getuid() === 0) args.push('--no-sandbox');
+    if (extraArgs && extraArgs.length) args = args.concat(extraArgs);
+    args.push('about:blank');
+    var proc = childProcess.spawn(exe, args, { stdio: ['ignore', 'ignore', 'pipe'] });
     var buf = '';
     var timer = setTimeout(function () { reject(new Error('DevTools endpoint timeout\n' + buf)); }, 15000);
     proc.stderr.on('data', function (d) {
@@ -110,7 +120,8 @@ function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
  *   clickEl(id)  — 요소 중심 실좌표 클릭
  *   sleep(ms)
  */
-function withPage(pagePath, fn) {
+function withPage(pagePath, fn, opts) {
+  opts = opts || {};
   var exe = BROWSERS.find(function (p) { return fs.existsSync(p); });
   if (!exe) {
     console.log('SKIPPED — Chrome/Edge 를 찾지 못했습니다 (CHROME_PATH 로 지정 가능)');
@@ -124,7 +135,7 @@ function withPage(pagePath, fn) {
     var browser = null, client = null;
 
     try {
-      browser = await launchBrowser(exe, profile);
+      browser = await launchBrowser(exe, profile, opts.args);
       client = await cdp(browser.wsUrl);
       var t = await client.send('Target.createTarget', { url: origin + pagePath });
       var att = await client.send('Target.attachToTarget', { targetId: t.targetId, flatten: true });

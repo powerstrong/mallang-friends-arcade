@@ -128,15 +128,20 @@ games/mallang-idle/
     characters.js       말랑프렌즈 6명 — 해금·슬롯·파티 보너스
     quests.js           일일 과제
     story.js            컷신·합류·보스 도발 (무결성 테스트가 화자-해금 정합 강제)
+  render/               표현 계층 — 엔진을 읽기만 한다 (COMBAT_STAGE_OVERHAUL.md)
+    queue.js            연출 이벤트 버퍼 — 엔진의 순간 확정과 화면 페이스를 분리
+    stage.js            전투 무대 씬 렌더러 (시차·액터·카메라·캔버스 파티클)
   tools/
     sim.js              헤드리스 시뮬레이터 (+ --sessions=15/120 오프라인 세션 모델)
     tune.js             파라미터 그리드 서치
   tests/
     balance.test.js     지표 회귀 + 엔진 불변조건 + 세이브 마이그레이션 + 스토리 무결성
-    ui-contract.test.js  [hidden] 가드·시작 게이트·에셋 존재·FX 상한·Math.random 계층
-    browser-harness.js   무의존 헤드리스 CDP 하니스 (screenshot 포함)
+    ui-contract.test.js  [hidden] 가드·시작 게이트·에셋 존재·FX 상한·Math.random 계층·큐 배선
+    queue.test.js        연출 버퍼: 사건 유실 0 + 배속/버스트 따라잡기 (실제 엔진으로 구동)
+    browser-harness.js   무의존 헤드리스 CDP 하니스 (screenshot·추가 기동 인자 지원)
     first-visit.browser.test.js  실브라우저: 신규 방문 플로우 (computed style·실좌표)
     multi-tab.browser.test.js    실브라우저: 멀티탭 정지→이어하기
+    stage.browser.test.js        실브라우저: 무대-엔진 동기·유실 0·감속 모드
   index.html  game.js  style.css  audio.js  assets/
 ```
 
@@ -155,9 +160,12 @@ UMD 패턴을 따라 브라우저와 Node에서 같은 파일을 쓴다.
 
 ## 7. 검증
 
-- 정적 테스트: `node games/mallang-idle/tests/balance.test.js` · `ui-contract.test.js`
+- 정적 테스트: `node games/mallang-idle/tests/balance.test.js` · `ui-contract.test.js` ·
+  `queue.test.js`
 - 실브라우저 테스트: `node games/mallang-idle/tests/first-visit.browser.test.js` ·
-  `multi-tab.browser.test.js` (헤드리스 Chrome/Edge + CDP, 브라우저 없으면 SKIP)
+  `multi-tab.browser.test.js` · `stage.browser.test.js`
+  (헤드리스 Chrome/Edge + CDP, 브라우저 없으면 SKIP). 리눅스·컨테이너에서는 배포판 경로를
+  자동 탐색하고 root 일 때 `--no-sandbox` 를 붙인다 — `CHROME_PATH` 로 직접 지정도 가능
 - 시각 스모크: browser-harness 의 `pg.screenshot()` — 스테이지 점프 + storySeen
   선채움으로 신규 챕터를 촬영해 눈으로 확인 (8차 scratchpad visual_smoke.js 원형)
 - 로컬 정적 서버: `.claude/launch.json`의 `static` 설정 (포트 8090)

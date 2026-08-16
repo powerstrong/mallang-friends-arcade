@@ -21,6 +21,10 @@ var css = read('style.css');
 var html = read('index.html');
 var gameJs = read('game.js');
 var audioJs = read('audio.js');
+/* 전투 화면은 render/stage.js 가 소유한다(단계 0 이관). 계약은 그대로이고
+ * 검사 대상 파일만 코드를 따라 옮겨왔다. */
+var stageJs = read('render/stage.js');
+var queueJs = read('render/queue.js');
 
 var tests = [];
 function test(name, fn) { tests.push({ name: name, fn: fn }); }
@@ -72,12 +76,36 @@ test('Math.random 금지는 엔진·데이터·시뮬 계층에만 적용된다'
 });
 
 test('전투 이펙트에는 노드 상한이 있다', function () {
-  assert.ok(/FX_CAP\s*=\s*\d+/.test(gameJs), '이펙트 동시 노드 상한(FX_CAP)이 있어야 한다');
-  assert.ok(/fxCount\s*>=\s*FX_CAP/.test(gameJs), '상한 초과 시 스폰을 건너뛰어야 한다');
+  assert.ok(/FX_CAP\s*=\s*\d+/.test(stageJs), '이펙트 동시 노드 상한(FX_CAP)이 있어야 한다');
+  assert.ok(/fxCount\s*>=\s*FX_CAP/.test(stageJs), '상한 초과 시 스폰을 건너뛰어야 한다');
+  assert.ok(/PARTICLE_CAP\s*=\s*\d+/.test(stageJs), '캔버스 파티클에도 상한이 있어야 한다');
+  assert.ok(/pcount\s*>=\s*PARTICLE_CAP/.test(stageJs), '파티클 상한 초과 시 스폰을 건너뛰어야 한다');
+});
+
+/* 단계 0 의 핵심 계약 — 전투 화면이 엔진 사건을 **연출 큐를 통해** 소비하는가.
+ * game.js 가 무대를 직접 그리기 시작하면 페이싱이 다시 엔진에 붙어 버린다
+ * (COMBAT_STAGE_OVERHAUL.md 5절 — 이 개편의 심장). */
+test('전투 화면은 연출 큐를 통해 그려진다', function () {
+  assert.ok(/Stage\.push\(state\.events\)/.test(gameJs),
+    'game.js 는 엔진 사건을 무대(연출 큐)에 넘겨야 한다');
+  assert.ok(/Queue\.create/.test(stageJs), '무대는 연출 큐를 쓴다');
+  assert.ok(/queue\.idle\(\)\s*\)\s*syncTo/.test(stageJs) || /if \(queue\.idle\(\)\) syncTo/.test(stageJs),
+    '큐가 비면 무대가 엔진 진실로 스냅해야 한다(영구 어긋남 방지)');
+  // 이관된 렌더 함수가 game.js 에 되살아나지 않았는지 — 두 벌이 생기면 페이싱이 갈라진다
+  ['function renderArena', 'function heroStrikeFx', 'function spawnFx', 'function applySprite']
+    .forEach(function (sig) {
+      assert.ok(gameJs.indexOf(sig) === -1,
+        'game.js 에 무대 렌더가 다시 생겼다: ' + sig + ' — render/stage.js 가 소유해야 한다');
+    });
+});
+
+test('연출 큐는 사건을 유실하지 않는다 (불변조건이 코드에 남아 있다)', function () {
+  assert.ok(/pushed/.test(queueJs) && /dispatched/.test(queueJs),
+    '큐는 투입·전달 수를 세어 유실을 드러내야 한다 (tests/queue.test.js 가 이를 단언한다)');
 });
 
 test('참조하는 에셋 파일이 전부 존재한다', function () {
-  var src = html + gameJs + css + read('data/chapters.js') + read('data/characters.js') + read('engine/balance.js');
+  var src = html + gameJs + stageJs + css + read('data/chapters.js') + read('data/characters.js') + read('engine/balance.js');
   var refs = src.match(/assets\/[A-Za-z0-9_.-]+\.(?:png|jpg)/g) || [];
   var uniq = {};
   refs.forEach(function (r) { uniq[r] = 1; });

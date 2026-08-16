@@ -93,6 +93,24 @@ body {
   min-height: 0;
 }
 
+/* 카메라 — 무대만 감싼다(HUD 제외). transform 은 render/stage.js 의 camera 가 소유하며,
+ * 흔들림·줌·팬이 전부 여기 한 곳에 모인다. 예전에는 .arena 를 통째로 흔들어 보스
+ * 타이머와 진행도까지 같이 떨렸다 — 읽어야 하는 숫자는 흔들지 않는다. */
+.stage-cam {
+  position: absolute;
+  inset: 0;
+  will-change: transform;
+}
+
+/* 캔버스 파티클 레이어 — 액터(.field, z 2~3) 위, 전경(.fg-layer, z 4) 아래 */
+.fx-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+  z-index: 3;
+}
+
 .bg-layer {
   position: absolute;
   inset: 0;
@@ -184,12 +202,9 @@ body {
 .arena.hitstop .hero, .arena.hitstop .follower,
 .arena.hitstop .enemy img, .arena.hitstop .fx-layer > * { animation-play-state: paused !important; }
 
-.arena.microshake { animation: microShake .16s ease-out; }
-@keyframes microShake {
-  0%, 100% { transform: translate(0, 0); }
-  40% { transform: translate(2px, -1px); }
-  70% { transform: translate(-2px, 1px); }
-}
+/* 화면 흔들림은 CSS 키프레임이 아니라 stage.js 의 camera 가 JS 로 감쇠시킨다
+ * (.arena.shake / .arena.microshake 폐지). 세기·지속을 상황마다 다르게 주고,
+ * 여러 흔들림이 겹칠 때 센 쪽이 이기게 하려면 키프레임으로는 부족하다. */
 
 /* --walk-shift = -(3프레임 × frameW)
  * 시트 플립북(heroWalk)에 수직 밥+미세 기울임(walkBob)을 겹쳐 발걸음마다 통통 튀게.
@@ -755,18 +770,8 @@ body {
   filter: drop-shadow(0 0 5px rgba(255, 214, 120, .8));
 }
 
-/* 발밑 먼지 — 돌진 시작·보스 착지에서 퐁 하고 퍼진다 (CSS 그리기, 에셋 불요) */
-.fx-dust {
-  width: 30px; height: 16px;
-  border-radius: 50%;
-  background: radial-gradient(ellipse, rgba(205, 185, 160, .8), rgba(205, 185, 160, 0) 70%);
-  animation: dustPuff .38s ease-out forwards;
-}
-.fx-dust.big { width: 54px; height: 24px; }
-@keyframes dustPuff {
-  0%   { opacity: .95; transform: translate(-50%, -50%) scale(.45); }
-  100% { opacity: 0; transform: translate(-50%, -50%) translateX(-16px) scale(1.7); }
-}
+/* 발밑 먼지는 캔버스 파티클로 옮겼다(render/stage.js dustPuff) — 단계 1 이 나머지
+ * 이펙트도 같은 길로 흡수한다. DOM 노드 26개 상한에 먼지가 자리를 차지하지 않는다. */
 
 .fx-dmg {
   font-size: 17px;
@@ -805,14 +810,7 @@ body {
 /* 던전 잠금 */
 .dungeon-card.locked { filter: grayscale(.5); opacity: .75; }
 
-/* ── 연출 (P5): 화면 흔들림 · 컨페티 ──────────────────────── */
-.arena.shake { animation: arenaShake .3s ease-out; }
-@keyframes arenaShake {
-  0%, 100% { transform: translate(0, 0); }
-  25% { transform: translate(3px, -2px); }
-  50% { transform: translate(-3px, 2px); }
-  75% { transform: translate(2px, 1px); }
-}
+/* ── 연출 (P5): 컨페티 ────────────────────────────────────── */
 .confetti {
   position: absolute;
   top: 42%;
@@ -826,15 +824,17 @@ body {
   0%   { opacity: 1; transform: translate(0, 0) rotate(0); }
   100% { opacity: 0; transform: translate(var(--dx, 0), 90px) rotate(240deg); }
 }
+/* 감속 모드 — 움직임만 줄이고 **정보는 남긴다**. 적·HP·데미지 숫자는 계속 보인다.
+ * 카메라 흔들림과 캔버스 파티클은 JS 쪽에서 함께 꺼진다(stage.js reducedMotion). */
 @media (prefers-reduced-motion: reduce) {
-  .arena.shake, .arena.microshake, .confetti, .hero.strike, .hero.fighting,
+  .confetti, .hero.strike, .hero.fighting,
   .follower.fighting, .follower.cast, .enemy.squash img, .enemy img.spawn-in,
   .enemy img.boss-in, .enemy.is-boss::before, .fx-impact, .fx-poof, .fx-slash,
   .ambient-pt, .speedlines.flash, .hero.hop, .follower.hop, .fx-heartp,
-  .hero.walking, .follower.walking, .fx-dust,
+  .hero.walking, .follower.walking,
   .story-card.pop, .boss-bubble.pop, .chapter-banner.show, .story-more { animation: none; }
   .confetti, .fx-impact, .fx-poof, .fx-proj, .fx-slash, .ambient-pt, .speedlines,
-  .fx-heartp, .fx-dust { display: none; }
+  .fx-heartp { display: none; }
 }
 
 /* 구출 하트 — CSS 로 그린 하트가 떠오른다 (에셋 불요) */

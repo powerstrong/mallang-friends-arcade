@@ -63,6 +63,7 @@
     bossBubble: $('bossBubble'), chapterBanner: $('chapterBanner'),
     chapterBannerName: $('chapterBannerName'), chapterBannerTag: $('chapterBannerTag'),
     field: document.querySelector('.field'), intro: $('intro'), introStart: $('introStart'),
+    cam: $('stageCam'), fxCanvas: $('fxCanvas'),
     tabs: $('tabs'), panelUpgrade: $('panelUpgrade'), panelParty: $('panelParty'),
     partyList: $('partyList'), partySlots: $('partySlots'), partyDot: $('partyDot'),
     partyBonusHint: $('partyBonusHint'), exitBtn2: $('exitBtn2'),
@@ -88,6 +89,7 @@
   // ── 숫자 표기 ────────────────────────────────────────────────
   // 표기는 UI 계층의 일이다. 엔진은 계속 Number 로만 계산한다.
   var UNITS = ['', 'K', 'M', 'B', 'T', 'aa', 'ab', 'ac', 'ad', 'ae', 'af'];
+  /* fmt 는 아래에서 정의되지만 Stage 생성 시점에는 함수 선언 호이스팅으로 이미 유효하다. */
   function fmt(n) {
     if (!isFinite(n)) return '∞';
     if (n < 1000) return String(Math.floor(n));
@@ -101,6 +103,16 @@
     if (m > 0) return m + '분';
     return Math.floor(sec) + '초';
   }
+
+  /* ── 무대 ────────────────────────────────────────────────────
+   * 아레나 안쪽(배경·액터·적·이펙트·카메라·파티클)은 전부 이 모듈이 소유한다.
+   * game.js 는 엔진을 굴리고 사건을 넘길 뿐, 전투 화면을 직접 그리지 않는다. */
+  var Stage = window.MallangIdleStage.create({
+    el: el,
+    Chapters: Chapters, Chars: Chars, Combat: Combat, balance: B,
+    Queue: window.MallangIdleQueue,
+    sfx: sfx, fmt: fmt,
+  });
 
   // ── 모바일 뷰포트 높이 ───────────────────────────────────────
   // 일부 모바일 브라우저가 100dvh 를 하단 툴바 제외 없이 계산해 하단 UI 가 가려진다.
@@ -510,37 +522,6 @@
     el.bookHint.textContent = seen >= BOOK_ENTRIES.length ? '모두 만났어요!' : '새 친구는 다음 챕터에';
   }
 
-  // ── 연출 (P5) ────────────────────────────────────────────────
-  /* 배속 플레이에서 한 프레임에 돌파가 몰리면 셰이크·컨페티가 폭증한다 — 짧게 묶는다. */
-  var lastFxAt = 0;
-  function fxReady() {
-    var now = performance.now();
-    if (now - lastFxAt < 400) return false;
-    lastFxAt = now;
-    return true;
-  }
-
-  function shake() {
-    if (!fxReady()) return;
-    el.arena.classList.remove('shake');
-    void el.arena.offsetWidth;              // reflow 로 애니메이션 재시작
-    el.arena.classList.add('shake');
-    burstNow();
-  }
-
-  function burstNow() {
-    for (var i = 0; i < 10; i++) {
-      var p = document.createElement('i');
-      p.className = 'confetti';
-      p.style.left = (35 + Math.random() * 30) + '%';
-      p.style.setProperty('--dx', (Math.random() * 120 - 60) + 'px');
-      p.style.background = ['#ff7ea8', '#f0a72c', '#57b894', '#b08cff'][i % 4];
-      p.style.animationDelay = (Math.random() * 0.1) + 's';
-      el.arena.appendChild(p);
-      (function (node) { setTimeout(function () { node.remove(); }, 1100); })(p);
-    }
-  }
-
   // ── 스토리 — 짧고, 스킵 가능하고, 진행을 오래 막지 않는다 ─────
   /* 컷신이 떠 있는 동안 게임 시간이 멈춘다(storyActive → 프레임 루프 게이트).
    * 본 장면은 storySeen 에 기록되어 다시 나오지 않는다. */
@@ -614,7 +595,7 @@
     storyActive = false;
     el.storyOverlay.hidden = true;
     lastFrame = 0;                    // 컷신 동안의 시간이 첫 dt 로 밀리지 않게
-    if (wasRescue) heartBurst();      // 구출의 하트는 컷신이 걷힌 무대 위에서
+    if (wasRescue) Stage.heartBurst();   // 구출의 하트는 컷신이 걷힌 무대 위에서
     if (storyQueue.length) { nextSceneFromQueue(); return; }
     if (wasChapter && pendingBanner) { chapterBanner(pendingBanner); pendingBanner = null; }
   }
@@ -658,275 +639,18 @@
     setTimeout(function () { el.chapterBanner.hidden = true; }, 2400);
   }
 
-  // ── 앰비언트 파티클 — 챕터마다 공기가 다르다 ─────────────────
-  /* 들판·정원엔 꽃잎이, 기계 구간엔 톱니가 흩날린다. 저비용: 동시 8개 상한,
-   * 순수 장식이라 결정론과 무관(표현 계층 Math.random 허용). */
-  var ambientTimer = 0, ambientCount = 0;
-  var AMBIENT_ART = {
-    meadow: 'assets/pt-petal.png', garden: 'assets/pt-petal.png',
-    gears: 'assets/pt-gear.png', machine: 'assets/pt-gear.png', core: 'assets/pt-gear.png',
-    starsea: 'assets/fx-star.png', moonfactory: 'assets/pt-gear.png',
-  };
-  var reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  function updateAmbient(dt) {
-    if (reducedMotion) return;   // 애니메이션이 없으면 animationend 도 없다 — 생성 자체를 생략
-    ambientTimer += dt;
-    if (ambientTimer < 0.8) return;
-    ambientTimer = 0;
-    if (ambientCount >= 8) return;
-    var art = AMBIENT_ART[Chapters.chapterFor(state.stage).id];
-    if (!art) return;
-    ambientCount++;
-    var n = document.createElement('img');
-    n.className = 'ambient-pt';
-    n.src = art;
-    n.style.left = (Math.random() * 100) + '%';
-    n.style.setProperty('--drift', (Math.random() * 60 - 30) + 'px');
-    n.style.setProperty('--dur', (3.5 + Math.random() * 2.5) + 's');
-    n.style.setProperty('--sz', (10 + Math.random() * 10) + 'px');
-    el.ambientLayer.appendChild(n);
-    n.addEventListener('animationend', function () { n.remove(); ambientCount--; });
-  }
-
-  /* 구출 연출 — 챕터 피날레에서 하트가 쏟아진다 (CSS 하트, 에셋 불요) */
-  function heartBurst() {
-    for (var i = 0; i < 8; i++) {
-      var h = document.createElement('i');
-      h.className = 'fx-heartp';
-      h.style.left = (30 + Math.random() * 45) + '%';
-      h.style.top = (30 + Math.random() * 25) + '%';
-      h.style.setProperty('--hd', (Math.random() * 1.2) + 's');
-      el.arena.appendChild(h);
-      (function (node) { setTimeout(function () { node.remove(); }, 2400); })(h);
-    }
-  }
-
-  /* 보스 격파 순간의 방사형 집중선 — 화면 전체가 "빰!" 하고 반응한다 */
-  function speedLineFlash() {
-    el.speedLines.hidden = false;
-    el.speedLines.classList.remove('flash');
-    void el.speedLines.offsetWidth;
-    el.speedLines.classList.add('flash');
-    setTimeout(function () { el.speedLines.hidden = true; }, 480);
-  }
-
   // ── 렌더 ────────────────────────────────────────────────────
-  var bgOffset = 0;
-  var lastEnemyKey = '';
-
-  /* 화면에 서는 것은 편성 전원이다 — 1번이 선봉(근접), 2·3번이 뒤에서 지원 사격.
-   * 프레임 폭이 캐릭터마다 달라 background-size 까지 같이 바꿔야 워크사이클이 안 어긋난다. */
-  var lastPartyKey = '';
-  function applySprite(node, c) {
-    node.style.width = c.frameW + 'px';
-    node.style.backgroundImage = "url('" + c.walk + "')";
-    node.style.backgroundSize = (c.frameW * 3) + 'px 220px';
-    node.style.setProperty('--walk-shift', '-' + (c.frameW * 3) + 'px');
-  }
-  function renderHero() {
-    var key = (state.party || []).join(',');
-    if (!key || key === lastPartyKey) return;
-    lastPartyKey = key;
-    var lead = Chars.byId(state.party[0]);
-    if (lead) applySprite(el.hero, lead);
-    [el.follower1, el.follower2].forEach(function (node, i) {
-      var c = state.party[i + 1] ? Chars.byId(state.party[i + 1]) : null;
-      node.hidden = !c;
-      if (c) applySprite(node, c);
-    });
-  }
-
-  // ── 전투 연출: 스트라이크·임팩트·데미지 숫자·지원 사격 ──────────
-  /* 엔진은 연속 DPS 로 계산하지만 화면은 "때리는 순간"이 보여야 산다.
-   * 공격 속도에 맞춰 돌진-타격을 틱으로 재생하고, 틱 사이에 깎인 HP 를
-   * 데미지 숫자로 뭉쳐 보여준다. 전부 표현 계층 — 엔진은 건드리지 않는다. */
-  var strikeAccum = 0, strikeGap = 0, dmgSince = 0;
-  var fxCount = 0;
-  var FX_CAP = 26;              // 동시 이펙트 노드 상한 — 저사양 보호
-
-  function spawnFx(cls, x, y, ttl, text) {
-    if (fxCount >= FX_CAP) return null;
-    fxCount++;
-    var n = document.createElement(text != null ? 'span' : 'i');
-    n.className = cls;
-    if (text != null) n.textContent = text;
-    n.style.left = x + 'px';
-    n.style.top = y + 'px';
-    /* 제거는 반드시 dispose 한 곳으로 — TTL 과 onfinish 가 각자 지우면 fxCount 가
-     * 이중 감소해 음수로 내려가고 FX_CAP 이 무력화된다(codex 리뷰). */
-    n.__dispose = function () {
-      if (n.__done) return;
-      n.__done = true;
-      n.remove();
-      fxCount--;
-    };
-    el.fxLayer.appendChild(n);
-    setTimeout(n.__dispose, ttl);
-    return n;
-  }
-
-  function enemyPoint() {
-    var fr = el.fxLayer.getBoundingClientRect();
-    var er = el.enemyArt.getBoundingClientRect();
-    return { x: er.left + er.width * 0.5 - fr.left, y: er.top + er.height * 0.55 - fr.top };
-  }
-
-  function footPoint(node) {
-    var fr = el.fxLayer.getBoundingClientRect();
-    var nr = node.getBoundingClientRect();
-    return { x: nr.left + nr.width * 0.5 - fr.left, y: nr.bottom - fr.top - 4 };
-  }
-
-  /* 타격 한 사이클: 돌진(0) → 접촉(90ms) 순간에 임팩트·검격·데미지·넉백·히트스톱.
-   * 접촉과 이펙트를 같은 프레임에 맞추는 것이 타격감의 절반이고, 나머지 절반은
-   * 접촉 직후 온 세상이 55ms 멈추는 히트스톱이다. */
-  var strikeCount = 0;
-  var restoreTimer = 0;
-  function heroStrikeFx(dmg) {
-    strikeCount++;
-    var crit = strikeCount % 5 === 0;          // 표현 전용 — 5타마다 강조 연출
-    el.hero.classList.remove('strike');
-    void el.hero.offsetWidth;
-    el.hero.classList.add('strike');
-    swapToAttackPose();
-    syncLunge();
-    sfx('hit');
-    var p = enemyPoint();     // 좌표는 지금 고정 — 접촉까지 적이 바뀌어도 빈 곳에 안 찍힌다
-    // 돌진이 시작되는 발밑에서 먼지가 퐁 — 출발의 무게
-    var fp = footPoint(el.hero);
-    spawnFx('fx-dust', fp.x - 6, fp.y, 400);
-
-    /* 접촉은 heroStrike 키프레임 40% 지점(300ms × 0.4 = 120ms) — CSS 와 함께 움직인다 */
-    setTimeout(function () {
-      var jx = (Math.random() - 0.5) * 26, jy = (Math.random() - 0.5) * 20;
-
-      var slash = spawnFx('fx-slash', p.x + jx - 6, p.y + jy - 4, 240);
-      if (slash) slash.style.setProperty('--rot', Math.floor(Math.random() * 50 - 25) + 'deg');
-
-      var imp = spawnFx('fx-impact' + (crit ? ' crit' : ''), p.x + jx, p.y + jy, 340);
-      if (imp) imp.style.setProperty('--rot', Math.floor(Math.random() * 70 - 35) + 'deg');
-
-      /* 5타 강조는 콤보 리듬 연출이다 — '!' 를 붙이면 크리티컬(추가 피해)로 읽히는데
-       * 실제 피해 증가는 없다(codex 리뷰 #5). 숫자는 언제나 실제 누적 피해다. */
-      spawnFx('fx-dmg' + (crit ? ' crit' : ''), p.x + jx, p.y + jy - 28, 640, fmt(dmg));
-
-      el.enemy.classList.remove('squash');
-      void el.enemy.offsetWidth;
-      el.enemy.classList.add('squash');
-
-      // 히트스톱 — 접촉 순간 모두가 잠깐 멈춘다
-      el.arena.classList.add('hitstop');
-      setTimeout(function () { el.arena.classList.remove('hitstop'); }, crit ? 90 : 55);
-      if (crit) {
-        el.arena.classList.remove('microshake');
-        void el.arena.offsetWidth;
-        el.arena.classList.add('microshake');
-      }
-    }, 120);
-
-    /* 연타 시 이전 복원 타이머가 다음 타격의 공격 포즈를 중간에 되돌리는 경합 방지 */
-    clearTimeout(restoreTimer);
-    restoreTimer = setTimeout(restoreWalkPose, 320);
-  }
-
-  /* 타격 접점 통일(6차 백로그) — 돌진 거리가 고정 64px 이면 캐릭터 폭(139~301px)에
-   * 따라 주먹이 적을 뚫거나 허공에 멈춘다. 매 타격마다 실제 간격을 재서 주먹이
-   * 적 몸에 살짝(12px) 파고드는 지점까지만 나아가게 한다. translateX 는 scale(--sc)
-   * 안에서 움직이므로 스케일로 나눠 보정한다. 보스전은 원거리 대시 상한을 둔다. */
-  function syncLunge() {
-    var hr = el.hero.getBoundingClientRect();
-    var er = el.enemyArt.getBoundingClientRect();
-    if (!hr.width || !er.width) return;
-    var sc = parseFloat(getComputedStyle(el.hero).getPropertyValue('--sc')) || 0.4;
-    var gap = er.left - hr.right;
-    var reach = (gap + 12) / sc;
-    if (!isFinite(reach)) return;
-    reach = Math.max(24, Math.min(170, Math.round(reach)));
-    el.hero.style.setProperty('--lunge', reach + 'px');
-  }
-
-  /* 공격 포즈 스왑 — 전용 공격 스프라이트가 있으면 타격 동안 그 포즈로 바꾼다. */
-  var poseSwapped = false;
-  function swapToAttackPose() {
-    var c = Chars.byId(state.party[0]);
-    if (!c || !c.atk) return;
-    el.hero.style.backgroundImage = "url('" + c.atk + "')";
-    el.hero.style.width = c.atkW + 'px';
-    el.hero.style.backgroundSize = c.atkW + 'px 220px';
-    poseSwapped = true;
-  }
-  function restoreWalkPose() {
-    if (!poseSwapped) return;
-    poseSwapped = false;
-    var c = Chars.byId(state.party[0]);
-    if (c) applySprite(el.hero, c);
-  }
-
-  /* 지원 사격 — 2·3번 동료가 자기 주기로 별을 던진다. 데미지는 이미 DPS 에
-   * 편성 보너스로 녹아 있으므로 숫자는 띄우지 않는다(전투가 두 배로 세 보이면 거짓말). */
-  var followerTimers = [0, 0];
-  function followerShot(node) {
-    var fr = el.fxLayer.getBoundingClientRect();
-    var nr = node.getBoundingClientRect();
-    var from = { x: nr.left + nr.width * 0.6 - fr.left, y: nr.top + nr.height * 0.35 - fr.top };
-    var to = enemyPoint();
-    var star = spawnFx('fx-proj', from.x, from.y, 520);
-    if (!star) return;
-    node.classList.remove('cast');
-    void node.offsetWidth;
-    node.classList.add('cast');
-    var dx = to.x - from.x, dy = to.y - from.y;
-    star.animate([
-      { transform: 'translate(0,0) rotate(0deg)' },
-      { transform: 'translate(' + (dx * 0.5) + 'px,' + (dy * 0.5 - 34) + 'px) rotate(180deg)' },
-      { transform: 'translate(' + dx + 'px,' + dy + 'px) rotate(360deg)' },
-    ], { duration: 430, easing: 'linear' }).onfinish = function () {
-      star.__dispose();
-      spawnFx('fx-impact small', to.x, to.y, 280);
-    };
-  }
-
-  function updateCombatFx(dt) {
-    var fighting = state.phase !== Combat.PHASE_ADVANCE && !el.enemy.hidden;
-    /* 데미지 숫자는 실제 깎이는 HP 와 같아야 한다 — 보스전은 bossDps(라떼+나침반
-     * 전부 포함). 이전에는 bossMul 만 곱해 나침반 유저의 숫자가 실제보다 작았다. */
-    dmgSince += (state.phase === Combat.PHASE_BOSS ? Combat.bossDps(state) : Combat.dps(state)) * dt * speedMul;
-    if (!fighting) { dmgSince = 0; return; }
-
-    // 타격 틱: 공속을 따르되 눈이 따라갈 상한(초당 4회)을 둔다
-    var rate = Math.min(4, Combat.effAspd(state));
-    strikeGap += dt;
-    strikeAccum += dt * rate;
-    if (strikeAccum >= 1 && strikeGap >= 0.22) {
-      strikeAccum = 0; strikeGap = 0;
-      heroStrikeFx(dmgSince);
-      dmgSince = 0;
-    }
-
-    // 동료 지원 사격 — 서로 어긋난 주기로
-    [el.follower1, el.follower2].forEach(function (node, i) {
-      if (node.hidden) return;
-      followerTimers[i] += dt;
-      var cycle = 1.7 + i * 0.6;
-      if (followerTimers[i] >= cycle) {
-        followerTimers[i] = 0;
-        followerShot(node);
-      }
-    });
-  }
-
   /* 챕터 시각(이름·배경·전경)만 적용한다 — 부수효과 없음. 부팅 렌더와 런타임 전환이
    * 같은 경로를 쓰되, 컷신·배너·BGM 같은 "전환 연출"은 런타임에서만 발화해야 한다.
    * (DOM 텍스트를 렌더 상태로 쓰다 부팅 렌더가 인트로 위로 컷신을 띄운 회귀 — codex P0) */
   var lastChapterId = '';
   function applyChapterVisuals(ch) {
     el.chapterName.textContent = ch.name;
-    el.bgLayer.style.backgroundImage = "url('" + ch.bg + "')";
-    el.fgLayer.style.backgroundImage = ch.fg ? "url('" + ch.fg + "')" : 'none';
+    Stage.setChapter(ch);
   }
 
   function renderHud() {
-    renderHero();
+    Stage.syncParty(state);
     el.stageNum.textContent = state.stage;
     el.goldNum.textContent = fmt(state.gold);
     el.powerNum.textContent = fmt(Combat.power(state));
@@ -990,66 +714,15 @@
     tabBtns.book.hidden = (state.collection || []).length < 3;
   }
 
-  /* 매 프레임 바뀌는 것은 배경 위치·적 HP·보스 타이머뿐이다. 나머지(클래스 토글,
-   * 텍스트, pip 10개)는 값이 실제로 달라졌을 때만 쓴다. */
+  /* 무대(배경·액터·적·이펙트)는 render/stage.js 가 소유한다. 여기 남은 것은
+   * **읽어야 하는 숫자** 뿐이다 — 진행도 pip, 보스 타이머, 필요 DPS. 이것들은 연출
+   * 큐를 타지 않고 언제나 엔진 현재값을 보여준다(가독성은 연출보다 우선). */
   var lastPhase = '', lastMobIndex = -1, lastPipCount = 0;
 
-  function renderArena(dt) {
+  function renderHudOverlays() {
     var phase = state.phase;
-    var walking = phase === Combat.PHASE_ADVANCE;
     var phaseChanged = phase !== lastPhase;
     lastPhase = phase;
-
-    // 배경 스크롤 — 전진 중에만 흐른다. 전경은 1.8배 빨리 흘러 깊이감을 만든다(시차).
-    if (walking) {
-      bgOffset -= dt * 90;
-      el.bgLayer.style.backgroundPositionX = bgOffset + 'px';
-      el.fgLayer.style.backgroundPositionX = (bgOffset * 1.8) + 'px';
-    }
-    updateAmbient(dt);
-    if (phaseChanged) {
-      el.hero.classList.toggle('walking', walking);
-      el.hero.classList.toggle('fighting', !walking);
-      [el.follower1, el.follower2].forEach(function (n) {
-        n.classList.toggle('walking', walking);
-        n.classList.toggle('fighting', !walking);
-      });
-      // 교전 대형 — 적에게 다가선다 (멀리서 허공 펀치 금지)
-      el.field.classList.toggle('engaged', !walking);
-      el.field.classList.toggle('vs-boss', phase === Combat.PHASE_BOSS);
-    }
-
-    if (walking) {
-      if (phaseChanged) { el.enemy.hidden = true; el.bossRing.hidden = true; }
-      lastEnemyKey = '';
-    } else {
-      var isBoss = phase === Combat.PHASE_BOSS;
-      var art = isBoss ? Chapters.bossFor(state.stage) : Chapters.mobFor(state.stage, state.mobIndex);
-      var key = (isBoss ? 'B' : 'M') + art.id + state.stage + state.mobIndex;
-      if (key !== lastEnemyKey) {
-        lastEnemyKey = key;
-        el.enemyArt.src = art.art;
-        el.enemyName.textContent = art.name;
-        el.enemy.classList.toggle('is-boss', isBoss);
-        el.enemy.hidden = false;
-        el.bossRing.hidden = !isBoss;
-        // 등장 연출 — 몹은 폴짝, 보스는 쿵 하고 내려온다 (착지 순간 발밑 먼지)
-        el.enemyArt.classList.remove('spawn-in', 'boss-in');
-        void el.enemyArt.offsetWidth;
-        el.enemyArt.classList.add(isBoss ? 'boss-in' : 'spawn-in');
-        if (isBoss) {
-          setTimeout(function () {
-            var bp = footPoint(el.enemyArt);
-            spawnFx('fx-dust big', bp.x, bp.y, 420);
-          }, 250);   // bossIn 55% 지점(≈250ms)이 착지 프레임
-        }
-        // 도감 기록 — 처음 만난 몬스터/보스
-        var ch = Chapters.chapterFor(state.stage);
-        recordSeen(isBoss ? (ch.id + ':boss:' + art.id) : (ch.id + ':' + art.id));
-      }
-      var ratio = state.enemyMaxHp > 0 ? Math.max(0, state.enemyHp / state.enemyMaxHp) : 0;
-      el.enemyHpFill.style.width = (ratio * 100) + '%';
-    }
 
     // 스테이지 진행 / 보스 타이머
     var inBoss = phase === Combat.PHASE_BOSS;
@@ -1090,37 +763,31 @@
     setTimeout(function () { t.remove(); }, 1800);
   }
 
-  /* 골드 획득 플로팅 — 몹을 잡을 때마다 숫자가 조용히 오르기만 하면 성장이 안 보인다.
-   * 배속에서 폭주하지 않도록 짧은 간격으로 합산해 하나만 띄운다. */
-  var floatAccum = 0, floatCooldown = 0;
-  function floatGold(amount) {
-    floatAccum += amount;
-    if (floatCooldown > 0) return;
-    floatCooldown = 0.25;
-    sfx('coin');
-    var n = document.createElement('div');
-    n.className = 'gold-float';
-    n.textContent = '+' + fmt(floatAccum);
-    floatAccum = 0;
-    el.field.appendChild(n);
-    setTimeout(function () { n.remove(); }, 900);
-  }
-
+  /* 사건 처리는 두 갈래다 (COMBAT_STAGE_OVERHAUL.md 5절):
+   *
+   *   무대(연출)  → Stage.push() → 연출 큐가 "볼 만한 페이스"로 재생한다
+   *   로직(진실)  → 여기서 즉시 처리한다 — 도감·해금·컷신·패널·BGM
+   *
+   * 로직을 큐에 태우면 안 된다. 몰아보기에서 도감이 빠지거나 컷신 순서가 어긋난다.
+   * 반대로 연출을 즉시 처리하면 지금까지처럼 리듬이 사라진다. */
   function consumeEvents() {
     var needPanel = false;
     for (var i = 0; i < state.events.length; i++) {
       var ev = state.events[i];
+      if (ev.type === 'mob_spawn' || ev.type === 'boss_start') {
+        /* 도감은 스프라이트가 아니라 **사건**에서 기록한다. 화면에 실제로 그려지는
+         * 시점에 기록하면 몰아보기로 건너뛴 몹이 도감에서 누락된다. */
+        var isB = ev.type === 'boss_start';
+        var seenArt = isB ? Chapters.bossFor(ev.stage) : Chapters.mobFor(ev.stage, ev.index);
+        var seenCh = Chapters.chapterFor(ev.stage);
+        recordSeen(isB ? (seenCh.id + ':boss:' + seenArt.id) : (seenCh.id + ':' + seenArt.id));
+      }
       if (ev.type === 'mob_kill') {
         needPanel = true;
-        floatGold(ev.gold);
-        // 처치 — 몬스터가 '펑' 하고 사라진다
-        var pp = enemyPoint();
-        spawnFx('fx-poof', pp.x, pp.y, 460);
-        sfx('kill');
       }
       else if (ev.type === 'boss_clear') {
         toast('스테이지 ' + ev.stage + ' 돌파!', 'win');
-        sfx('clear'); shake(); speedLineFlash();
+        sfx('clear');
         needPanel = true;
         var beforeSlots = Chars.slotsFor(ev.stage);
         if (Chars.slotsFor(state.stage) > beforeSlots) {
@@ -1161,17 +828,21 @@
     var simDt = dt * speedMul;
 
     if (simDt > 0 && gameStarted && !storyActive) {
-      if (floatCooldown > 0) floatCooldown -= dt;
       /* 날짜 동기화는 반드시 step 보다 먼저 — 자정 직후의 처치·강화가 새 스냅숏에
        * 흡수되어 진행도에서 사라지는 것을 막는다(codex 리뷰). */
       dailyTimer += dt;
       if (dailyTimer > 1) { syncDaily(); dailyTimer = 0; }
       Combat.step(state, simDt);
+      /* 사건을 무대에 먼저 넘기고(연출 큐), 그 다음 로직을 즉시 처리한다.
+       * consumeEvents 가 state.events 를 비우므로 순서가 뒤집히면 무대가 굶는다. */
+      Stage.push(state.events);
       var needPanel = consumeEvents();
       panelAccum += dt;
       if (needPanel || panelAccum > 0.2) { renderPanel(); panelAccum = 0; }
-      renderArena(simDt);
-      updateCombatFx(dt);
+      renderHudOverlays();
+      /* 연출은 실제 프레임 시간(dt)으로, 피해량 누적만 엔진 시간(simDt)으로 —
+       * 배속을 걸어도 애니메이션이 20배로 떨리지 않고 큐가 가속으로 흡수한다. */
+      Stage.update(dt, simDt, state);
 
       saveTimer += dt;
       if (saveTimer > 5) { persist(); saveTimer = 0; }
@@ -1408,14 +1079,19 @@
       get state() { return state; },
       advance: function (sec) {
         Combat.step(state, sec);
+        Stage.push(state.events);
         consumeEvents();
         renderPanel();
-        renderArena(sec);
+        renderHudOverlays();
+        /* 연출도 같은 시간만큼 밀어 준다 — 큐가 밀린 만큼 가속·몰아보기로 흡수한다.
+         * 이 훅이 무대를 안 밀면 헤드리스 검증에서 화면이 영원히 첫 프레임에 멈춘다. */
+        Stage.update(sec, sec, state);
         return { stage: state.stage, phase: state.phase, gold: state.gold };
       },
       Combat: Combat, Save: Save, Chapters: Chapters, Balance: Bal,
+      Stage: Stage,
       // 연출 검증용 — 헤드리스에선 rAF 가 멈춰 자연 발화를 볼 수 없다
-      fx: { strike: heroStrikeFx, shot: followerShot, poofAt: function () { var p = enemyPoint(); return spawnFx('fx-poof', p.x, p.y, 460); } },
+      fx: Stage.fx,
     };
     el.devPanel.addEventListener('click', function (e) {
       var cmd = e.target.getAttribute('data-dev');
@@ -1482,7 +1158,10 @@
   renderParty();
   renderRelics();
   renderBattle();
-  renderArena(0);
+  renderHudOverlays();
+  /* 부팅 첫 프레임 — 큐가 비어 있으므로 무대가 엔진 현재값으로 스냅한다(syncTo).
+   * 복귀 유저가 보스전 도중에 껐어도 그 장면 그대로 다시 선다. */
+  Stage.update(0.016, 0, state);
   syncMuteBtn();
   document.addEventListener('pointerdown', function warmOnce() {
     if (Audio) Audio.warm();
