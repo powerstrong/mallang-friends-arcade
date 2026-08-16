@@ -13,11 +13,50 @@
 | 단계 | 상태 |
 |---|---|
 | 구현 | ✅ P0~P5 전 범위 (2026-08-15~16) |
-| 기계적 검증 | ✅ 회귀 테스트 41개 · 시뮬 지표 · 브라우저 좌표 클릭 E2E |
+| 기계적 검증 | ✅ 정적 회귀 43개 + **실브라우저 회귀 16개**(CDP 실좌표 클릭) · 시뮬 지표 |
 | **사람 게이트** | ⏳ **대기** — P1 "5분 뒤 한 번 더 강화하고 싶은가"는 사람만 판정 가능 |
-| 배포 검증 | ✅ 배포본 시작 플로우·390×844 레이아웃 (codex 확인) |
+| 배포 검증 | ⏳ 7차 수정분 재배포 후 신규 사용자 플로우 재확인 필요 (6차분은 codex 확인) |
 
 사람 게이트 통과 전에는 POST-v1(서버·랭킹·광장 경제)을 시작하지 않는다.
+
+### 2026-08-16 (7차) — codex REQUEST CHANGES 반영 + 병아리 스프라이트 정정
+
+- **[P0] 첫 방문 시작 회귀 수정**: 부팅 렌더(renderHud)가 DOM 텍스트 비교로 챕터
+  전환을 감지하다 인트로(z-50) 위로 컷신(z-65)을 띄워 시작 버튼이 눌리지 않던 회귀.
+  `lastChapterId` + `applyChapterVisuals`(배경·전경만)로 시각 적용과 전환 연출
+  (배너·컷신·BGM)을 분리 — 부팅 렌더는 이제 부수효과가 없다. `nextSceneFromQueue`
+  에 seen 가드(중복 재생 방지), 구출 재큐는 인트로 뒤로 이동
+- **실브라우저 회귀 테스트 신설** — `tests/browser-harness.js` (무의존: 헤드리스
+  Chrome/Edge + CDP + Node 22 내장 WebSocket, 임시 프로필 = 항상 새 origin).
+  `first-visit.browser.test.js` 10개: computed style·elementFromPoint·실좌표 클릭으로
+  위 회귀를 그대로 고정. `multi-tab.browser.test.js` 6개: 멀티탭 정지→이어하기 검증.
+  소스 문자열만 보는 정적 테스트가 못 잡던 부류가 이제 저장소 안에서 재현된다
+- **[사용자 버그] 병아리가 강아지로 보임**: `hero-chick-walk.png` 파일 자체가 푸들
+  그림이었다(공격 포즈·초상화는 정상). 원본(jump-climber의 "피치 병아리 워크
+  스프라이트 시트.png")부터 오염 — imagegen 재생성으로 정정. 마젠타 요청은 두 번
+  연속 검정+후광으로 실패, **"3x3 그리드 + 방송용 그린스크린 #00FF00 + 글로우 금지"
+  프롬프트가 성공** (다음 에셋 작업 시 참고). 가운데 줄(옆모습) 추출 → 조각 제거 →
+  바닥 정렬 재조립, frameW 165→188
+- **[사용자 질문] "필드에 한 명만 나오나?"**: 편성 전원(최대 3명)이 함께 서는 구조는
+  원래대로이고 슬롯이 1/10/40 에서 열릴 뿐 — 이걸 UI 가 말하지 않아 오해가 생겼다.
+  편성 패널에 "최대 3명 함께 싸워요 · 다음 자리 스테이지 N" 힌트 상시 표시
+- **[사용자 요청] 모션 역동성**: 걷기 수직 밥+기울임(동료는 위상차), 타격에 예비
+  동작(움츠림)→돌진(접촉 120ms, CSS 40% 키프레임과 동기), 돌진 발밑 먼지, 피격
+  넉백 강화(떠올랐다 낙하+회전), 지원 사격 점프 강화, 보스 착지 먼지(fx-dust).
+  전부 표현 계층 — 엔진 불변, reduced-motion 존중, FX_CAP 유지
+- **[P1] 멀티탭 가드 복구 UX**: 1회성 토스트 → 지속형 모달("다른 탭에서 플레이 중")
+  + "최신 저장 불러오기"(reload) + "이 탭에서 이어하기"(lastWroteAt 재기준 → 즉시
+  재저장으로 소유권 회수). 정지 즉시 `Audio.bgm(null)`. `storage` 이벤트로 5초
+  주기를 기다리지 않고 즉시 감지
+- **[P1] 문서 정합**: 24h 벽 기준을 75분(4,500초)으로 재확정하고 BALANCE.md 에
+  구조적 하한(~50분) 근거 명시(60분 목표는 오프라인 모델 도입 후 재론), ROADMAP
+  유물 계수를 실측치(×1.06/×1.09)로, 본 문서 수치 정정(테스트 41→43, 세이브 v5,
+  에셋 58파일)
+- **[P2] 시뮬 과제 경제 이원화**: `--model=baseline|upper|both`(기본 both) —
+  baseline 은 실제 game.js 와 같은 Quests API 로 달성분만 수령, upper 는 기존
+  전액 즉시 수령 상한. 회귀 테스트가 고정하는 기준은 upper(연속성). **벽 체류
+  (wallRatio) 지표 신설** — idleRatio 는 67분 벽에서도 0%라 정체를 못 쟀다.
+  24h 실측: 두 모델 차이 미미(시뮬 활동량이면 과제를 실제로도 다 채움), 벽 체류 82.6%
 
 ### 2026-08-16 (6차) — 자체 검증 루프 2회차: codex 심층 리뷰 반영
 
@@ -163,26 +202,28 @@
 | 순수 결정론 엔진 `engine/combat.js` | 완료 — 이벤트 기반 step, dt 크기 무관 |
 | BALANCE 단일 상수 `engine/balance.js` | 완료 |
 | seeded RNG `engine/rng.js` | 완료 (현재 전투는 무작위 요소 없음, 향후 드랍용) |
-| 세이브 `engine/save.js` | 완료 — version 1 + migrateSave + 상위버전 거부 |
+| 세이브 `engine/save.js` | 완료 — version 5 (v5=storySeen) + migrateSave + 상위버전 거부 |
 | 챕터 데이터 `data/chapters.js` | 완료 — 5챕터(들판→언덕→전선→심장부→하늘 정원) |
 | 헤드리스 시뮬 `tools/sim.js` | 완료 — 24h 시뮬 0.2초 |
 | 그리드 서치 `tools/tune.js` | 완료 — 120조합 11.6초 |
-| 회귀 테스트 | **41개 전부 통과** (balance 33 + UI 계약 8) |
+| 회귀 테스트 | **정적 43개**(balance 35 + UI 계약 8) + **실브라우저 16개**(first-visit 10 + multi-tab 6) |
 | 게임 화면 `index.html/game.js/style.css` | 완료 — 횡스크롤 자동 전진, 강화 3축 x1/x10/MAX, 편성 탭 |
 | `?dev=1` 치트 패널 | 완료 — 골드/스테이지/오프라인/배속 x20/세이브 |
 | 캐릭터 `data/characters.js` | 완료 — 5명, 해금·슬롯 규칙, 파티 보너스 |
 | 챕터 `data/chapters.js` | 완료 — 5챕터(들판 → 언덕 → 전선 → 심장부 → 하늘 정원) |
-| 에셋 | 완료 — 총 31종. 배경 4, 몹 9, 보스 5, 주인공 5, 초상 5, 아이콘 3, 로고·이펙트 |
+| 에셋 | 완료 — 총 58파일. 배경·전경 6, 몹 9, 보스 6, 주인공 걷기 5 + 공격 5, 초상 5, 적 기계 3, 아이콘 7, 이펙트·파티클·로고 |
 | 실험실 노출 | 완료 — `games/registry.js` 에 `stage:'LAB'` 등록 |
 
 ### 검증한 것
 
 ```bash
-node games/mallang-idle/tests/balance.test.js       # 33 passed
-node games/mallang-idle/tests/ui-contract.test.js   # 8 passed
-node games/mallang-idle/tools/sim.js --minutes=5
+node games/mallang-idle/tests/balance.test.js              # 35 passed
+node games/mallang-idle/tests/ui-contract.test.js          # 8 passed
+node games/mallang-idle/tests/first-visit.browser.test.js  # 10 passed (헤드리스 실브라우저)
+node games/mallang-idle/tests/multi-tab.browser.test.js    # 6 passed (헤드리스 실브라우저)
+node games/mallang-idle/tools/sim.js --minutes=5           # baseline + upper 두 시나리오 출력
 node games/mallang-idle/tools/tune.js --top=5
-node scripts/validate-games.js                   # registry 검증 통과
+node scripts/validate-games.js                             # registry 검증 통과
 ```
 
 브라우저(로컬 정적 서버 8090, `?dev=1`)에서 확인한 것 — 콘솔 에러 없음, 적 이미지 로드,
@@ -206,7 +247,8 @@ node scripts/validate-games.js                   # registry 검증 통과
 - [ ] **캐릭터별 강화** — 편성에 "누구를 키울까" 축 추가 후보
 - [ ] **HP·생존형 던전** — HP 축 도입은 밸런스 전면 재작업, 광장 연동과 함께 판단
 - [ ] **챕터 6+** — `data/chapters.js` 데이터 추가만으로 확장 가능
-- [ ] **BGM** — 효과음만 있다. 절차 생성 BGM 은 다른 부스 게임 선례 참고
+- [ ] **BGM 폴리시** — 절차 생성 BGM 은 4차에서 구현 완료. 남은 것: 무드 전환
+      0.3s 크로스페이드, 음소거 시 interval 해제 (6차 백로그)
 
 ### 3. 밸런스 후속
 
