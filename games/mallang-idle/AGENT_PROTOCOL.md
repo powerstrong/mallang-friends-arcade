@@ -8,10 +8,16 @@
 
 1. `NEXT_STEPS.md`를 읽는다 → 현재 단계와 다음 작업을 확인
 2. [ROADMAP.md](ROADMAP.md)에서 **현재 단계의 게이트**를 확인
-3. 지표 회귀 테스트를 먼저 돌린다 (지금 상태가 초록인지 확인하고 시작)
+3. **전투 화면 개편이 진행 중이면** [COMBAT_STAGE_OVERHAUL.md](COMBAT_STAGE_OVERHAUL.md)를
+   읽는다 → 6절에서 **다음 단계의 "완성 아님" 체크리스트**가 그 세션의 작업 정의다
+4. 회귀 테스트를 먼저 돌린다 (지금 상태가 초록인지 확인하고 시작)
 
 ```bash
 node games/mallang-idle/tests/balance.test.js
+node games/mallang-idle/tests/ui-contract.test.js
+node games/mallang-idle/tests/queue.test.js
+# 실브라우저(브라우저 없으면 SKIP) — 전투 화면을 건드리면 반드시 함께 돌린다
+node games/mallang-idle/tests/stage.browser.test.js
 ```
 
 세션 종료 시 `NEXT_STEPS.md`를 갱신한다. 다음 세션은 이 파일만 보고 이어간다.
@@ -116,6 +122,8 @@ games/mallang-idle/
   ROADMAP.md            단계와 게이트
   AGENT_PROTOCOL.md     이 문서
   NEXT_STEPS.md         현재 상태 · 다음 작업 (매 세션 갱신)
+  COMBAT_STAGE_OVERHAUL.md  전투 화면 대개편 기획 — 단계 0~5·릴리즈 기준·에셋 스펙
+                            (진행 중인 트랙. 6절 체크리스트가 각 세션의 작업 정의)
 
   engine/
     balance.js          모든 계수의 단일 원천
