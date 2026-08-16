@@ -94,7 +94,12 @@
   }
 
   function mobHp(stage)  { return B.mobBaseHp * Math.pow(B.mobHpGrowth, stage - 1); }
-  function bossHp(stage) { return mobHp(stage) * B.bossHpMultiplier; }
+  function bossHp(stage) {
+    /* 도입 첫 벽 — firstWallStage 보스만 의도적으로 굵다(balance.js 주석 참고).
+     * 던전은 baseStage ≥ 9(해금 10)라 이 배수를 상속하지 않는다. */
+    var mul = stage === B.firstWallStage ? B.firstWallHpMul : 1;
+    return mobHp(stage) * B.bossHpMultiplier * mul;
+  }
   function mobGold(s, stage) {
     return B.goldBase * Math.pow(B.goldGrowth, stage - 1) * goldMul(s.up.gold)
          * (1 + partyBonus(s).goldMul) * relicMul(s, 'barn');

@@ -39,8 +39,12 @@
       skillText: '공격 속도 +18%',
       desc: '빠르게 쪼아대는 속공형',
     },
+    /* 해금 간격 재배치(codex 재미 리뷰 #2): 1/5/15/30/50 은 30분(스테이지 ~53)에
+     * 전부 소진되어 첫 세션이 일주일치 해금을 다 써 버렸다. 22/55/90/120 으로
+     * 늘려 "다음 복귀에 무엇이 열리는가"가 첫 주 내내 남아 있게 한다.
+     * 컷신 화자-해금 정합(챕터 경계 31/71/131/211)은 무결성 테스트가 지킨다. */
     {
-      id: 'hamster', name: '푸딩 햄스터', unlockStage: 15,
+      id: 'hamster', name: '푸딩 햄스터', unlockStage: 22,
       walk: 'assets/hero-hamster-walk.png', frameW: 191,
       portrait: 'assets/portrait-hamster.png',
       atk: 'assets/atk-hamster.png', atkW: 283,
@@ -49,7 +53,7 @@
       desc: '볼주머니 가득 모으는 살림꾼',
     },
     {
-      id: 'latte', name: '라떼 퍼피', unlockStage: 30,
+      id: 'latte', name: '라떼 퍼피', unlockStage: 55,
       walk: 'assets/hero-latte-walk.png', frameW: 139,
       portrait: 'assets/portrait-latte.png',
       atk: 'assets/atk-latte.png', atkW: 253,
@@ -58,7 +62,7 @@
       desc: '큰 상대일수록 신나는 돌파형',
     },
     {
-      id: 'mintcat', name: '민트 키튼', unlockStage: 50,
+      id: 'mintcat', name: '민트 키튼', unlockStage: 90,
       walk: 'assets/hero-mintcat-walk.png', frameW: 202,
       portrait: 'assets/portrait-mintcat.png',
       atk: 'assets/atk-mintcat.png', atkW: 258,

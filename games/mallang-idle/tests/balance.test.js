@@ -54,6 +54,15 @@ test('첫 5분 — 도입 리듬', function () {
   atMost(m5.firstBossClearAt, 180, '첫 보스 돌파(초)');
   between(m5.avgStageDwell, 20, 75, '스테이지 평균 체류(초)');
   atMost(m5.idleRatio, 0.30, '유휴 비율');
+  /* 의도된 첫 벽(2026-08-16, codex 재미 리뷰 #1) — 자연 곡선의 첫 실패는 8~9층,
+   * 즉 5분 밖이라 첫 세션이 코어 루프(막힘 → 강화 → 돌파)를 경험하지 못했다.
+   * firstWallStage(5층) 보스를 firstWallHpMul(1.3)배 굵게 만들어 ~4분에 벽을
+   * 놓는다. 5분 안에 벽이 서고, 6분 안에는 뚫려야 한다(두께 상한은 아래 6분 검사와
+   * 30분 최장 벽 범위가 함께 지킨다). */
+  assert.ok(m5.state.stats.bossFails >= 1, '첫 5분 안에 의도된 첫 벽이 있어야 한다');
+  var m6 = Sim.run({ seconds: 360 });
+  assert.ok(m6.state.safeStage >= B.firstWallStage,
+    '첫 벽은 6분 안에 뚫려야 한다 (safeStage=' + m6.state.safeStage + ')');
 });
 
 /* 최장 벽에는 **하한**도 있어야 한다. 상한만 보면 "벽이 아예 없는" 곡선이 통과하는데,

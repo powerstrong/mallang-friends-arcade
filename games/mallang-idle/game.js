@@ -236,9 +236,14 @@
     for (var s = 0; s < Chars.SLOT_UNLOCKS.length; s++) {
       if (state.stage < Chars.SLOT_UNLOCKS[s]) { nextSlotStage = Chars.SLOT_UNLOCKS[s]; break; }
     }
-    el.partyHint.textContent = nextSlotStage
-      ? '최대 3명 함께 싸워요 · 다음 자리 스테이지 ' + nextSlotStage
-      : '편성 전원이 함께 싸워요';
+    /* 다음 해금 예고(codex 리뷰 #2) — 복귀 목표가 항상 보이게 한다 */
+    var nextChar = null;
+    for (var c = 0; c < Chars.CHARACTERS.length; c++) {
+      if (state.stage < Chars.CHARACTERS[c].unlockStage) { nextChar = Chars.CHARACTERS[c]; break; }
+    }
+    var hints = [nextSlotStage ? '최대 3명 함께 싸워요 · 다음 자리 스테이지 ' + nextSlotStage : '편성 전원이 함께 싸워요'];
+    if (nextChar) hints.push('다음 친구는 스테이지 ' + nextChar.unlockStage + '에서 기다려요');
+    el.partyHint.textContent = hints.join(' · ');
 
     el.partyList.innerHTML = '';
     Chars.CHARACTERS.forEach(function (c) {
