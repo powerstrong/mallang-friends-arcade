@@ -155,6 +155,11 @@ UMD 패턴을 따라 브라우저와 Node에서 같은 파일을 쓴다.
 `requestAnimationFrame` 이 정지하므로 게임 시간이 흐르지 않는다. 코드 버그가 아니다.
 `?dev=1` 로 열고 `window.__mallangIdle` 훅을 쓰면 창을 띄우지 않고 검증할 수 있다.
 
+**숨은 창에서는 CSS transition/animation 이 얼어붙는다** — 컴포지팅이 없으면
+전이가 시작값에서 멈춘 채 computed style 을 돌려준다. 위치·전이 검증은
+`el.style.transition='none'` 으로 끄고 목표값을 직접 읽어라. (교전 대형 캘리브레이션에서
+"CSS 가 적용 안 된다"는 오진으로 30분을 태울 뻔했다.)
+
 **표시/숨김 검증은 반드시 computed style 로** — `el.hidden` 속성값과
 프로그램적 `el.click()` 만으로 검증하면 "hidden 인데 화면에 보이는" 결함을 놓친다.
 `hidden` 속성은 UA 의 `display:none` 으로만 숨기므로, 클래스가 `display:flex` 를 주면
