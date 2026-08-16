@@ -63,6 +63,25 @@
         { who: 'rabbit', text: '평화를 되찾았어. …그래도 산책은 계속된다!' },
       ],
     },
+    /* 구출 — 기계 챕터 피날레(마지막 스테이지 보스 격파)에서 재생. 서사 훅의 완성:
+     * 이 게임의 후반 전투는 숫자가 아니라 구출이다. */
+    {
+      id: 'rescue-machine', trigger: { type: 'rescue', chapter: 'machine' },
+      lines: [
+        { who: 'narr',   text: '기계 토끼가 힘을 잃자, 갇혀 있던 친구들이 쏟아져 나왔다!' },
+        { who: 'chick',  text: '삐약! 다들 무사했구나! 정말 다행이야!' },
+        { who: 'rabbit', text: '아직 심장부에 남은 친구들이 있어. 끝까지 가자!' },
+      ],
+    },
+    {
+      id: 'rescue-core', trigger: { type: 'rescue', chapter: 'core' },
+      lines: [
+        { who: 'narr',    text: '대장이 쓰러지자, 기계군단의 붉은 눈빛이 하나둘 꺼졌다.' },
+        { who: 'narr',    text: '개조되었던 친구들이 말랑말랑하게… 돌아온다.' },
+        { who: 'hamster', text: '다들 돌아왔어! 흑흑, 정말 다행이야~' },
+        { who: 'rabbit',  text: '끝났어… 어? 하늘에서 빛이 내려온다?' },
+      ],
+    },
     {
       id: 'join-chick', trigger: { type: 'join', char: 'chick' },
       lines: [{ who: 'chick', text: '나도 갈래! 콕콕 쪼아 줄 거야!' }],
@@ -94,7 +113,7 @@
     for (var i = 0; i < SCENES.length; i++) {
       var t = SCENES[i].trigger;
       if (t.type !== type) continue;
-      if (type === 'chapter' && t.chapter === key) return SCENES[i];
+      if ((type === 'chapter' || type === 'rescue') && t.chapter === key) return SCENES[i];
       if (type === 'join' && t.char === key) return SCENES[i];
     }
     return null;

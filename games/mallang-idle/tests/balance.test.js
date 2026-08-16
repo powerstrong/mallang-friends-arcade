@@ -658,6 +658,14 @@ test('스토리 데이터 무결성 — 화자·챕터·해금 시점이 맞물�
     assert.ok(Story.bossLine(ch.id), ch.id + ' 보스 도발 누락');
   });
 
+  // 구출 컷신은 기계 두 챕터의 피날레에 있고, 그 챕터들은 끝(to)이 정의돼 있다
+  ['machine', 'core'].forEach(function (cid) {
+    assert.ok(Story.sceneFor('rescue', cid), cid + ' 구출 컷신 누락');
+    var ch = null;
+    Chapters.CHAPTERS.forEach(function (x) { if (x.id === cid) ch = x; });
+    assert.ok(ch && ch.to != null, cid + ' 챕터에 피날레 스테이지(to)가 있어야 구출이 발화한다');
+  });
+
   // 뒤에 합류하는 4명 전원에 합류 대사가 있다
   Chars.CHARACTERS.slice(1).forEach(function (c) {
     assert.ok(Story.sceneFor('join', c.id), c.id + ' 합류 대사 누락');
@@ -669,7 +677,7 @@ test('스토리 데이터 무결성 — 화자·챕터·해금 시점이 맞물�
       if (line.who === 'narr') return;
       var c = Chars.byId(line.who);
       assert.ok(c, scene.id + ': 알 수 없는 화자 ' + line.who);
-      if (scene.trigger.type === 'chapter') {
+      if (scene.trigger.type === 'chapter' || scene.trigger.type === 'rescue') {
         var ch = null;
         Chapters.CHAPTERS.forEach(function (x) { if (x.id === scene.trigger.chapter) ch = x; });
         assert.ok(c.unlockStage <= ch.from,

@@ -202,6 +202,15 @@ body {
   100% { transform: scale(var(--sc, .40)) translateX(0); }
 }
 
+/* 컷신에서 말하는 친구 — 폴짝 (hero·follower 공용) */
+.hero.hop, .follower.hop { animation: speakerHop .45s cubic-bezier(.3, 1.5, .5, 1) !important; }
+@keyframes speakerHop {
+  0%   { transform: scale(var(--sc, .40)) translateY(0); }
+  40%  { transform: scale(var(--sc, .40)) translateY(-18px) rotate(-3deg); }
+  70%  { transform: scale(var(--sc, .40)) translateY(0) scaleY(.94); }
+  100% { transform: scale(var(--sc, .40)) translateY(0); }
+}
+
 /* 지원 사격 순간 — 폴짝 */
 .follower.cast { animation: followerCast .3s ease-out !important; }
 @keyframes followerCast {
@@ -765,8 +774,36 @@ body {
   .arena.shake, .arena.microshake, .confetti, .hero.strike, .hero.fighting,
   .follower.fighting, .follower.cast, .enemy.squash img, .enemy img.spawn-in,
   .enemy img.boss-in, .enemy.is-boss::before, .fx-impact, .fx-poof, .fx-slash,
-  .ambient-pt, .speedlines.flash { animation: none; }
-  .confetti, .fx-impact, .fx-poof, .fx-proj, .fx-slash, .ambient-pt, .speedlines { display: none; }
+  .ambient-pt, .speedlines.flash, .hero.hop, .follower.hop, .fx-heartp,
+  .story-card.pop, .boss-bubble.pop, .chapter-banner.show, .story-more { animation: none; }
+  .confetti, .fx-impact, .fx-poof, .fx-proj, .fx-slash, .ambient-pt, .speedlines,
+  .fx-heartp { display: none; }
+}
+
+/* 구출 하트 — CSS 로 그린 하트가 떠오른다 (에셋 불요) */
+.fx-heartp {
+  position: absolute;
+  width: 18px; height: 16px;
+  z-index: 6;
+  pointer-events: none;
+  animation: heartRise 2.2s ease-out var(--hd, 0s) forwards;
+  opacity: 0;
+}
+.fx-heartp::before, .fx-heartp::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  width: 10px; height: 15px;
+  border-radius: 10px 10px 0 0;
+  background: #ff8ab0;
+  box-shadow: 0 0 6px rgba(255, 138, 176, .6);
+}
+.fx-heartp::before { left: 9px; transform: rotate(-45deg); transform-origin: 0 100%; }
+.fx-heartp::after  { left: -1px; transform: rotate(45deg); transform-origin: 100% 100%; }
+@keyframes heartRise {
+  0%   { opacity: 0; transform: translateY(10px) scale(.5); }
+  15%  { opacity: 1; transform: translateY(0) scale(1.1); }
+  100% { opacity: 0; transform: translateY(-90px) scale(.9) rotate(12deg); }
 }
 
 /* HUD 음소거 버튼 — 44px 터치 타깃 */

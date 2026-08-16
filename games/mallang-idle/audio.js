@@ -56,24 +56,34 @@
     osc.stop(t0 + dur + 0.02);
   }
 
-  /* 노이즈 버스트 — 타격감용. */
-  function thud(dur, vol, filterFreq) {
+  /* 노이즈 버퍼는 한 번 만들어 재사용한다 — 타격음이 초당 여러 번 울리는 게임에서
+   * 매번 버퍼를 새로 만들면 GC 압력이 쌓인다(codex 리뷰). 감쇠는 gain 램프로 건다. */
+  var noiseBuf = null;
+  function getNoise(c) {
+    if (noiseBuf) return noiseBuf;
+    var frames = Math.floor(c.sampleRate * 0.12);
+    noiseBuf = c.createBuffer(1, frames, c.sampleRate);
+    var data = noiseBuf.getChannelData(0);
+    for (var i = 0; i < frames; i++) data[i] = Math.random() * 2 - 1;
+    return noiseBuf;
+  }
+
+  function thud(dur, vol, filterFreq, when) {
     if (muted) return;
     var c = ac();
     if (!c) return;
-    var frames = Math.max(1, Math.floor(c.sampleRate * dur));
-    var buf = c.createBuffer(1, frames, c.sampleRate);
-    var data = buf.getChannelData(0);
-    for (var i = 0; i < frames; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / frames);
+    var t0 = when || c.currentTime;
     var src = c.createBufferSource();
-    src.buffer = buf;
+    src.buffer = getNoise(c);
     var filter = c.createBiquadFilter();
     filter.type = 'lowpass';
     filter.frequency.value = filterFreq || 900;
     var gain = c.createGain();
-    gain.gain.value = vol || 0.1;
+    gain.gain.setValueAtTime(vol || 0.1, t0);
+    gain.gain.exponentialRampToValueAtTime(0.0005, t0 + dur);
     src.connect(filter).connect(gain).connect(c.destination);
-    src.start();
+    src.start(t0);
+    src.stop(t0 + dur + 0.02);
   }
 
   var lastHit = 0;
@@ -97,6 +107,95 @@
     tap:      function () { tone(880, 0.04, { type: 'square', vol: 0.03 }); },
   };
 
+  /* ── 절차 생성 BGM ─────────────────────────────────────────
+   * 챕터마다 무드가 다른 16스텝 루프. 오디오 클록 기준 룩어헤드 스케줄러라
+   * 프레임 드랍에도 박자가 밀리지 않는다. 음량은 효과음 아래(0.045)로 깔린다.
+   *
+   * 표기: 패턴 숫자 = 스케일 인덱스(0=근음), null = 쉼표. o 는 옥타브 내림.
+   * 각 무드는 [스케일(반음), bpm, 베이스 16스텝, 리드 16스텝, 햇 16스텝]. */
+  var MOODS = {
+    meadow: {  // 장조 펜타토닉 — 콩콩 뛰는 산책
+      root: 262, bpm: 106, scale: [0, 2, 4, 7, 9],
+      bass: [0, null, 0, null, 3, null, 3, null, 4, null, 4, null, 3, null, 1, null],
+      lead: [0, 2, 4, null, 4, 3, 2, null, 1, 2, 3, null, 2, 1, 0, null],
+      hat:  [1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1],
+    },
+    gears: {   // 도리안 — 삐걱거리는 호기심
+      root: 220, bpm: 96, scale: [0, 2, 3, 5, 7, 9, 10],
+      bass: [0, null, null, 0, 5, null, null, 5, 3, null, null, 3, 4, null, 6, null],
+      lead: [null, 0, null, 2, null, 4, null, 3, null, 5, null, 4, null, 2, 1, null],
+      hat:  [1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 1],
+    },
+    machine: { // 단조 — 밀고 들어가는 전선
+      root: 196, bpm: 120, scale: [0, 2, 3, 5, 7, 8, 10],
+      bass: [0, 0, null, 0, null, 0, 3, null, 4, 4, null, 4, null, 3, 2, null],
+      lead: [null, null, 4, null, 3, null, null, 2, null, null, 5, null, 4, null, 2, 0],
+      hat:  [1, 1, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1, 0, 1, 1],
+    },
+    garden: {  // 리디안 — 하늘 위의 바람
+      root: 294, bpm: 92, scale: [0, 2, 4, 6, 7, 9, 11],
+      bass: [0, null, null, null, 4, null, null, null, 3, null, null, null, 4, null, null, null],
+      lead: [0, null, 2, null, 4, null, 6, null, 4, null, 2, null, 1, null, 2, null],
+      hat:  [0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0],
+    },
+    boss: {    // 단조 오스티나토 — 25초의 긴장
+      root: 175, bpm: 132, scale: [0, 2, 3, 5, 7, 8, 10],
+      bass: [0, 0, 0, null, 0, 0, 3, null, 0, 0, 0, null, 4, null, 3, 2],
+      lead: [7, null, null, 6, null, null, 5, null, 7, null, null, 6, null, 5, 4, null],
+      hat:  [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+    },
+  };
+
+  var bgm = { mood: null, timer: null, step: 0, nextAt: 0 };
+
+  function noteFreq(root, scale, idx) {
+    var oct = Math.floor(idx / scale.length);
+    var semi = scale[((idx % scale.length) + scale.length) % scale.length];
+    return root * Math.pow(2, (semi + oct * 12) / 12);
+  }
+
+  function bgmVoice(c, freq, t0, dur, type, vol) {
+    var osc = c.createOscillator();
+    var gain = c.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, t0);
+    gain.gain.setValueAtTime(0.0001, t0);
+    gain.gain.linearRampToValueAtTime(vol, t0 + 0.015);
+    gain.gain.exponentialRampToValueAtTime(0.0005, t0 + dur);
+    osc.connect(gain).connect(c.destination);
+    osc.start(t0);
+    osc.stop(t0 + dur + 0.02);
+  }
+
+  function bgmTick() {
+    if (muted || !bgm.mood || document.hidden) return;
+    var c = ac();
+    if (!c) return;
+    var m = MOODS[bgm.mood];
+    var stepDur = 60 / m.bpm / 4;
+    // 룩어헤드 0.3초 — 타이머가 늦어도 오디오 클록 기준으로 정확히 찍힌다
+    while (bgm.nextAt < c.currentTime + 0.3) {
+      var t0 = Math.max(bgm.nextAt, c.currentTime + 0.01);
+      var i = bgm.step % 16;
+      var b = m.bass[i], l = m.lead[i];
+      if (b != null) bgmVoice(c, noteFreq(m.root / 2, m.scale, b), t0, stepDur * 1.8, 'triangle', 0.05);
+      if (l != null) bgmVoice(c, noteFreq(m.root, m.scale, l), t0, stepDur * 0.9, 'square', 0.022);
+      if (m.hat[i]) thud(0.03, 0.014, 6000, t0);
+      bgm.step++;
+      bgm.nextAt += stepDur;
+    }
+  }
+
+  function bgmSet(mood) {
+    if (mood === bgm.mood) return;
+    bgm.mood = mood || null;
+    bgm.step = 0;
+    var c = mood ? ac() : null;
+    bgm.nextAt = c ? c.currentTime + 0.05 : 0;
+    if (bgm.mood && !bgm.timer) bgm.timer = setInterval(bgmTick, 120);
+    if (!bgm.mood && bgm.timer) { clearInterval(bgm.timer); bgm.timer = null; }
+  }
+
   window.MallangIdleAudio = {
     play: function (name) {
       if (!SFX[name]) return;
@@ -106,7 +205,15 @@
     setMuted: function (m) {
       muted = !!m;
       try { localStorage.setItem(MUTE_KEY, muted ? '1' : '0'); } catch (e) {}
+      if (!muted && bgm.mood) {
+        // 음소거 해제 — 밀린 스텝을 몰아서 찍지 않도록 클록을 리셋
+        var c = ac();
+        if (c) bgm.nextAt = c.currentTime + 0.05;
+      }
     },
+    /* BGM 무드 전환 — null 이면 정지. 같은 무드면 무시(루프 연속성 유지). */
+    bgm: function (mood) { try { bgmSet(mood); } catch (e) { broken = true; } },
+    bgmMood: function () { return bgm.mood; },
     /* 모바일은 첫 사용자 제스처 뒤에만 소리를 낼 수 있다 — 아무 입력에서 한 번 깨운다 */
     warm: function () { ac(); },
   };

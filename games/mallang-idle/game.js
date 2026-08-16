@@ -19,6 +19,16 @@
   var Audio = window.MallangIdleAudio;
 
   function sfx(name) { if (Audio) Audio.play(name); }
+
+  /* BGM 무드 = 현재 페이즈(보스) 우선, 아니면 챕터. core 는 machine 트랙을 잇는다. */
+  var BGM_BY_CHAPTER = { meadow: 'meadow', gears: 'gears', machine: 'machine', core: 'machine', garden: 'garden' };
+  function syncBgm() {
+    if (!Audio || !gameStarted) return;
+    var mood = state.phase === Combat.PHASE_BOSS
+      ? 'boss'
+      : BGM_BY_CHAPTER[Chapters.chapterFor(state.stage).id] || null;
+    Audio.bgm(mood);
+  }
   var B = Bal.BALANCE;
   var AXES = Bal.AXES;
 
@@ -527,6 +537,16 @@
     el.storyCard.classList.remove('pop');
     void el.storyCard.offsetWidth;
     el.storyCard.classList.add('pop');
+    // 말하는 친구가 화면에 있으면 폴짝 — 카드와 스프라이트가 이어진다
+    if (c) {
+      var idx = state.party.indexOf(c.id);
+      var node = idx === 0 ? el.hero : idx === 1 ? el.follower1 : idx === 2 ? el.follower2 : null;
+      if (node && !node.hidden) {
+        node.classList.remove('hop');
+        void node.offsetWidth;
+        node.classList.add('hop');
+      }
+    }
     sfx('tap');
   }
 
@@ -600,6 +620,19 @@
     n.style.setProperty('--sz', (10 + Math.random() * 10) + 'px');
     el.ambientLayer.appendChild(n);
     n.addEventListener('animationend', function () { n.remove(); ambientCount--; });
+  }
+
+  /* 구출 연출 — 챕터 피날레에서 하트가 쏟아진다 (CSS 하트, 에셋 불요) */
+  function heartBurst() {
+    for (var i = 0; i < 8; i++) {
+      var h = document.createElement('i');
+      h.className = 'fx-heartp';
+      h.style.left = (30 + Math.random() * 45) + '%';
+      h.style.top = (30 + Math.random() * 25) + '%';
+      h.style.setProperty('--hd', (Math.random() * 1.2) + 's');
+      el.arena.appendChild(h);
+      (function (node) { setTimeout(function () { node.remove(); }, 2400); })(h);
+    }
   }
 
   /* 보스 격파 순간의 방사형 집중선 — 화면 전체가 "빰!" 하고 반응한다 */
@@ -788,6 +821,7 @@
       el.fgLayer.style.backgroundImage = ch.fg ? "url('" + ch.fg + "')" : 'none';
       chapterBanner(ch);
       queueStory('chapter', ch.id);
+      syncBgm();
     }
   }
 
@@ -945,11 +979,19 @@
         checkUnlocks();
         renderRelics();
         renderBattle();
+        syncBgm();
+        /* 챕터 피날레(마지막 스테이지) 돌파 — 구출 연출: 하트가 터지고 컷신이 이어진다 */
+        var endedCh = Chapters.chapterFor(ev.stage);
+        if (endedCh.to != null && ev.stage === endedCh.to) {
+          heartBurst();
+          queueStory('rescue', endedCh.id);
+        }
       }
-      else if (ev.type === 'boss_fail') { toast('아깝다! ⭐+' + ev.shards, 'fail'); sfx('fail'); renderRelics(); renderBattle(); }
+      else if (ev.type === 'boss_fail') { toast('아깝다! ⭐+' + ev.shards, 'fail'); sfx('fail'); renderRelics(); renderBattle(); syncBgm(); }
       else if (ev.type === 'boss_start') {
         toast('보스 등장!'); sfx('bossIn');
         bossTaunt(Chapters.chapterFor(state.stage).id);
+        syncBgm();
       }
     }
     state.events.length = 0;
@@ -1047,11 +1089,18 @@
     renderPanel();
   });
 
+  el.tabs.setAttribute('role', 'tablist');
+  Array.prototype.forEach.call(el.tabs.children, function (c) {
+    c.setAttribute('role', 'tab');
+    c.setAttribute('aria-selected', c.classList.contains('on') ? 'true' : 'false');
+  });
   el.tabs.addEventListener('click', function (e) {
     var tab = e.target.getAttribute('data-tab');
     if (!tab) return;
     Array.prototype.forEach.call(el.tabs.children, function (c) {
-      c.classList.toggle('on', c.getAttribute('data-tab') === tab);
+      var on = c.getAttribute('data-tab') === tab;
+      c.classList.toggle('on', on);
+      c.setAttribute('aria-selected', on ? 'true' : 'false');
     });
     el.panelUpgrade.hidden = tab !== 'upgrade';
     el.panelParty.hidden = tab !== 'party';
@@ -1078,7 +1127,9 @@
   el.exitBtn5.addEventListener('click', function () { persist(); window.GameBoot ? window.GameBoot.exit() : (location.href = '/'); });
 
   function syncMuteBtn() {
-    el.muteBtn.textContent = Audio && Audio.isMuted() ? '🔇' : '🔊';
+    var m = Audio && Audio.isMuted();
+    el.muteBtn.textContent = m ? '🔇' : '🔊';
+    el.muteBtn.setAttribute('aria-pressed', m ? 'true' : 'false');
   }
   el.muteBtn.addEventListener('click', function () {
     if (!Audio) return;
@@ -1216,6 +1267,7 @@
   syncMuteBtn();
   document.addEventListener('pointerdown', function warmOnce() {
     if (Audio) Audio.warm();
+    syncBgm();                       // 자동재생 정책 — 첫 제스처 후에야 BGM 이 시작된다
     document.removeEventListener('pointerdown', warmOnce);
   });
 
@@ -1234,6 +1286,7 @@
       sfx('tap');
       try { localStorage.setItem(Save.STORAGE_KEY + '-seen', '1'); } catch (e) {}
       queueStory('chapter', Chapters.chapterFor(state.stage).id);   // 오프닝
+      syncBgm();
     });
   } else {
     // 복귀 유저 — 현재 챕터 컷신을 아직 못 봤다면(구세이브) 지금 보여준다
