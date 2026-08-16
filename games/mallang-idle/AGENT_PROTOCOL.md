@@ -120,16 +120,24 @@ games/mallang-idle/
   engine/
     balance.js          모든 계수의 단일 원천
     combat.js           순수 결정론 전투/성장 모델
-    save.js             version + migrateSave
+    save.js             version + migrateSave (마이그레이션 테스트는 balance.test.js 에)
+    dungeon.js          별빛 시련 — 결정론 보스 러시
     rng.js              seeded RNG
   data/
-    chapters.js         스테이지 구간 → 테마/적/배경
+    chapters.js         스테이지 구간 → 테마/적/배경 (7챕터)
+    characters.js       말랑프렌즈 6명 — 해금·슬롯·파티 보너스
+    quests.js           일일 과제
+    story.js            컷신·합류·보스 도발 (무결성 테스트가 화자-해금 정합 강제)
   tools/
-    sim.js              헤드리스 시뮬레이터
+    sim.js              헤드리스 시뮬레이터 (+ --sessions=15/120 오프라인 세션 모델)
+    tune.js             파라미터 그리드 서치
   tests/
-    balance.test.js     지표 회귀 테스트
-    save.test.js        마이그레이션 테스트
-  index.html  game.js  style.css  assets/
+    balance.test.js     지표 회귀 + 엔진 불변조건 + 세이브 마이그레이션 + 스토리 무결성
+    ui-contract.test.js  [hidden] 가드·시작 게이트·에셋 존재·FX 상한·Math.random 계층
+    browser-harness.js   무의존 헤드리스 CDP 하니스 (screenshot 포함)
+    first-visit.browser.test.js  실브라우저: 신규 방문 플로우 (computed style·실좌표)
+    multi-tab.browser.test.js    실브라우저: 멀티탭 정지→이어하기
+  index.html  game.js  style.css  audio.js  assets/
 ```
 
 **모듈 패턴** — 이 저장소는 무빌드 정적 사이트다. `games/mallang-starlight/engine/puzzle.js`의
@@ -147,9 +155,13 @@ UMD 패턴을 따라 브라우저와 Node에서 같은 파일을 쓴다.
 
 ## 7. 검증
 
-- Node 테스트: `node games/mallang-idle/tests/*.test.js`
+- 정적 테스트: `node games/mallang-idle/tests/balance.test.js` · `ui-contract.test.js`
+- 실브라우저 테스트: `node games/mallang-idle/tests/first-visit.browser.test.js` ·
+  `multi-tab.browser.test.js` (헤드리스 Chrome/Edge + CDP, 브라우저 없으면 SKIP)
+- 시각 스모크: browser-harness 의 `pg.screenshot()` — 스테이지 점프 + storySeen
+  선채움으로 신규 챕터를 촬영해 눈으로 확인 (8차 scratchpad visual_smoke.js 원형)
 - 로컬 정적 서버: `.claude/launch.json`의 `static` 설정 (포트 8090)
-- 시각 검증은 사람이 한다. 스크린샷으로 "재미있다"를 판정하지 않는다
+- 시각 검증의 최종 판정은 사람이 한다. 스크린샷으로 "재미있다"를 판정하지 않는다
 
 **브라우저에서 게임이 안 굴러가는 것처럼 보일 때** — 헤드리스나 백그라운드 탭에서는
 `requestAnimationFrame` 이 정지하므로 게임 시간이 흐르지 않는다. 코드 버그가 아니다.
