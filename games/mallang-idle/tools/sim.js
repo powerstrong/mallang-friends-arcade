@@ -144,15 +144,24 @@ function spendShards(state, stuck) {
 }
 
 /* ── 시뮬레이션 ─────────────────────────────────────────────── */
+/* opts.questModel (codex P2 — 과제 경제를 단일 기준처럼 쓰지 말 것):
+ *  - 'upper'    (기본): 던전 해금 시점부터 하루 1회 과제 조각 전액 즉시 지급.
+ *                실제 완료 여부를 보지 않는 "부지런한 유저 상한". 회귀 테스트가
+ *                고정하는 기준 모델은 이쪽이다(기존 지표와의 연속성).
+ *  - 'baseline': 실제 game.js 와 같은 Quests API 로 진행도를 재고, 목표를 채운
+ *                과제만 그 시점에 수령한다. 실제 경제에 가까운 기준 시나리오.
+ * CLI 는 두 시나리오를 모두 출력한다. */
 function run(opts) {
   opts = opts || {};
   var duration = opts.seconds || 300;
+  var questModel = opts.questModel || 'upper';
   var dt = POLICY.decisionInterval;
 
   var s = Combat.createState();
 
   var m = {
     duration: duration,
+    questModel: questModel,
     firstUpgradeAt: null,
     firstBossAt: null,
     firstBossClearAt: null,
@@ -160,6 +169,7 @@ function run(opts) {
     stageDwell: [],        // 스테이지별 체류 시간
     longestWall: 0,        // 보스 첫 실패 → 돌파까지 가장 오래 걸린 시간
     longestWallStage: null,
+    wallSeconds: 0,        // 벽에 막혀 있던 총 시간 — 장기 정체감의 정직한 지표
     clearRatios: [],       // 돌파 시점의 (dps * bossTimeLimit) / bossHp
     goldPerMinSamples: [],
   };
@@ -167,14 +177,14 @@ function run(opts) {
   m.partyChanges = 0;
   m.dungeonRuns = 0;
   m.questShards = 0;
-  /* 던전·일일 과제 보상 통합 (codex P0-2) — UI 경제와 시뮬 경제가 갈라지지 않게
-   * 하루 1회, 해금 이후부터 반영한다. 근사 규칙:
-   *  - 던전: 해금(stage≥dungeonUnlockStage) 후 매 시뮬 일마다 3회 (결정론이라 정확)
-   *  - 과제: 시뮬의 활동량이면 세 과제 모두 여유로 달성하므로 합계 조각을 일 1회 지급
-   * 실제 유저는 이보다 덜 챙기므로 이 모델은 "부지런한 유저" 상한이다. */
+  /* 던전 보상 — 해금(stage≥dungeonUnlockStage) 후 매 시뮬 일마다 3회 (결정론이라 정확) */
   var questShardsPerDay = 0;
   Quests.QUESTS.forEach(function (q) { questShardsPerDay += Quests.rewardOf(q); });
   var nextDailyAt = 0;
+  /* baseline 과제 상태 — 실제 게임과 같은 스냅숏 방식. 하루가 바뀌면 다시 깐다. */
+  var simDay = 0;
+  var simDaily = Quests.freshDaily('day0', s.stats);
+  var nextQuestDayAt = 86400;
   var lastPartyKey = '';
   var stageEnteredAt = 0;
   var firstFailAt = null;      // 현재 스테이지에서 처음 보스에 실패한 시각
@@ -207,6 +217,7 @@ function run(opts) {
         m.stageDwell.push(s.t - stageEnteredAt);
         if (firstFailAt != null) {
           var wall = s.t - firstFailAt;
+          m.wallSeconds += wall;
           if (wall > m.longestWall) { m.longestWall = wall; m.longestWallStage = ev.stage; }
         }
         // 보스 상대 실효 DPS(나침반·라떼 포함) 기준 — 관문을 실제로 재는 값
@@ -229,7 +240,7 @@ function run(opts) {
       }
     }
 
-    // 하루 단위 콘텐츠 보상 — 해금된 날부터 하루에 한 번
+    // 하루 단위 콘텐츠 보상 — 던전은 해금된 날부터 하루에 한 번 (두 모델 공통)
     if (s.stage >= B.dungeonUnlockStage && s.t >= nextDailyAt) {
       nextDailyAt = s.t + 86400;
       for (var dr = 0; dr < B.dungeonRunsPerDay; dr++) {
@@ -237,8 +248,23 @@ function run(opts) {
         Dungeon.applyReward(s, dres);
         m.dungeonRuns++;
       }
-      s.shards += questShardsPerDay;
-      m.questShards += questShardsPerDay;
+      if (questModel === 'upper') {
+        s.shards += questShardsPerDay;
+        m.questShards += questShardsPerDay;
+      }
+    }
+
+    // baseline 과제 — 실제 진행도로 판정하고, 채운 순간 수령한다 (game.js 와 같은 API)
+    if (questModel === 'baseline') {
+      if (s.t >= nextQuestDayAt) {
+        simDay++;
+        simDaily = Quests.freshDaily('day' + simDay, s.stats);
+        nextQuestDayAt += 86400;
+      }
+      for (var qi = 0; qi < Quests.QUESTS.length; qi++) {
+        var got = Quests.claim(Quests.QUESTS[qi], s, simDaily);
+        if (got > 0) m.questShards += got;
+      }
     }
 
     var bought = decide(s, dpsOnly);
@@ -257,6 +283,7 @@ function run(opts) {
    * 게이트를 잘못 통과시킨다(실제로 3,726초짜리 벽이 3,466초로 보고된 사례가 있었다). */
   if (firstFailAt != null) {
     var openWall = s.t - firstFailAt;
+    m.wallSeconds += openWall;
     if (openWall > m.longestWall) { m.longestWall = openWall; m.longestWallStage = s.stage; }
     m.unresolvedWall = openWall;
   } else {
@@ -264,6 +291,9 @@ function run(opts) {
   }
 
   m.idleRatio = m.idleSeconds / duration;
+  /* 벽 비율 — idleRatio 는 "살 것이 없는 시간"만 재서 67분짜리 벽에서도 0 이 나온다
+   * (골드는 계속 흐르니까). 장기 정체감은 벽 체류 시간으로 따로 잰다(codex P2). */
+  m.wallRatio = m.wallSeconds / duration;
   m.avgStageDwell = avg(m.stageDwell);
   m.bossFailCount = s.stats.bossFails;
   m.avgClearRatio = avg(m.clearRatios);
@@ -299,7 +329,10 @@ function fmtNum(n) {
 function report(m) {
   var s = m.state;
   var lines = [];
-  lines.push('=== simulate ' + fmtTime(m.duration) + ' ===');
+  lines.push('=== simulate ' + fmtTime(m.duration) +
+    (m.questModel === 'baseline'
+      ? '  [baseline — 과제는 실제 달성분만]'
+      : '  [upper-bound — 과제 전액 즉시 수령]') + ' ===');
   lines.push('Stage           1 → ' + m.finalStage + '  (클리어 ' + m.finalSafeStage + ')');
   lines.push('강화 레벨       ATK ' + s.up.atk + ' · ASPD ' + s.up.aspd + ' · GOLD ' + s.up.gold);
   lines.push('강화 횟수       ' + s.stats.upgrades);
@@ -310,6 +343,7 @@ function report(m) {
   lines.push('첫 보스 돌파    ' + fmtTime(m.firstBossClearAt));
   lines.push('스테이지 평균   ' + fmtTime(m.avgStageDwell));
   lines.push('최장 벽         ' + fmtTime(m.longestWall) + (m.longestWallStage ? '  @ Stage ' + m.longestWallStage : ''));
+  lines.push('벽 체류         ' + fmtTime(m.wallSeconds) + '  (' + (m.wallRatio * 100).toFixed(1) + '%)');
   lines.push('유휴 비율       ' + (m.idleRatio * 100).toFixed(1) + '%');
   lines.push('돌파 여유비     ' + (m.avgClearRatio == null ? '—' : m.avgClearRatio.toFixed(2)) + '   (1.0 = 제한시간 딱 맞춤)');
   lines.push('총 골드         ' + fmtNum(s.stats.goldEarned));
@@ -321,29 +355,39 @@ function report(m) {
 
 /* ── CLI ────────────────────────────────────────────────────── */
 function parseArgs(argv) {
-  var o = { seconds: 300, json: false };
+  var o = { seconds: 300, json: false, model: 'both' };
   argv.forEach(function (a) {
     var mm;
     if ((mm = a.match(/^--minutes=([\d.]+)$/))) o.seconds = parseFloat(mm[1]) * 60;
     else if ((mm = a.match(/^--hours=([\d.]+)$/))) o.seconds = parseFloat(mm[1]) * 3600;
     else if ((mm = a.match(/^--seconds=([\d.]+)$/))) o.seconds = parseFloat(mm[1]);
+    else if ((mm = a.match(/^--model=(baseline|upper|both)$/))) o.model = mm[1];
     else if (a === '--json') o.json = true;
   });
   return o;
 }
 
+function slim(m) {
+  var out = Object.assign({}, m);
+  delete out.state;
+  delete out.stageDwell;
+  delete out.clearRatios;
+  delete out.goldPerMinSamples;
+  return out;
+}
+
 if (require.main === module) {
   var opts = parseArgs(process.argv.slice(2));
-  var m = run(opts);
+  var models = opts.model === 'both' ? ['baseline', 'upper'] : [opts.model];
+  var results = models.map(function (qm) {
+    return run({ seconds: opts.seconds, questModel: qm });
+  });
   if (opts.json) {
-    var out = Object.assign({}, m);
-    delete out.state;
-    delete out.stageDwell;
-    delete out.clearRatios;
-    delete out.goldPerMinSamples;
-    console.log(JSON.stringify(out, null, 2));
+    var out = {};
+    results.forEach(function (m) { out[m.questModel] = slim(m); });
+    console.log(JSON.stringify(models.length === 1 ? out[models[0]] : out, null, 2));
   } else {
-    console.log(report(m));
+    console.log(results.map(report).join('\n\n'));
   }
 }
 
