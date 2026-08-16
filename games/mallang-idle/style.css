@@ -797,6 +797,120 @@ body {
 }
 @media (prefers-reduced-motion: reduce) { .coach { animation: none; } }
 
+/* ── 스토리 컷신 ───────────────────────────────────────────── */
+.story {
+  position: fixed;
+  inset: 0;
+  z-index: 65;   /* DEV 패널(60)보다 위 — 컷신은 모든 것을 덮는 모달이다 */
+  background: rgba(45, 30, 50, .38);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0 12px calc(96px + env(safe-area-inset-bottom));
+  cursor: pointer;
+}
+.story-skip {
+  position: absolute;
+  top: calc(14px + env(safe-area-inset-top));
+  right: 14px;
+  font: inherit; font-size: 12.5px; font-weight: 700;
+  padding: 9px 14px;
+  min-height: 40px;
+  border: none; border-radius: 10px;
+  background: rgba(255, 255, 255, .88);
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.story-card {
+  position: relative;
+  width: 100%;
+  max-width: 400px;
+  min-height: 96px;
+  background: var(--paper);
+  border: 2px solid #f3d7e4;
+  border-radius: 16px;
+  padding: 14px 40px 14px 14px;
+  display: grid;
+  grid-template-columns: 64px 1fr;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 10px 30px rgba(70, 45, 70, .3);
+}
+.story-card.pop { animation: storyPop .18s ease-out; }
+@keyframes storyPop { from { transform: translateY(6px); opacity: .7; } }
+.story-portrait {
+  width: 64px; height: 64px;
+  object-fit: contain;
+  filter: drop-shadow(0 3px 5px rgba(120, 80, 110, .25));
+}
+.story-portrait[hidden] { display: none; }
+.story-body { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.story-name { font-size: 12.5px; font-weight: 800; color: var(--accent-deep); }
+.story-text { font-size: 14.5px; line-height: 1.55; word-break: keep-all; }
+.story-more {
+  position: absolute;
+  right: 14px; bottom: 10px;
+  font-size: 11px;
+  color: var(--accent);
+  animation: moreBlink 1s ease-in-out infinite;
+}
+@keyframes moreBlink { 50% { opacity: .25; transform: translateY(2px); } }
+
+/* 보스 도발 말풍선 — 적 머리 위 */
+.boss-bubble {
+  position: absolute;
+  right: 8%;
+  top: 22%;
+  max-width: 220px;
+  background: #fff;
+  border: 2px solid #eec6d2;
+  border-radius: 14px 14px 4px 14px;
+  padding: 9px 13px;
+  font-size: 12.5px;
+  font-weight: 700;
+  line-height: 1.45;
+  color: var(--ink);
+  box-shadow: 0 4px 14px rgba(120, 70, 100, .2);
+  z-index: 6;
+  word-break: keep-all;
+}
+.boss-bubble.pop { animation: bubblePop .25s cubic-bezier(.2, 1.4, .5, 1); }
+@keyframes bubblePop { from { transform: scale(.6) translateY(8px); opacity: 0; } }
+
+/* 챕터 배너 */
+.chapter-banner {
+  position: absolute;
+  left: 50%; top: 34%;
+  transform: translateX(-50%);
+  text-align: center;
+  z-index: 6;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.chapter-banner b {
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -.02em;
+  color: #fff;
+  text-shadow: 0 2px 10px rgba(90, 50, 90, .55), 0 0 2px rgba(90, 50, 90, .8);
+}
+.chapter-banner span {
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+  opacity: .92;
+  text-shadow: 0 1px 6px rgba(90, 50, 90, .6);
+}
+.chapter-banner.show { animation: bannerIn 2.4s ease-out forwards; }
+@keyframes bannerIn {
+  0%   { opacity: 0; transform: translateX(-50%) translateY(10px) scale(.92); }
+  12%  { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+  80%  { opacity: 1; }
+  100% { opacity: 0; transform: translateX(-50%) translateY(-8px); }
+}
+
 /* ── 인트로 ────────────────────────────────────────────────── */
 .intro {
   position: fixed;

@@ -54,6 +54,12 @@
 
     <div class="ground"></div>
     <div class="toast-stack" id="toastStack"></div>
+
+    <div class="boss-bubble" id="bossBubble" hidden></div>
+    <div class="chapter-banner" id="chapterBanner" hidden>
+      <b id="chapterBannerName"></b>
+      <span id="chapterBannerTag"></span>
+    </div>
   </section>
 
   <nav class="tabs" id="tabs">
@@ -140,6 +146,19 @@
   <button id="introStart">시작하기</button>
 </div>
 
+<!-- 스토리 컷신 — 탭해서 진행, 건너뛰기 가능. 떠 있는 동안 게임 시간 정지. -->
+<div class="story" id="storyOverlay" hidden>
+  <button class="story-skip" id="storySkip">건너뛰기 ▸</button>
+  <div class="story-card" id="storyCard">
+    <img class="story-portrait" id="storyPortrait" alt="" />
+    <div class="story-body">
+      <div class="story-name" id="storyName"></div>
+      <div class="story-text" id="storyText"></div>
+    </div>
+    <span class="story-more">▼</span>
+  </div>
+</div>
+
 <div class="modal" id="dungeonModal" hidden>
   <div class="modal-card">
     <h2 id="dungeonTitle">별빛 시련</h2>
@@ -200,6 +219,7 @@
 <script src="engine/save.js"></script>
 <script src="engine/dungeon.js"></script>
 <script src="data/quests.js"></script>
+<script src="data/story.js"></script>
 <script src="audio.js"></script>
 <script src="game.js"></script>
 </body>

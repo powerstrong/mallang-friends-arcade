@@ -646,6 +646,59 @@ test('조작 세이브가 과제·던전을 오염시키지 못한다 (codex 리
   assert.ok(isFinite(Combat.mobHp(r3.state.stage)), '상한 안에서 mobHp 는 유한하다');
 });
 
+// ── 스토리 ────────────────────────────────────────────────────
+test('스토리 데이터 무결성 — 화자·챕터·해금 시점이 맞물린다', function () {
+  var Story = require('../data/story.js');
+  var Chapters = require('../data/chapters.js');
+  var Chars = require('../data/characters.js');
+
+  // 모든 챕터에 진입 컷신과 보스 도발이 있다
+  Chapters.CHAPTERS.forEach(function (ch) {
+    assert.ok(Story.sceneFor('chapter', ch.id), ch.id + ' 챕터 컷신 누락');
+    assert.ok(Story.bossLine(ch.id), ch.id + ' 보스 도발 누락');
+  });
+
+  // 뒤에 합류하는 4명 전원에 합류 대사가 있다
+  Chars.CHARACTERS.slice(1).forEach(function (c) {
+    assert.ok(Story.sceneFor('join', c.id), c.id + ' 합류 대사 누락');
+  });
+
+  // 컷신 화자는 그 챕터 시작 시점에 이미 합류해 있어야 한다
+  Story.SCENES.forEach(function (scene) {
+    scene.lines.forEach(function (line) {
+      if (line.who === 'narr') return;
+      var c = Chars.byId(line.who);
+      assert.ok(c, scene.id + ': 알 수 없는 화자 ' + line.who);
+      if (scene.trigger.type === 'chapter') {
+        var ch = null;
+        Chapters.CHAPTERS.forEach(function (x) { if (x.id === scene.trigger.chapter) ch = x; });
+        assert.ok(c.unlockStage <= ch.from,
+          scene.id + ': ' + line.who + ' 는 스테이지 ' + c.unlockStage + ' 합류라 ' +
+          ch.from + ' 시작 챕터에서 말할 수 없다');
+      }
+      assert.ok(line.text.length >= 2 && line.text.length <= 60,
+        scene.id + ': 대사 길이 이상 (' + line.text.length + '자)');
+    });
+    assert.ok(scene.lines.length >= 1 && scene.lines.length <= 5,
+      scene.id + ': 컷신은 1~5줄이어야 한다(방치형은 길면 스킵당한다)');
+  });
+});
+
+test('세이브 v4 → v5 마이그레이션 (스토리)', function () {
+  var legacy = JSON.stringify({ version: 4, stage: 40, shards: 7, collection: ['meadow:acorn'] });
+  var res = Save.load(legacy);
+  assert.ok(res.ok, 'v4 세이브를 읽을 수 있어야 한다');
+  assert.deepStrictEqual(res.state.storySeen, [], 'storySeen 은 빈 배열로 시작');
+  assert.strictEqual(res.state.stage, 40, '진행도 보존');
+
+  // 왕복 + 중복/손상 방어
+  var s = Combat.createState();
+  s.storySeen = ['ch-meadow', 'ch-meadow', 'boss-gears', 7, null];
+  var round = Save.load(Save.dump(s, 0));
+  assert.deepStrictEqual(round.state.storySeen, ['ch-meadow', 'boss-gears'],
+    '중복·비문자열은 걸러진다');
+});
+
 // ── 실행 ──────────────────────────────────────────────────────
 var pass = 0, fail = 0;
 tests.forEach(function (t) {

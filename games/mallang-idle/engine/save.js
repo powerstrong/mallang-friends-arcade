@@ -17,7 +17,7 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function (Combat, Bal) {
   'use strict';
 
-  var CURRENT_VERSION = 4;
+  var CURRENT_VERSION = 5;
   var STORAGE_KEY = 'mallang-idle-save';
 
   /* 상태 → 저장 객체. 파생값(전투력·DPS)은 저장하지 않는다. 저장은 원본 데이터만
@@ -39,6 +39,7 @@
         compass: state.relics.compass,
       },
       collection: Array.isArray(state.collection) ? state.collection.slice() : [],
+      storySeen: Array.isArray(state.storySeen) ? state.storySeen.slice() : [],
       daily: state.daily || null,
       dungeon: state.dungeon || null,
       playtime: state.t,
@@ -100,6 +101,15 @@
       for (var ci = 0; ci < save.collection.length && s.collection.length < 500; ci++) {
         var cid = save.collection[ci];
         if (typeof cid === 'string' && !seen[cid]) { seen[cid] = 1; s.collection.push(cid); }
+      }
+    }
+    // 스토리 — 문자열 id 만, 중복 제거, 상한
+    if (Array.isArray(save.storySeen)) {
+      var sSeen = {};
+      s.storySeen = [];
+      for (var si = 0; si < save.storySeen.length && s.storySeen.length < 200; si++) {
+        var sid = save.storySeen[si];
+        if (typeof sid === 'string' && !sSeen[sid]) { sSeen[sid] = 1; s.storySeen.push(sid); }
       }
     }
     /* 일일 과제 — 필드를 재구성해서 받는다. 조작 세이브의 base 가 음수 극값이면
@@ -187,6 +197,12 @@
       if (!Array.isArray(save.collection)) save.collection = [];
       if (save.daily === undefined) save.daily = null;
       if (save.dungeon === undefined) save.dungeon = null;
+      return save;
+    },
+
+    /* 5: 스토리 도입. 본 장면 id 목록만 저장한다. */
+    5: function (save) {
+      if (!Array.isArray(save.storySeen)) save.storySeen = [];
       return save;
     },
   };

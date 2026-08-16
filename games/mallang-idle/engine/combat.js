@@ -168,6 +168,7 @@
       shards: 0,                                       // 별조각 — 보스가 주는 유물 재화
       relics: { hammer: 0, barn: 0, compass: 0 },
       collection: [],                                  // 도감 — 만난 몬스터/보스 id
+      storySeen: [],                                   // 스토리 — 본 장면 id
       daily: null,                                     // 일일 과제 { date, base, claimed } — game.js 가 관리
       dungeon: null,                                   // 던전 { date, runs, best } — game.js 가 관리
       stats: {

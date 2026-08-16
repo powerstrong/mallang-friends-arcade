@@ -15,6 +15,7 @@
   var Bal = window.MallangIdleBalance;
   var Dungeon = window.MallangIdleDungeon;
   var Quests = window.MallangIdleQuests;
+  var Story = window.MallangIdleStory;
   var Audio = window.MallangIdleAudio;
 
   function sfx(name) { if (Audio) Audio.play(name); }
@@ -44,6 +45,10 @@
     stageProgress: $('stageProgress'), dpsHint: $('dpsHint'), exitBtn: $('exitBtn'),
     follower1: $('follower1'), follower2: $('follower2'), fxLayer: $('fxLayer'), bossNeed: $('bossNeed'),
     fgLayer: $('fgLayer'), ambientLayer: $('ambientLayer'), speedLines: $('speedLines'),
+    storyOverlay: $('storyOverlay'), storyCard: $('storyCard'), storyPortrait: $('storyPortrait'),
+    storyName: $('storyName'), storyText: $('storyText'), storySkip: $('storySkip'),
+    bossBubble: $('bossBubble'), chapterBanner: $('chapterBanner'),
+    chapterBannerName: $('chapterBannerName'), chapterBannerTag: $('chapterBannerTag'),
     field: document.querySelector('.field'), intro: $('intro'), introStart: $('introStart'),
     tabs: $('tabs'), panelUpgrade: $('panelUpgrade'), panelParty: $('panelParty'),
     partyList: $('partyList'), partySlots: $('partySlots'), partyDot: $('partyDot'),
@@ -238,7 +243,12 @@
       if (!seenUnlocks[unlocked[i]]) {
         seenUnlocks[unlocked[i]] = true;
         var c = Chars.byId(unlocked[i]);
-        if (state.t > 1 && c) { toast(c.name + ' 합류!', 'win'); sfx('unlock'); news = true; }
+        if (state.t > 1 && c) {
+          toast(c.name + ' 합류!', 'win');
+          sfx('unlock');
+          news = true;
+          queueStory('join', c.id);
+        }
       }
     }
     if (news) { el.partyDot.hidden = false; partyDirty = true; }
@@ -474,6 +484,97 @@
     }
   }
 
+  // ── 스토리 — 짧고, 스킵 가능하고, 진행을 오래 막지 않는다 ─────
+  /* 컷신이 떠 있는 동안 게임 시간이 멈춘다(storyActive → 프레임 루프 게이트).
+   * 본 장면은 storySeen 에 기록되어 다시 나오지 않는다. */
+  var storyActive = false;
+  var storyQueue = [];
+  var storyScene = null, storyLine = 0;
+
+  function seenStory(id) { return state.storySeen.indexOf(id) !== -1; }
+  function markStory(id) {
+    if (!seenStory(id)) { state.storySeen.push(id); persist(); }
+  }
+
+  function queueStory(type, key) {
+    if (!Story) return;
+    var scene = Story.sceneFor(type, key);
+    if (!scene || seenStory(scene.id)) return;
+    // 큐에 이미 있으면 중복 금지
+    for (var i = 0; i < storyQueue.length; i++) if (storyQueue[i].id === scene.id) return;
+    storyQueue.push(scene);
+    if (!storyActive) nextSceneFromQueue();
+  }
+
+  function nextSceneFromQueue() {
+    var scene = storyQueue.shift();
+    if (!scene) return;
+    storyScene = scene;
+    storyLine = 0;
+    storyActive = true;
+    el.storyOverlay.hidden = false;
+    renderStoryLine();
+  }
+
+  function renderStoryLine() {
+    var line = storyScene.lines[storyLine];
+    var c = line.who !== 'narr' ? Chars.byId(line.who) : null;
+    el.storyPortrait.hidden = !c;
+    if (c) el.storyPortrait.src = c.portrait;
+    el.storyName.textContent = c ? c.name : '';
+    el.storyName.hidden = !c;
+    el.storyText.textContent = line.text;
+    el.storyCard.classList.remove('pop');
+    void el.storyCard.offsetWidth;
+    el.storyCard.classList.add('pop');
+    sfx('tap');
+  }
+
+  function advanceStory() {
+    if (!storyActive) return;
+    storyLine++;
+    if (storyLine < storyScene.lines.length) { renderStoryLine(); return; }
+    endStory();
+  }
+
+  function endStory() {
+    markStory(storyScene.id);
+    storyScene = null;
+    storyActive = false;
+    el.storyOverlay.hidden = true;
+    lastFrame = 0;                    // 컷신 동안의 시간이 첫 dt 로 밀리지 않게
+    if (storyQueue.length) nextSceneFromQueue();
+  }
+
+  /* 보스 첫 조우 도발 — 말풍선 한 줄, 전투는 계속 흐른다 */
+  function bossTaunt(chapterId) {
+    if (!Story) return;
+    var key = 'boss-' + chapterId;
+    if (seenStory(key)) return;
+    var text = Story.bossLine(chapterId);
+    if (!text) return;
+    markStory(key);
+    el.bossBubble.textContent = text;
+    el.bossBubble.hidden = false;
+    el.bossBubble.classList.remove('pop');
+    void el.bossBubble.offsetWidth;
+    el.bossBubble.classList.add('pop');
+    setTimeout(function () { el.bossBubble.hidden = true; }, 2600);
+  }
+
+  /* 챕터 배너 — 진입 순간 "어디에 왔는지"를 크게 보여준다 */
+  var bannerReady = false;
+  function chapterBanner(ch) {
+    if (!bannerReady) return;      // 부팅 첫 렌더에는 띄우지 않는다
+    el.chapterBannerName.textContent = ch.name;
+    el.chapterBannerTag.textContent = ch.tagline || '';
+    el.chapterBanner.hidden = false;
+    el.chapterBanner.classList.remove('show');
+    void el.chapterBanner.offsetWidth;
+    el.chapterBanner.classList.add('show');
+    setTimeout(function () { el.chapterBanner.hidden = true; }, 2400);
+  }
+
   // ── 앰비언트 파티클 — 챕터마다 공기가 다르다 ─────────────────
   /* 들판·정원엔 꽃잎이, 기계 구간엔 톱니가 흩날린다. 저비용: 동시 8개 상한,
    * 순수 장식이라 결정론과 무관(표현 계층 Math.random 허용). */
@@ -685,6 +786,8 @@
       el.chapterName.textContent = ch.name;
       el.bgLayer.style.backgroundImage = "url('" + ch.bg + "')";
       el.fgLayer.style.backgroundImage = ch.fg ? "url('" + ch.fg + "')" : 'none';
+      chapterBanner(ch);
+      queueStory('chapter', ch.id);
     }
   }
 
@@ -844,7 +947,10 @@
         renderBattle();
       }
       else if (ev.type === 'boss_fail') { toast('아깝다! ⭐+' + ev.shards, 'fail'); sfx('fail'); renderRelics(); renderBattle(); }
-      else if (ev.type === 'boss_start') { toast('보스 등장!'); sfx('bossIn'); }
+      else if (ev.type === 'boss_start') {
+        toast('보스 등장!'); sfx('bossIn');
+        bossTaunt(Chapters.chapterFor(state.stage).id);
+      }
     }
     state.events.length = 0;
     return needPanel;
@@ -861,7 +967,7 @@
     lastFrame = now;
     var simDt = dt * speedMul;
 
-    if (simDt > 0 && gameStarted) {
+    if (simDt > 0 && gameStarted && !storyActive) {
       if (floatCooldown > 0) floatCooldown -= dt;
       /* 날짜 동기화는 반드시 step 보다 먼저 — 자정 직후의 처치·강화가 새 스냅숏에
        * 흡수되어 진행도에서 사라지는 것을 막는다(codex 리뷰). */
@@ -958,6 +1064,12 @@
     if (tab === 'relic') { el.relicDot.hidden = true; renderRelics(); }
     if (tab === 'battle') { el.battleDot.hidden = true; syncDaily(); renderBattle(); }
     if (tab === 'book') { bookDirty = true; renderBook(); }
+  });
+
+  el.storyOverlay.addEventListener('click', advanceStory);
+  el.storySkip.addEventListener('click', function (e) {
+    e.stopPropagation();
+    if (storyActive) endStory();
   });
 
   el.dungeonGo.addEventListener('click', runDungeon);
@@ -1121,8 +1233,13 @@
       if (Audio) Audio.warm();
       sfx('tap');
       try { localStorage.setItem(Save.STORAGE_KEY + '-seen', '1'); } catch (e) {}
+      queueStory('chapter', Chapters.chapterFor(state.stage).id);   // 오프닝
     });
+  } else {
+    // 복귀 유저 — 현재 챕터 컷신을 아직 못 봤다면(구세이브) 지금 보여준다
+    queueStory('chapter', Chapters.chapterFor(state.stage).id);
   }
+  bannerReady = true;
 
   requestAnimationFrame(frame);
 })();
