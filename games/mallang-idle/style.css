@@ -191,23 +191,41 @@ body {
   70% { transform: translate(-2px, 1px); }
 }
 
-/* --walk-shift = -(3프레임 × frameW) */
-.hero.walking, .follower.walking { animation: heroWalk .48s steps(3) infinite; }
+/* --walk-shift = -(3프레임 × frameW)
+ * 시트 플립북(heroWalk)에 수직 밥+미세 기울임(walkBob)을 겹쳐 발걸음마다 통통 튀게.
+ * 두 애니메이션은 서로 다른 속성(배경 위치 / transform)이라 충돌하지 않는다. */
+.hero.walking, .follower.walking {
+  animation: heroWalk .48s steps(3) infinite, walkBob .48s ease-in-out infinite;
+}
+/* 동료는 반 박자 어긋나게 — 셋이 같은 위상으로 튀면 기계체조가 된다 */
+.follower.f1.walking { animation-delay: 0s, .12s; }
+.follower.f2.walking { animation-delay: 0s, .26s; }
 @keyframes heroWalk { to { background-position: var(--walk-shift, -561px) 0; } }
+@keyframes walkBob {
+  0%, 100% { transform: scale(var(--sc, .40)) translateY(0) rotate(0deg); }
+  25%      { transform: scale(var(--sc, .40)) translateY(-5px) rotate(1.4deg); }
+  50%      { transform: scale(var(--sc, .40)) translateY(-1px) rotate(0deg) scaleY(.985); }
+  75%      { transform: scale(var(--sc, .40)) translateY(-5px) rotate(-1.4deg); }
+}
 
-/* 교전 대기 — 제자리에서 말랑하게 통통 */
+/* 교전 대기 — 제자리에서 말랑하게 통통. 위상은 서로 어긋나게 */
 .hero.fighting, .follower.fighting { animation: idleBounce .8s ease-in-out infinite; }
+.follower.f1.fighting { animation-delay: .16s; }
+.follower.f2.fighting { animation-delay: .34s; }
 @keyframes idleBounce {
   0%, 100% { transform: scale(var(--sc, .40)) translateY(0); }
   50%      { transform: scale(var(--sc, .40)) translateY(-5px) scaleX(1.03); }
 }
 
-/* 타격 순간 — 적을 향해 돌진했다가 돌아온다. 착지에서 찌부(squash) */
-.hero.strike { animation: heroStrike .24s cubic-bezier(.3, 1.4, .6, 1) !important; }
+/* 타격 순간 — 움츠렸다(예비 동작) 튀어나가 때리고 돌아온다.
+ * 접촉은 40% 지점(≈120ms) — game.js 의 임팩트 타이밍과 맞물린다. 히트스톱이
+ * 이 애니메이션을 접촉 자세에서 잠깐 얼리므로 "맞는 순간"이 또렷하게 남는다. */
+.hero.strike { animation: heroStrike .3s cubic-bezier(.3, 1.2, .5, 1) !important; }
 @keyframes heroStrike {
   0%   { transform: scale(var(--sc, .40)) translateX(0); }
-  38%  { transform: scale(var(--sc, .40)) translateX(58px) rotate(4deg) scaleY(.96); }
-  62%  { transform: scale(var(--sc, .40)) translateX(46px) rotate(2deg) scaleY(1.04); }
+  16%  { transform: scale(var(--sc, .40)) translateX(-13px) rotate(-6deg) scaleX(.96) scaleY(1.05); }
+  40%  { transform: scale(var(--sc, .40)) translateX(64px) rotate(7deg) scaleY(.92); }
+  58%  { transform: scale(var(--sc, .40)) translateX(48px) rotate(3deg) scaleY(1.07); }
   100% { transform: scale(var(--sc, .40)) translateX(0); }
 }
 
@@ -220,11 +238,12 @@ body {
   100% { transform: scale(var(--sc, .40)) translateY(0); }
 }
 
-/* 지원 사격 순간 — 폴짝 */
-.follower.cast { animation: followerCast .3s ease-out !important; }
+/* 지원 사격 순간 — 크게 폴짝 뛰어 던지고, 착지에서 살짝 찌부 */
+.follower.cast { animation: followerCast .34s ease-out !important; }
 @keyframes followerCast {
   0%   { transform: scale(var(--sc)) translateY(0); }
-  45%  { transform: scale(var(--sc)) translateY(-12px) rotate(-4deg); }
+  40%  { transform: scale(var(--sc)) translateY(-17px) rotate(-7deg); }
+  75%  { transform: scale(var(--sc)) translateY(0) scaleY(.93) scaleX(1.05); }
   100% { transform: scale(var(--sc)) translateY(0); }
 }
 
@@ -274,12 +293,13 @@ body {
   100% { transform: scaleX(-1) scaleY(1); }
 }
 
-/* 피격 — 찌부 + 넉백 + 번쩍. 넉백이 커야 무게가 실린다 */
-.enemy.squash img { animation: enemySquash .18s ease-out !important; }
+/* 피격 — 찌부 + 넉백 + 번쩍. 넉백이 커야 무게가 실린다. 살짝 떠올랐다 떨어지면
+ * "얻어맞고 밀려나는" 무게가 생긴다 */
+.enemy.squash img { animation: enemySquash .2s ease-out !important; }
 @keyframes enemySquash {
   0%   { transform: scaleX(-1); filter: drop-shadow(0 3px 4px rgba(90,60,80,.18)) brightness(1); }
-  35%  { transform: scaleX(-1.16) scaleY(.84) translateX(-13px) rotate(3deg); filter: drop-shadow(0 3px 4px rgba(90,60,80,.18)) brightness(2); }
-  70%  { transform: scaleX(-.96) scaleY(1.06) translateX(-3px); filter: drop-shadow(0 3px 4px rgba(90,60,80,.18)) brightness(1.2); }
+  30%  { transform: scaleX(-1.18) scaleY(.82) translateX(-16px) translateY(-5px) rotate(5deg); filter: drop-shadow(0 3px 4px rgba(90,60,80,.18)) brightness(2.1); }
+  62%  { transform: scaleX(-.95) scaleY(1.08) translateX(-5px) translateY(0); filter: drop-shadow(0 3px 4px rgba(90,60,80,.18)) brightness(1.25); }
   100% { transform: scaleX(-1); filter: drop-shadow(0 3px 4px rgba(90,60,80,.18)) brightness(1); }
 }
 .enemy-name { font-size: 11px; font-weight: 700; color: var(--ink); background: rgba(255,255,255,.82); padding: 1px 8px; border-radius: 8px; }
@@ -481,6 +501,15 @@ body {
   width: 100%; padding: 11px; border-radius: 12px;
   border: none; background: var(--accent); color: #fff; cursor: pointer;
 }
+.modal-card button.ghost {
+  margin-top: 8px;
+  background: #fff;
+  border: 1.5px solid var(--line);
+  color: var(--ink-soft);
+}
+
+/* 멀티탭 가드 모달 — 컷신(65)·인트로(50)보다 위. 멈춘 이유는 항상 보여야 한다. */
+.modal.tab-modal { z-index: 70; }
 
 /* ── 탭 / 편성 ─────────────────────────────────────────────── */
 .tabs {
@@ -723,6 +752,19 @@ body {
   filter: drop-shadow(0 0 5px rgba(255, 214, 120, .8));
 }
 
+/* 발밑 먼지 — 돌진 시작·보스 착지에서 퐁 하고 퍼진다 (CSS 그리기, 에셋 불요) */
+.fx-dust {
+  width: 30px; height: 16px;
+  border-radius: 50%;
+  background: radial-gradient(ellipse, rgba(205, 185, 160, .8), rgba(205, 185, 160, 0) 70%);
+  animation: dustPuff .38s ease-out forwards;
+}
+.fx-dust.big { width: 54px; height: 24px; }
+@keyframes dustPuff {
+  0%   { opacity: .95; transform: translate(-50%, -50%) scale(.45); }
+  100% { opacity: 0; transform: translate(-50%, -50%) translateX(-16px) scale(1.7); }
+}
+
 .fx-dmg {
   font-size: 17px;
   font-weight: 800;
@@ -786,9 +828,10 @@ body {
   .follower.fighting, .follower.cast, .enemy.squash img, .enemy img.spawn-in,
   .enemy img.boss-in, .enemy.is-boss::before, .fx-impact, .fx-poof, .fx-slash,
   .ambient-pt, .speedlines.flash, .hero.hop, .follower.hop, .fx-heartp,
+  .hero.walking, .follower.walking, .fx-dust,
   .story-card.pop, .boss-bubble.pop, .chapter-banner.show, .story-more { animation: none; }
   .confetti, .fx-impact, .fx-poof, .fx-proj, .fx-slash, .ambient-pt, .speedlines,
-  .fx-heartp { display: none; }
+  .fx-heartp, .fx-dust { display: none; }
 }
 
 /* 구출 하트 — CSS 로 그린 하트가 떠오른다 (에셋 불요) */

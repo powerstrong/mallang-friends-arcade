@@ -76,6 +76,8 @@
     toastStack: $('toastStack'),
     offlineModal: $('offlineModal'), offlineGold: $('offlineGold'),
     offlineSub: $('offlineSub'), offlineOk: $('offlineOk'),
+    tabModal: $('tabModal'), tabReload: $('tabReload'), tabResume: $('tabResume'),
+    partyHint: $('partyHint'),
     devPanel: $('devPanel'),
   };
 
@@ -217,6 +219,16 @@
     var slots = Chars.slotsFor(state.stage);
     var unlocked = Chars.unlockedAt(state.stage);
     el.partySlots.textContent = state.party.length + ' / ' + slots;
+
+    /* "한 명만 나오는 건가?"라는 오해를 막는다 — 편성 전원이 필드에 함께 서고,
+     * 자리는 진행으로 늘어난다는 사실을 패널에서 바로 보여준다. */
+    var nextSlotStage = null;
+    for (var s = 0; s < Chars.SLOT_UNLOCKS.length; s++) {
+      if (state.stage < Chars.SLOT_UNLOCKS[s]) { nextSlotStage = Chars.SLOT_UNLOCKS[s]; break; }
+    }
+    el.partyHint.textContent = nextSlotStage
+      ? '최대 3명 함께 싸워요 · 다음 자리 스테이지 ' + nextSlotStage
+      : '편성 전원이 함께 싸워요';
 
     el.partyList.innerHTML = '';
     Chars.CHARACTERS.forEach(function (c) {
@@ -520,6 +532,8 @@
 
   function nextSceneFromQueue() {
     var scene = storyQueue.shift();
+    // 대기 중 이미 본 장면(중복 큐잉 등)은 건너뛴다 — 오프닝이 두 번 나오는 사고 방지
+    while (scene && seenStory(scene.id)) scene = storyQueue.shift();
     if (!scene) return;
     storyScene = scene;
     storyLine = 0;
@@ -570,6 +584,15 @@
     if (wasRescue) heartBurst();      // 구출의 하트는 컷신이 걷힌 무대 위에서
     if (storyQueue.length) { nextSceneFromQueue(); return; }
     if (wasChapter && pendingBanner) { chapterBanner(pendingBanner); pendingBanner = null; }
+  }
+
+  /* 구출 컷신 유실 복구(codex HIGH) — 컷신 도중 새로고침하면 boss_clear(피날레)가
+   * 다시 오지 않아 장면이 영영 사라진다. 진행도가 피날레를 지났는데 미시청이면 재큐.
+   * 인트로가 떠 있는 동안에는 부르지 않는다 — 컷신(z-65)이 시작 버튼을 덮는다. */
+  function queuePendingRescues() {
+    Chapters.CHAPTERS.forEach(function (ch) {
+      if (ch.to != null && state.safeStage >= ch.to) queueStory('rescue', ch.id);
+    });
   }
 
   /* 보스 첫 조우 도발 — 말풍선 한 줄, 전투는 계속 흐른다 */
@@ -714,10 +737,17 @@
     return { x: er.left + er.width * 0.5 - fr.left, y: er.top + er.height * 0.55 - fr.top };
   }
 
+  function footPoint(node) {
+    var fr = el.fxLayer.getBoundingClientRect();
+    var nr = node.getBoundingClientRect();
+    return { x: nr.left + nr.width * 0.5 - fr.left, y: nr.bottom - fr.top - 4 };
+  }
+
   /* 타격 한 사이클: 돌진(0) → 접촉(90ms) 순간에 임팩트·검격·데미지·넉백·히트스톱.
    * 접촉과 이펙트를 같은 프레임에 맞추는 것이 타격감의 절반이고, 나머지 절반은
    * 접촉 직후 온 세상이 55ms 멈추는 히트스톱이다. */
   var strikeCount = 0;
+  var restoreTimer = 0;
   function heroStrikeFx(dmg) {
     strikeCount++;
     var crit = strikeCount % 5 === 0;          // 표현 전용 — 5타마다 강조 연출
@@ -726,8 +756,12 @@
     el.hero.classList.add('strike');
     swapToAttackPose();
     sfx('hit');
-    var p = enemyPoint();     // 좌표는 지금 고정 — 90ms 사이 적이 바뀌어도 빈 곳에 안 찍힌다
+    var p = enemyPoint();     // 좌표는 지금 고정 — 접촉까지 적이 바뀌어도 빈 곳에 안 찍힌다
+    // 돌진이 시작되는 발밑에서 먼지가 퐁 — 출발의 무게
+    var fp = footPoint(el.hero);
+    spawnFx('fx-dust', fp.x - 6, fp.y, 400);
 
+    /* 접촉은 heroStrike 키프레임 40% 지점(300ms × 0.4 = 120ms) — CSS 와 함께 움직인다 */
     setTimeout(function () {
       var jx = (Math.random() - 0.5) * 26, jy = (Math.random() - 0.5) * 20;
 
@@ -752,9 +786,11 @@
         void el.arena.offsetWidth;
         el.arena.classList.add('microshake');
       }
-    }, 90);
+    }, 120);
 
-    setTimeout(restoreWalkPose, 240);
+    /* 연타 시 이전 복원 타이머가 다음 타격의 공격 포즈를 중간에 되돌리는 경합 방지 */
+    clearTimeout(restoreTimer);
+    restoreTimer = setTimeout(restoreWalkPose, 320);
   }
 
   /* 공격 포즈 스왑 — 전용 공격 스프라이트가 있으면 타격 동안 그 포즈로 바꾼다. */
@@ -825,22 +861,34 @@
     });
   }
 
+  /* 챕터 시각(이름·배경·전경)만 적용한다 — 부수효과 없음. 부팅 렌더와 런타임 전환이
+   * 같은 경로를 쓰되, 컷신·배너·BGM 같은 "전환 연출"은 런타임에서만 발화해야 한다.
+   * (DOM 텍스트를 렌더 상태로 쓰다 부팅 렌더가 인트로 위로 컷신을 띄운 회귀 — codex P0) */
+  var lastChapterId = '';
+  function applyChapterVisuals(ch) {
+    el.chapterName.textContent = ch.name;
+    el.bgLayer.style.backgroundImage = "url('" + ch.bg + "')";
+    el.fgLayer.style.backgroundImage = ch.fg ? "url('" + ch.fg + "')" : 'none';
+  }
+
   function renderHud() {
     renderHero();
     el.stageNum.textContent = state.stage;
     el.goldNum.textContent = fmt(state.gold);
     el.powerNum.textContent = fmt(Combat.power(state));
     var ch = Chapters.chapterFor(state.stage);
-    if (el.chapterName.textContent !== ch.name) {
-      el.chapterName.textContent = ch.name;
-      el.bgLayer.style.backgroundImage = "url('" + ch.bg + "')";
-      el.fgLayer.style.backgroundImage = ch.fg ? "url('" + ch.fg + "')" : 'none';
-      // 이 챕터 컷신이 곧 뜬다면 배너는 컷신이 끝난 뒤에 (겹치면 배너가 안 보인다)
-      var chScene = Story && Story.sceneFor('chapter', ch.id);
-      if (chScene && state.storySeen.indexOf(chScene.id) === -1) pendingBanner = ch;
-      else chapterBanner(ch);
-      queueStory('chapter', ch.id);
-      syncBgm();
+    if (ch.id !== lastChapterId) {
+      var isBoot = lastChapterId === '';
+      lastChapterId = ch.id;
+      applyChapterVisuals(ch);
+      if (!isBoot && bannerReady) {
+        // 이 챕터 컷신이 곧 뜬다면 배너는 컷신이 끝난 뒤에 (겹치면 배너가 안 보인다)
+        var chScene = Story && Story.sceneFor('chapter', ch.id);
+        if (chScene && state.storySeen.indexOf(chScene.id) === -1) pendingBanner = ch;
+        else chapterBanner(ch);
+        queueStory('chapter', ch.id);
+        syncBgm();
+      }
     }
   }
 
@@ -909,10 +957,16 @@
         el.enemy.classList.toggle('is-boss', isBoss);
         el.enemy.hidden = false;
         el.bossRing.hidden = !isBoss;
-        // 등장 연출 — 몹은 폴짝, 보스는 쿵 하고 내려온다
+        // 등장 연출 — 몹은 폴짝, 보스는 쿵 하고 내려온다 (착지 순간 발밑 먼지)
         el.enemyArt.classList.remove('spawn-in', 'boss-in');
         void el.enemyArt.offsetWidth;
         el.enemyArt.classList.add(isBoss ? 'boss-in' : 'spawn-in');
+        if (isBoss) {
+          setTimeout(function () {
+            var bp = footPoint(el.enemyArt);
+            spawnFx('fx-dust big', bp.x, bp.y, 420);
+          }, 250);   // bossIn 55% 지점(≈250ms)이 착지 프레임
+        }
         // 도감 기록 — 처음 만난 몬스터/보스
         var ch = Chapters.chapterFor(state.stage);
         recordSeen(isBoss ? (ch.id + ':boss:' + art.id) : (ch.id + ':' + art.id));
@@ -1066,20 +1120,33 @@
     var m = /"lastSaveAt"\s*:\s*(\d+)/.exec(raw);
     return !!(m && Number(m[1]) > lastWroteAt);
   }
+  /* 다른 탭이 이어받았을 때 — 1회성 토스트는 사라지면 "왜 멈췄는지"를 알 수 없다.
+   * 지속형 모달로 멈춘 이유와 복구 동선(최신 저장 불러오기 / 이 탭에서 이어하기)을
+   * 함께 제공하고, 정지 즉시 BGM 도 끈다(codex 리뷰 P1). */
+  function pauseForOtherTab() {
+    if (!el.tabModal.hidden) return;
+    suppressPersist = true;
+    gameStarted = false;
+    if (Audio) Audio.bgm(null);
+    el.tabModal.hidden = false;
+  }
+
   function persist() {
     if (suppressPersist) return;
-    if (otherTabTookOver()) {
-      suppressPersist = true;
-      gameStarted = false;
-      toast('다른 탭에서 게임이 열렸어요 — 이 탭은 쉬어갈게요', 'fail');
-      return;
-    }
+    if (otherTabTookOver()) { pauseForOtherTab(); return; }
     var now = Date.now();
     try {
       localStorage.setItem(Save.STORAGE_KEY, Save.dump(state, now));
       lastWroteAt = now;
     } catch (e) { /* 저장 불가 — 진행은 계속한다 */ }
   }
+
+  /* storage 이벤트는 "다른 탭"에서만 발화한다 — 5초 persist 주기를 기다리지 않고
+   * 타 탭의 저장을 즉시 감지해 멈춘다. */
+  window.addEventListener('storage', function (e) {
+    if (e.key !== Save.STORAGE_KEY || !gameStarted) return;
+    if (otherTabTookOver()) pauseForOtherTab();
+  });
 
   function restore() {
     var raw = null;
@@ -1201,6 +1268,27 @@
     renderPanel();
   });
 
+  /* 멀티탭 복구 — 불러오기: 타 탭의 최신 저장으로 재시작. 이어하기: 이 탭 상태를
+   * 즉시 다시 써서 소유권을 가져온다(상대 탭은 storage 이벤트로 같은 모달을 보게 된다). */
+  el.tabReload.addEventListener('click', function () { location.reload(); });
+  el.tabResume.addEventListener('click', function () {
+    el.tabModal.hidden = true;
+    suppressPersist = false;
+    /* 가드 기준점 갱신 — 타 탭의 저장을 "과거"로 만든다. 저장된 lastSaveAt 이
+     * 이쪽 시계보다 앞서 있어도(드물지만) 즉시 재정지하지 않도록 max 를 취한다. */
+    var savedAt = 0;
+    try {
+      var raw = localStorage.getItem(Save.STORAGE_KEY);
+      var mm = raw && /"lastSaveAt"\s*:\s*(\d+)/.exec(raw);
+      if (mm) savedAt = Number(mm[1]);
+    } catch (e) {}
+    lastWroteAt = Math.max(Date.now(), savedAt + 1);
+    gameStarted = true;
+    lastFrame = 0;
+    persist();
+    syncBgm();
+  });
+
   el.exitBtn.addEventListener('click', function () {
     persist();
     if (window.GameBoot) window.GameBoot.exit();
@@ -1300,7 +1388,6 @@
   buildRelics();
   buildQuests();
   restore();
-  el.chapterName.textContent = '';   // 초기 HTML 과 같아도 첫 챕터 배경·전경이 반드시 적용되게
   Combat.sanitizeParty(state);
   Chars.unlockedAt(state.stage).forEach(function (id) { seenUnlocks[id] = true; });
   state.collection.forEach(function (k) { collectionSet[k] = true; });
@@ -1333,17 +1420,14 @@
       sfx('tap');
       try { localStorage.setItem(Save.STORAGE_KEY + '-seen', '1'); } catch (e) {}
       queueStory('chapter', Chapters.chapterFor(state.stage).id);   // 오프닝
+      queuePendingRescues();
       syncBgm();
     });
   } else {
     // 복귀 유저 — 현재 챕터 컷신을 아직 못 봤다면(구세이브) 지금 보여준다
     queueStory('chapter', Chapters.chapterFor(state.stage).id);
+    queuePendingRescues();
   }
-  /* 구출 컷신 유실 복구(codex HIGH) — 컷신 도중 새로고침하면 boss_clear(피날레)가
-   * 다시 오지 않아 장면이 영영 사라진다. 진행도가 피날레를 지났는데 미시청이면 재큐. */
-  Chapters.CHAPTERS.forEach(function (ch) {
-    if (ch.to != null && state.safeStage >= ch.to) queueStory('rescue', ch.id);
-  });
   bannerReady = true;
 
   requestAnimationFrame(frame);

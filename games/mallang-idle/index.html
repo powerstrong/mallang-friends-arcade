@@ -128,7 +128,7 @@
   <section class="panel" id="panelParty" hidden>
     <div class="panel-head">
       <span class="panel-title">편성 <b id="partySlots">1 / 1</b></span>
-      <span class="party-hint">탭해서 넣고 빼요</span>
+      <span class="party-hint" id="partyHint">탭해서 넣고 빼요</span>
     </div>
     <div class="party-list" id="partyList"></div>
     <div class="panel-foot">
@@ -166,6 +166,16 @@
     <div class="dungeon-result" id="dungeonKills"></div>
     <div class="modal-gold"><span class="shard-count">⭐ <b id="dungeonShards">0</b></span><i class="coin"></i><b id="dungeonGold">0</b></div>
     <button id="dungeonOk">확인</button>
+  </div>
+</div>
+
+<!-- 멀티탭 가드 — 다른 탭이 저장을 이어받으면 이 탭은 멈추고, 복구 동선을 상시 제공한다. -->
+<div class="modal tab-modal" id="tabModal" hidden>
+  <div class="modal-card">
+    <h2>다른 탭에서 플레이 중</h2>
+    <p class="modal-sub">같은 저장을 두 곳에서 쓰면 진행이 사라질 수 있어서<br />이 탭을 잠시 멈췄어요.</p>
+    <button id="tabReload">최신 저장 불러오기</button>
+    <button class="ghost" id="tabResume">이 탭에서 이어하기</button>
   </div>
 </div>
 
