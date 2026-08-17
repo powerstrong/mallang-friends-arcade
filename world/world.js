@@ -270,6 +270,7 @@
   const chatLogToggle = document.getElementById('chat-log-toggle');
   const onlineCountEl = document.getElementById('online-count');
   const leaveBtn = document.getElementById('leave-btn');
+  const wardrobeBtn = document.getElementById('wardrobe-btn');
   const matchModal = document.getElementById('match-modal');
   const matchTitle = document.getElementById('match-title');
   const matchStatus = document.getElementById('match-status');
@@ -469,6 +470,7 @@
   nameInput.addEventListener('input', updateJoinButton);
   joinBtn.addEventListener('click', tryJoin);
   if (leaveBtn) leaveBtn.addEventListener('click', leaveWorld);
+  if (wardrobeBtn) wardrobeBtn.addEventListener('click', () => openWardrobePanel());
   nameInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !joinBtn.disabled) tryJoin();
   });
@@ -842,6 +844,9 @@
     zonesCatalog = [];
     inLabBooth = false;
     closeLabPanel();
+    inMirrorBooth = false;
+    closeWardrobePanel();
+    if (wardrobeBtn) wardrobeBtn.classList.add('hidden');
     if (activeProposal) closeMatchModal();
     if (chatLogBody) chatLogBody.innerHTML = '';
 
@@ -969,6 +974,9 @@
     joinPanel.classList.add('hidden');
     hideAutoEnterSplash();
     worldPanel.classList.remove('hidden');
+
+    // 꾸미기 진입 버튼은 사람 아바타 전용(동물은 꾸미기 비활성, §2).
+    if (wardrobeBtn) wardrobeBtn.classList.toggle('hidden', me.characterId !== HUMAN_ID);
 
     // One-time wiring — guarded so re-joins don't double-bind listeners
     // or spin up a second render loop.
@@ -1665,6 +1673,8 @@
       draw();
       syncMatchPanel();
       syncLabPanel();
+      syncMirrorBooth();
+      drawWardrobeStage();
       rafHandle = requestAnimationFrame(loop);
     };
     rafHandle = requestAnimationFrame(loop);
@@ -1731,6 +1741,7 @@
 
     drawZones();
     drawLabBooth();
+    drawMirrorBooth();
 
     // Draw peers behind me so my avatar sits on top when overlapping.
     for (const p of peers.values()) drawAvatar(p, /* isYou */ false);
@@ -1994,6 +2005,293 @@
     if (ws) { try { ws.close(); } catch { /* ignore */ } }
     const sep = path.includes('?') ? '&' : '?';
     window.location.href = path + sep + 'from=lab';
+  }
+
+  // ── 전신 거울 오브젝트 (꾸미기 진입점 2, AVATAR_DESIGN.md §6) ──────────────
+  // LAB_BOOTH 와 같은 클라 전용 오브젝트(서버 zone 아님). 좌표 제약:
+  //   • 게임 복귀 랜덤 스폰 영역(x80~460·y450~850)을 피한다 — 스폰하자마자
+  //     패널이 열리면 안 된다.
+  //   • 모바일 세로(object-fit:cover)에서 좌우가 x≈213~748 로 잘리므로 그 안에.
+  //   • LAB_BOOTH(571,424,165,200)·SPAWN_POINT(480,520)와 겹치지 않게.
+  const MIRROR_BOOTH = { x: 600, y: 690, w: 110, h: 120 };
+  const MIRROR_THEME = { color: '#ff9fd0', dark: '#d65fa0', icon: '👕' };
+  let inMirrorBooth = false;   // 진입/이탈 전이 추적 (한 번 열리면 나갔다 와야 재오픈)
+
+  function drawMirrorBooth() {
+    const r = MIRROR_BOOTH;
+    const t = MIRROR_THEME;
+    const inHere = !!(me && pointInRect(me.x, me.y, r));
+    const near = !!(me && !inHere && nearRect(me.x, me.y, r, 52));
+    const cx = r.x + r.w / 2;
+    const cy = r.y + r.h / 2;
+    const markerR = Math.max(toCanvasPx(13), Math.min(38, Math.min(r.w, r.h) * 0.3));
+    ctx.save();
+    ctx.fillStyle = hexA(t.color, inHere ? 0.4 : near ? 0.32 : 0.18);
+    ctx.beginPath();
+    ctx.arc(cx, cy, markerR, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = hexA(t.color, near || inHere ? 0.95 : 0.7);
+    ctx.lineWidth = near || inHere ? 3 : 2;
+    ctx.beginPath();
+    ctx.arc(cx, cy, markerR, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.font = `${Math.floor(markerR * 1.1)}px -apple-system, system-ui, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(t.icon, cx, cy + 1);
+
+    const title = '전신 거울';
+    const titleSize = widthCappedSize(title, adaptiveSize(13, 11), 'bold', r.w + 40);
+    ctx.textBaseline = 'alphabetic';
+    ctx.lineJoin = 'round';
+    ctx.font = `bold ${titleSize}px ${FONT_FAMILY}`;
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = 'rgba(20,30,16,0.9)';
+    ctx.strokeText(title, cx, cy + markerR + titleSize + 4);
+    ctx.fillStyle = '#ffe3f2';
+    ctx.fillText(title, cx, cy + markerR + titleSize + 4);
+    ctx.restore();
+
+    if (near) {
+      const isHuman = !!(me && me.characterId === HUMAN_ID);
+      const text = isHuman ? '들어가서 꾸미기' : '사람 캐릭터만 꾸밀 수 있어요';
+      ctx.save();
+      ctx.font = adaptiveFont(11, 10, 'bold');
+      const w = ctx.measureText(text).width + toCanvasPx(12);
+      const h = toCanvasPx(18);
+      const y = cy - markerR - toCanvasPx(16);
+      ctx.fillStyle = t.dark;
+      roundRect(cx - w / 2, y - h / 2, w, h, h / 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(cx - 5, y + h / 2); ctx.lineTo(cx, y + h / 2 + 5); ctx.lineTo(cx + 5, y + h / 2);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(text, cx, y);
+      ctx.restore();
+    }
+  }
+
+  /* 거울 안에 들어선 순간 패널을 연다(사람 아바타만). 패널은 걸어 나가도 자동으로
+   * 닫지 않는다 — 편집 초안 보존(§7). 나갔다 다시 들어오면 재오픈.
+   */
+  function syncMirrorBooth() {
+    if (!me) return;
+    const inside = pointInRect(me.x, me.y, MIRROR_BOOTH);
+    if (!inside) { inMirrorBooth = false; return; }
+    if (inMirrorBooth) return;
+    inMirrorBooth = true;
+    if (me.characterId === HUMAN_ID && !activeProposal) openWardrobePanel();
+  }
+
+  // ── 꾸미기 패널 (AVATAR_DESIGN.md §7) ───────────────────────────────────────
+  // 모달 패널 — 여는 동안 광장 WS 유지. 저장 시에만 일괄 반영(sendOutfitChange),
+  // 닫기·오류 시 기존 착장 유지(초안 폐기). A단계는 전 아이템 무료(잠금 UI 없음).
+  const WARDROBE_TABS = [
+    { slot: 'outfit',  label: '👗 코디' },
+    { slot: 'hair',    label: '💇 헤어' },
+    { slot: 'hat',     label: '🎩 모자' },
+    { slot: 'faceAcc', label: '👓 안경' },
+  ];
+  let wardrobeModal = null;
+  let wardrobeDraft = null;      // 편집 중 착장(항상 sanitize 완료 상태)
+  let wardrobeSaved = null;      // 열 때 스냅샷 — 되돌리기 대상
+  let wardrobePreset = 'girl';   // 저장 시 world_outfit.preset 에 실릴 값
+  let wardrobeTab = 'outfit';
+  let wardrobeDir = 'down';      // 미리보기 방향 (탭하면 회전)
+  let wardrobeLastSheet = null;  // 미리보기 원자 교체용 — 합성 중 이전 시트 유지
+
+  function ensureWardrobeModal() {
+    if (wardrobeModal) return wardrobeModal;
+    const modal = document.createElement('div');
+    modal.id = 'wardrobe-modal';
+    modal.className = 'modal wardrobe-modal hidden';
+    modal.setAttribute('aria-hidden', 'true');
+    modal.setAttribute('role', 'dialog');
+    modal.innerHTML = `
+      <div class="modal-card wardrobe-card">
+        <div class="lab-head">
+          <h2>👕 꾸미기</h2>
+          <button type="button" class="lab-close wardrobe-close" aria-label="닫기">✕</button>
+        </div>
+        <div class="wardrobe-stage">
+          <canvas class="wardrobe-stage-canvas" width="150" height="150"></canvas>
+          <p class="wardrobe-hint">캐릭터를 누르면 돌아서요</p>
+        </div>
+        <div class="wardrobe-tabs"></div>
+        <div class="wardrobe-swatches hidden"></div>
+        <div class="wardrobe-items"></div>
+        <div class="wardrobe-presets">
+          <span class="wardrobe-presets-label">처음으로:</span>
+          <button type="button" data-preset="girl">👧 여자아이 기본</button>
+          <button type="button" data-preset="boy">👦 남자아이 기본</button>
+        </div>
+        <div class="modal-actions wardrobe-actions">
+          <button type="button" class="btn-ghost wardrobe-random">🎲 랜덤 코디</button>
+          <button type="button" class="btn-ghost wardrobe-revert">되돌리기</button>
+          <button type="button" class="btn-primary wardrobe-save">저장</button>
+        </div>
+      </div>`;
+    const host = document.getElementById('app') || document.body;
+    host.appendChild(modal);
+
+    modal.querySelector('.wardrobe-close').addEventListener('click', closeWardrobePanel);
+    modal.querySelector('.wardrobe-random').addEventListener('click', () => {
+      wardrobeDraft = window.WARDROBE.randomOutfit();
+      renderWardrobeControls();
+    });
+    modal.querySelector('.wardrobe-revert').addEventListener('click', () => {
+      wardrobeDraft = { ...wardrobeSaved };
+      renderWardrobeControls();
+    });
+    modal.querySelector('.wardrobe-save').addEventListener('click', () => {
+      sendOutfitChange({ ...wardrobeDraft }, wardrobePreset);
+      closeWardrobePanel();
+    });
+    for (const b of modal.querySelectorAll('.wardrobe-presets button')) {
+      b.addEventListener('click', () => {
+        wardrobePreset = b.dataset.preset;
+        wardrobeDraft = window.WARDROBE.sanitizeOutfit(null, wardrobePreset);
+        renderWardrobeControls();
+      });
+    }
+    const tabsEl = modal.querySelector('.wardrobe-tabs');
+    for (const t of WARDROBE_TABS) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.dataset.slot = t.slot;
+      b.textContent = t.label;
+      b.addEventListener('click', () => {
+        wardrobeTab = t.slot;
+        renderWardrobeControls();
+      });
+      tabsEl.appendChild(b);
+    }
+    const stage = modal.querySelector('.wardrobe-stage-canvas');
+    stage.addEventListener('click', () => {
+      wardrobeDir = { down: 'right', right: 'up', up: 'left', left: 'down' }[wardrobeDir] || 'down';
+    });
+    wardrobeModal = modal;
+    return modal;
+  }
+
+  function openWardrobePanel() {
+    if (!me || me.characterId !== HUMAN_ID) return;
+    ensureWardrobeModal();
+    if (!wardrobeModal.classList.contains('hidden')) return; // 이미 열림 — 초안 유지
+    const saved = loadSavedOutfit();
+    wardrobePreset = (saved && saved.preset) || selectedPreset || 'girl';
+    wardrobeDraft = window.WARDROBE.sanitizeOutfit(me.outfit, wardrobePreset);
+    wardrobeSaved = { ...wardrobeDraft };
+    wardrobeDir = 'down';
+    wardrobeLastSheet = null;
+    renderWardrobeControls();
+    wardrobeModal.classList.remove('hidden');
+    wardrobeModal.setAttribute('aria-hidden', 'false');
+  }
+
+  function closeWardrobePanel() {
+    if (!wardrobeModal) return;
+    wardrobeModal.classList.add('hidden');
+    wardrobeModal.setAttribute('aria-hidden', 'true');
+  }
+
+  /* 탭·스와치·아이템 그리드를 현재 draft 기준으로 다시 그린다. 아이템 카드
+   * 썸네일은 "그 아이템만 바꿔 입은 내 모습" 합성 시트의 정면 셀 — 캐시 키가
+   * 아바타 시트와 같아서 카드를 눌렀을 때 미리보기가 즉시 뜬다.
+   */
+  function renderWardrobeControls() {
+    const W = window.WARDROBE;
+    const modal = ensureWardrobeModal();
+    for (const b of modal.querySelectorAll('.wardrobe-tabs button')) {
+      b.classList.toggle('active', b.dataset.slot === wardrobeTab);
+    }
+
+    // 헤어 탭에서만 색 스와치 노출.
+    const swatches = modal.querySelector('.wardrobe-swatches');
+    swatches.classList.toggle('hidden', wardrobeTab !== 'hair');
+    if (wardrobeTab === 'hair') {
+      swatches.innerHTML = '';
+      for (const pal of W.hairPalettes) {
+        const info = W.hairPaletteInfo[pal] || { label: pal, color: '#888' };
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'wardrobe-swatch' + (wardrobeDraft.hairColor === pal ? ' selected' : '');
+        b.style.background = info.color;
+        b.title = info.label;
+        b.setAttribute('aria-label', `머리색 ${info.label}`);
+        b.addEventListener('click', () => {
+          wardrobeDraft.hairColor = pal;
+          renderWardrobeControls();
+        });
+        swatches.appendChild(b);
+      }
+    }
+
+    const itemsEl = modal.querySelector('.wardrobe-items');
+    itemsEl.innerHTML = '';
+    const optional = wardrobeTab === 'hat' || wardrobeTab === 'faceAcc';
+    const entries = [];
+    if (optional) entries.push({ id: null, label: '없음' });
+    for (const it of W.itemsBySlot(wardrobeTab)) entries.push(it);
+    for (const it of entries) {
+      const card = document.createElement('button');
+      card.type = 'button';
+      card.className = 'wardrobe-item' + (wardrobeDraft[wardrobeTab] === it.id ? ' selected' : '');
+      const thumb = document.createElement('div');
+      thumb.className = 'wardrobe-item-thumb';
+      thumb.textContent = it.id ? '⋯' : '🚫';
+      const label = document.createElement('span');
+      label.textContent = it.label;
+      card.append(thumb, label);
+      // 썸네일 = "그 아이템만 바꿔 입은 내 모습" ('없음' 카드는 벗은 조합).
+      paintWardrobeThumb(thumb, { ...wardrobeDraft, [wardrobeTab]: it.id });
+      card.addEventListener('click', () => {
+        wardrobeDraft[wardrobeTab] = it.id;
+        renderWardrobeControls();
+      });
+      itemsEl.appendChild(card);
+    }
+  }
+
+  function paintWardrobeThumb(el, outfit) {
+    ensureHumanSheet(outfit).promise.then((e) => {
+      if (!e.ready || !el.isConnected) return;
+      const canvas = document.createElement('canvas');
+      canvas.width = canvas.height = 84;
+      const c = canvas.getContext('2d');
+      const cell = HUMAN_SHEET_SIZE / 3;
+      c.drawImage(e.img, 0, 0, cell, cell, 0, 0, 84, 84);
+      el.replaceChildren(canvas);
+    });
+  }
+
+  /* 미리보기 스테이지 — 렌더 루프에서 매 프레임 호출. draft 착장으로 제자리
+   * 걷기 재생(4박자), 탭하면 방향 회전. 합성 중엔 직전 완성 시트 유지.
+   */
+  function drawWardrobeStage() {
+    if (!wardrobeModal || wardrobeModal.classList.contains('hidden')) return;
+    const canvas = wardrobeModal.querySelector('.wardrobe-stage-canvas');
+    if (!canvas || !wardrobeDraft) return;
+    const entry = ensureHumanSheet(wardrobeDraft);
+    const sheet = entry.ready ? (wardrobeLastSheet = entry) : wardrobeLastSheet;
+    const c = canvas.getContext('2d');
+    c.clearRect(0, 0, canvas.width, canvas.height);
+    if (!sheet) return; // 첫 합성 대기 — 다음 프레임에 뜬다
+    const cell = HUMAN_SHEET_SIZE / 3;
+    const row = wardrobeDir === 'down' ? 0 : wardrobeDir === 'up' ? 2 : 1;
+    const col = HUMAN_WALK_PATTERN[Math.floor(performance.now() / HUMAN_WALK_MS) % HUMAN_WALK_PATTERN.length];
+    c.save();
+    c.imageSmoothingEnabled = true;
+    c.imageSmoothingQuality = 'high';
+    c.translate(canvas.width / 2, canvas.height * 0.95);
+    if (wardrobeDir === 'left') c.scale(-1, 1); // side row 는 우향 — left 미러
+    const drawW = 140, drawH = 140;
+    c.drawImage(sheet.img, col * cell, row * cell, cell, cell, -drawW / 2, -drawH * 0.95, drawW, drawH);
+    c.restore();
   }
 
   // 부스 표시 정책 (사용자 피드백):
