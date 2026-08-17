@@ -103,7 +103,8 @@ test('human join: outfit sanitized on the wire, gameBuddyId server-side only', a
   assert.ok(welcome, 'welcome sent');
   assert.equal(welcome.d.you.characterId, 'human');
   assert.deepEqual(welcome.d.you.outfit, {
-    outfit: 'outfit_tee_sky', hair: 'hair_short', hairColor: 'gold', hat: 'hat_beret', faceAcc: null,
+    outfit: 'outfit_tee_sky', top: null, bottom: null,
+    hair: 'hair_short', hairColor: 'gold', hat: 'hat_beret', faceAcc: null,
   });
   assert.equal(welcome.d.you.gameBuddyId, undefined, 'buddy never broadcast');
 
@@ -263,4 +264,28 @@ test('sanitizeOutfit: 코디+헤어는 항상 채워진 완전한 착장을 돌�
   const boy = sanitizeOutfit({ hat: 'hat_beret' }, 'boy');
   assert.equal(boy.outfit, WARDROBE.presets.boy.outfit);
   assert.equal(boy.hat, 'hat_beret');
+});
+
+test('sanitizeOutfit v2: outfit XOR (top AND bottom)', () => {
+  // 상·하의 완비 → 분리옷 인정, 한벌옷 null.
+  const sep = sanitizeOutfit({ top: 'top_tee_berry', bottom: 'bottom_jeans_blue', hair: 'hair_short' });
+  assert.equal(sep.outfit, null);
+  assert.equal(sep.top, 'top_tee_berry');
+  assert.equal(sep.bottom, 'bottom_jeans_blue');
+
+  // 반쪽(상의만) → 프리셋 한벌옷으로 강제(정본 바디 노출 방지).
+  const half = sanitizeOutfit({ top: 'top_tee_berry' }, 'boy');
+  assert.equal(half.outfit, WARDROBE.presets.boy.outfit);
+  assert.equal(half.top, null);
+  assert.equal(half.bottom, null);
+
+  // 한벌옷 + 상·하의 동시 → 한벌옷 우선, 상·하의 무시.
+  const both = sanitizeOutfit({ outfit: 'outfit_dress_peach', top: 'top_tee_berry', bottom: 'bottom_skirt_lemon' });
+  assert.equal(both.outfit, 'outfit_dress_peach');
+  assert.equal(both.top, null);
+  assert.equal(both.bottom, null);
+
+  // 슬롯이 안 맞는 id (하의 자리에 상의) → 무효 처리.
+  const wrong = sanitizeOutfit({ top: 'top_tee_berry', bottom: 'top_tee_lavender' });
+  assert.equal(wrong.outfit, WARDROBE.presets.girl.outfit);
 });

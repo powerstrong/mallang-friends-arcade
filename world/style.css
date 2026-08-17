@@ -940,11 +940,12 @@ h1 {
 }
 .wardrobe-tabs {
   display: flex;
+  flex-wrap: wrap; /* 6탭(한벌옷·상의·하의·헤어·모자·안경) — 좁으면 3+3 두 줄 */
   gap: 6px;
   margin: 10px 0 8px;
 }
 .wardrobe-tabs button {
-  flex: 1;
+  flex: 1 1 30%;
   padding: 8px 4px;
   border: 1px solid transparent;
   border-radius: 10px;

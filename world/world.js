@@ -2058,7 +2058,9 @@
   // 모달 패널 — 여는 동안 광장 WS 유지. 저장 시에만 일괄 반영(sendOutfitChange),
   // 닫기·오류 시 기존 착장 유지(초안 폐기). A단계는 전 아이템 무료(잠금 UI 없음).
   const WARDROBE_TABS = [
-    { slot: 'outfit',  label: '👗 코디' },
+    { slot: 'outfit',  label: '👗 한벌옷' },
+    { slot: 'top',     label: '👕 상의' },
+    { slot: 'bottom',  label: '👖 하의' },
     { slot: 'hair',    label: '💇 헤어' },
     { slot: 'hat',     label: '🎩 모자' },
     { slot: 'faceAcc', label: '👓 안경' },
@@ -2222,13 +2224,39 @@
       label.textContent = it.label;
       card.append(thumb, label);
       // 썸네일 = "그 아이템만 바꿔 입은 내 모습" ('없음' 카드는 벗은 조합).
-      paintWardrobeThumb(thumb, { ...wardrobeDraft, [wardrobeTab]: it.id });
+      paintWardrobeThumb(thumb, outfitWithPick(wardrobeDraft, wardrobeTab, it.id));
       card.addEventListener('click', () => {
-        wardrobeDraft[wardrobeTab] = it.id;
+        wardrobeDraft = outfitWithPick(wardrobeDraft, wardrobeTab, it.id);
         renderWardrobeControls();
       });
       itemsEl.appendChild(card);
     }
+  }
+
+  /* 슬롯 선택 규칙(카탈로그 v2, outfit XOR top+bottom):
+   *   한벌옷 선택 → 상·하의 해제. 상의/하의 선택 → 한벌옷 해제하고 반대쪽이
+   *   비어 있으면 프리셋 취향의 기본(여아=치마, 남아=청바지)으로 자동 채움 —
+   *   반쪽 착장(sanitize 가 프리셋으로 되돌리는 상태)을 UI 에서 만들지 않는다.
+   */
+  function outfitWithPick(base, slot, id) {
+    const next = { ...base, [slot]: id };
+    if (slot === 'outfit' && id) { next.top = null; next.bottom = null; }
+    if ((slot === 'top' || slot === 'bottom') && id) {
+      next.outfit = null;
+      const other = slot === 'top' ? 'bottom' : 'top';
+      if (!next[other]) next[other] = defaultSeparate(other);
+    }
+    return next;
+  }
+
+  function defaultSeparate(slot) {
+    const items = window.WARDROBE.itemsBySlot(slot);
+    if (!items.length) return null;
+    if (slot === 'bottom' && wardrobePreset === 'girl') {
+      const skirt = items.find((i) => i.id.includes('skirt'));
+      if (skirt) return skirt.id;
+    }
+    return items[0].id;
   }
 
   function paintWardrobeThumb(el, outfit) {

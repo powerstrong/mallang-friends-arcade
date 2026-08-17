@@ -27,7 +27,9 @@
 <div class="sub">합성 순서: hair_back → 코디 → hair_front → 얼굴 소품 → 모자. 고스트=정본 마네킹 50% 오버레이(이중상이 보이면 FAIL).</div>
 
 <div class="panel">
-  <label>코디 <select id="selOutfit"></select></label>
+  <label>한벌옷 <select id="selOutfit"></select></label>
+  <label>상의 <select id="selTop"></select></label>
+  <label>하의 <select id="selBottom"></select></label>
   <label>헤어 <select id="selHair"></select></label>
   <label>색 <select id="selPalette"></select></label>
   <label>모자 <select id="selHat"></select></label>
@@ -83,25 +85,39 @@
   }
 
   const selOutfit = document.getElementById('selOutfit');
+  const selTop = document.getElementById('selTop');
+  const selBottom = document.getElementById('selBottom');
   const selHair = document.getElementById('selHair');
   const selPalette = document.getElementById('selPalette');
   const selHat = document.getElementById('selHat');
   const selFace = document.getElementById('selFace');
-  fillSelect(selOutfit, 'outfit', false);
+  fillSelect(selOutfit, 'outfit', true); // v2: 한벌옷 없이 상·하의 조합 검수 가능
+  fillSelect(selTop, 'top', true);
+  fillSelect(selBottom, 'bottom', true);
   fillSelect(selHair, 'hair', true);
   selPalette.innerHTML = W.hairPalettes.map((p) => `<option>${p}</option>`).join('');
   fillSelect(selHat, 'hat', true);
   fillSelect(selFace, 'faceAcc', true);
   selHair.value = 'hair_long';
+  selOutfit.value = 'outfit_dress_peach';
 
-  // 현재 착장의 레이어 URL 목록 (z-order 순)
+  // 현재 착장의 레이어 URL 목록 (z-order 순). QA 도구라 sanitize 를 통하지 않고
+  // 반쪽 조합(상의만/하의만)도 그대로 보여준다 — 정본 바디 위 개별 레이어 검수용.
   function layerUrls() {
     const urls = [];
     const hair = W.itemById(selHair.value);
     const pal = selPalette.value;
     if (hair && hair.parts.back) urls.push(W.hairSheet(hair.id, pal, 'back'));
     const outfit = W.itemById(selOutfit.value);
-    if (outfit) urls.push(`${W.assetBase}/${outfit.sheet}`);
+    if (outfit) {
+      urls.push(`${W.assetBase}/${outfit.sheet}`);
+    } else {
+      urls.push(`${W.assetBase}/${W.baseBodySheet}`);
+      const bottom = W.itemById(selBottom.value);
+      if (bottom) urls.push(`${W.assetBase}/${bottom.sheet}`);
+      const top = W.itemById(selTop.value);
+      if (top) urls.push(`${W.assetBase}/${top.sheet}`);
+    }
     if (hair && hair.parts.front) urls.push(W.hairSheet(hair.id, pal, 'front'));
     const face = W.itemById(selFace.value);
     if (face) urls.push(`${W.assetBase}/${face.sheet}`);
@@ -182,7 +198,7 @@
     requestAnimationFrame(tick);
   }
 
-  for (const el of [selOutfit, selHair, selPalette, selHat, selFace]) el.onchange = compose;
+  for (const el of [selOutfit, selTop, selBottom, selHair, selPalette, selHat, selFace]) el.onchange = compose;
   document.getElementById('chkGhost').onchange = drawSheet;
   document.getElementById('chkGrid').onchange = drawSheet;
   compose();
