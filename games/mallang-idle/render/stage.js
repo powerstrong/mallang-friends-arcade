@@ -39,6 +39,19 @@
 
   var FX_CAP = 26;          // 동시 DOM 이펙트 노드 상한 — 저사양 보호 (단계 1 에서 캔버스로 이관)
   var PARTICLE_CAP = 400;   // 동시 캔버스 파티클 상한
+  /* 정보 예산 예약 — 상한 포화에서 장식(스파크·먼지)이 정보(처치 확인·골드)를 밀어내면
+   * 안 된다. 장식은 (PARTICLE_CAP - INFO_RESERVE) 까지만, 정보는 끝까지 받는다. */
+  var INFO_RESERVE = 48;
+
+  /* FX 시트 스펙 — 기존 플립북 에셋을 캔버스 drawImage 로 재생한다(품질 유지).
+   * slash 는 시트가 아니라 단일 이미지 + 변형 궤적이다. decode 가 끝나기 전에는
+   * 절차적 폴백으로 그린다 — 첫 임팩트가 유실되지 않게. */
+  var SHEETS = {
+    impact: { src: 'assets/fx-impact-sheet.png', frames: 4 },
+    poof:   { src: 'assets/fx-poof-sheet.png',   frames: 4 },
+    slash:  { src: 'assets/fx-slash.png',        frames: 1 },
+    star:   { src: 'assets/fx-star.png',         frames: 1 },
+  };
 
   var AMBIENT_ART = {
     meadow: 'assets/pt-petal.png', garden: 'assets/pt-petal.png',
@@ -91,9 +104,23 @@
       _last: null,
     };
 
+    // ── FX 시계 ──────────────────────────────────────────────
+    /* 히트스톱은 **파티클 하위 시계만** 멈춘다 (COMBAT_STAGE_OVERHAUL 6절 결정 1).
+     * 엔진·큐·HUD·카메라 셰이크는 계속 돈다 — 여기가 멈추면 밸런스 영향 0 위반.
+     * DOM 쪽 정지(.arena.hitstop 의 animation-play-state)도 이 시계가 함께 구동해
+     * 캔버스와 DOM 이 같은 순간에 얼고 같은 순간에 풀린다. 중첩되면 더 긴 쪽이 이긴다. */
+    var hitstopT = 0;
+    function hitstop(sec) {
+      if (reducedMotion) return;               // 감속 모드 — 정지 연출도 움직임의 일부다
+      if (sec > hitstopT) hitstopT = sec;
+      el.arena.classList.add('hitstop');
+    }
+
     // ── 캔버스 파티클 ─────────────────────────────────────────
-    /* 단계 1 이 스파크·파편·궤적·골드를 전부 여기로 옮긴다. 지금은 파이프라인이
-     * 실제로 도는지 증명하기 위해 발밑 먼지 하나만 태워 둔다(죽은 코드 방지). */
+    /* 단계 1 이 스파크·파편·궤적·골드를 전부 여기로 옮긴다.
+     * 좌표는 전부 **세계 좌표 = fx-canvas 로컬 CSS px** 다. DOM 이펙트(.fx-layer)와
+     * 원점이 달라 117px 어긋나던 버그를 여기서 통일했다 — DOM 쪽은 spawnFx 가
+     * 세계 좌표를 레이어 좌표로 변환해 받는다. */
     var ctx = el.fxCanvas ? el.fxCanvas.getContext('2d') : null;
     var pool = [];
     var pcount = 0;
@@ -109,9 +136,36 @@
       if (ctx) ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     }
 
+    /* 시트 이미지 캐시 — 모듈 생성 시 한 번만 로드하고 decode 완료를 기록한다.
+     * 파티클마다 Image 를 만들지 않는다. ready 전 사용처는 절차적 폴백을 그린다. */
+    var sheetImgs = {};
+    (function loadSheets() {
+      if (!root.Image) return;                 // 브라우저 밖(정적 검사)에서는 그리지 않는다
+      Object.keys(SHEETS).forEach(function (k) {
+        var s = SHEETS[k];
+        var img = new root.Image();
+        var entry = { img: img, ready: false, frames: s.frames };
+        img.onload = function () {
+          if (img.decode) img.decode().then(function () { entry.ready = true; },
+                                            function () { entry.ready = true; });
+          else entry.ready = true;
+        };
+        img.src = s.src;
+        sheetImgs[k] = entry;
+      });
+    })();
+    function sheetReady(name) { return !!(sheetImgs[name] && sheetImgs[name].ready); }
+
+    var lastEmit = null;   // 좌표 회귀 테스트용 — 마지막 스폰의 세계 좌표
     function emit(kind, x, y, o) {
-      if (reducedMotion || !ctx || pcount >= PARTICLE_CAP) return;
       o = o || {};
+      var info = !!o.info;
+      if (!ctx) return;
+      /* 정보/장식 이원화 (결정 2) — 감속 모드에서 장식은 0, 정보는 "저동작 대체"로
+       * 남는다(속도·성장 제거, 페이드만). 상한 포화에서는 장식부터 거절한다. */
+      if (reducedMotion && !info) return;
+      if (pcount >= PARTICLE_CAP) return;
+      if (!info && pcount >= PARTICLE_CAP - INFO_RESERVE) return;
       var p = pool.length > pcount ? pool[pcount] : (pool[pcount] = {});
       pcount++;
       p.kind = kind; p.x = x; p.y = y;
@@ -120,9 +174,14 @@
       p.size = o.size || 14; p.grow = o.grow || 1.8;
       p.color = o.color || '205, 185, 160';
       p.alpha = o.alpha != null ? o.alpha : 0.9;
+      p.info = info;
+      if (reducedMotion) { p.vx = 0; p.vy = 0; p.grow = 1; }
+      lastEmit = { kind: kind, x: x, y: y, info: info };
+      return p;
     }
 
     function particlesUpdate(dt) {
+      if (!(dt > 0)) return;
       for (var i = 0; i < pcount; i++) {
         var p = pool[i];
         p.age += dt;
@@ -208,15 +267,17 @@
     }
 
     // ── DOM 이펙트 (단계 1 에서 캔버스로 흡수) ────────────────
+    /* 좌표 인자는 **세계 좌표**다 — 캔버스와 같은 원점. 레이어 변환은 여기서 한 번만. */
     var fxCount = 0;
     function spawnFx(cls, x, y, ttl, text) {
       if (fxCount >= FX_CAP) return null;
       fxCount++;
+      var lp = layerPoint(x, y);
       var n = document.createElement(text != null ? 'span' : 'i');
       n.className = cls;
       if (text != null) n.textContent = text;
-      n.style.left = x + 'px';
-      n.style.top = y + 'px';
+      n.style.left = lp.x + 'px';
+      n.style.top = lp.y + 'px';
       /* 제거는 반드시 한 곳에서 — TTL 과 onfinish 가 각자 지우면 fxCount 가 이중 감소해
        * 음수로 내려가고 상한이 무력화된다(codex 리뷰). */
       n.__dispose = function () {
@@ -230,23 +291,32 @@
       return n;
     }
 
-    /* 좌표는 fxLayer 로컬 px. fxLayer 도 카메라 안에 있으므로 카메라 배율만큼 나눠
-     * 되돌린다 — 단계 4 에서 줌이 붙어도 이펙트가 엉뚱한 곳에 찍히지 않는다. */
-    function localPoint(node, yRatio) {
-      var fr = el.fxLayer.getBoundingClientRect();
+    /* 세계 좌표 = fx-canvas 로컬 CSS px. 캔버스와 DOM 이펙트가 **같은 좌표계**를 쓴다
+     * (전에는 fxLayer 원점 기준이라 캔버스 그림이 117px 위에 찍혔다 — codex 리뷰).
+     * 캔버스도 카메라(.stage-cam) 안에 있으므로 배율만큼 나눠 되돌린다 — 단계 4 에서
+     * 줌이 붙어도 이펙트가 엉뚱한 곳에 찍히지 않는다. */
+    function worldPoint(node, yRatio) {
+      var cr = el.fxCanvas.getBoundingClientRect();
       var nr = node.getBoundingClientRect();
       var sc = camera.scale || 1;
       return {
-        x: (nr.left + nr.width * 0.5 - fr.left) / sc,
-        y: (nr.top + nr.height * yRatio - fr.top) / sc,
+        x: (nr.left + nr.width * 0.5 - cr.left) / sc,
+        y: (nr.top + nr.height * yRatio - cr.top) / sc,
       };
     }
-    function enemyPoint() { return localPoint(el.enemyArt, 0.55); }
+    function enemyPoint() { return worldPoint(el.enemyArt, 0.55); }
     function footPoint(node) {
-      var fr = el.fxLayer.getBoundingClientRect();
+      var cr = el.fxCanvas.getBoundingClientRect();
       var nr = node.getBoundingClientRect();
       var sc = camera.scale || 1;
-      return { x: (nr.left + nr.width * 0.5 - fr.left) / sc, y: (nr.bottom - fr.top - 4) / sc };
+      return { x: (nr.left + nr.width * 0.5 - cr.left) / sc, y: (nr.bottom - cr.top - 4) / sc };
+    }
+    /* 세계 좌표 → .fx-layer 로컬 좌표 (DOM 이펙트 배치용) */
+    function layerPoint(wx, wy) {
+      var cr = el.fxCanvas.getBoundingClientRect();
+      var fr = el.fxLayer.getBoundingClientRect();
+      var sc = camera.scale || 1;
+      return { x: wx - (fr.left - cr.left) / sc, y: wy - (fr.top - cr.top) / sc };
     }
 
     var lastFxAt = 0;
@@ -517,9 +587,10 @@
         void el.enemy.offsetWidth;
         el.enemy.classList.add('squash');
 
-        // 히트스톱 — 접촉 순간 모두가 잠깐 멈춘다 (타격감의 절반)
-        el.arena.classList.add('hitstop');
-        setTimeout(function () { el.arena.classList.remove('hitstop'); }, crit ? 90 : 55);
+        /* 히트스톱 — 접촉 순간 모두가 잠깐 멈춘다 (타격감의 절반).
+         * setTimeout 해제가 아니라 stage FX 시계가 건다/푼다 — 캔버스 파티클과
+         * DOM(animation-play-state)이 같은 순간에 얼고 같은 순간에 풀린다. */
+        hitstop(crit ? 0.09 : 0.055);
         if (crit) camera.shake(2, 0.16);
       }, 120);
 
@@ -531,10 +602,10 @@
     /* 지원 사격 — 2·3번 동료가 자기 주기로 별을 던진다. 데미지는 이미 편성 보너스로
      * DPS 에 녹아 있으므로 숫자는 띄우지 않는다(두 배로 세 보이면 거짓말이다). */
     function followerShot(node) {
-      var fr = el.fxLayer.getBoundingClientRect();
+      var cr = el.fxCanvas.getBoundingClientRect();
       var nr = node.getBoundingClientRect();
       var sc = camera.scale || 1;
-      var from = { x: (nr.left + nr.width * 0.6 - fr.left) / sc, y: (nr.top + nr.height * 0.35 - fr.top) / sc };
+      var from = { x: (nr.left + nr.width * 0.6 - cr.left) / sc, y: (nr.top + nr.height * 0.35 - cr.top) / sc };
       var to = enemyPoint();
       var star = spawnFx('fx-proj', from.x, from.y, 520);
       if (!star) return;
@@ -603,7 +674,17 @@
       }
 
       camera.update(dt);
-      particlesUpdate(dt);
+
+      /* FX 시계 — 히트스톱 동안 **파티클 하위 시계만** 언다 (결정 1). 엔진·큐·카메라·
+       * HUD 는 위에서 이미 정상 dt 로 갱신됐다. DOM 정지(.hitstop)도 여기서 풀어
+       * 캔버스와 DOM 이 같은 프레임에 해동된다. */
+      var fxDt = dt;
+      if (hitstopT > 0) {
+        hitstopT -= dt;
+        fxDt = 0;
+        if (hitstopT <= 0) { hitstopT = 0; el.arena.classList.remove('hitstop'); }
+      }
+      particlesUpdate(fxDt);
       particlesDraw();
     }
 
@@ -632,9 +713,25 @@
         dust: dustPuff,
         particleCount: function () { return pcount; },
         poofAt: function () { var p = enemyPoint(); return spawnFx('fx-poof', p.x, p.y, 460); },
+        /* 단계 1 회귀용 훅 — 좌표 일치·히트스톱 정지·정책·성능을 밖에서 검증한다 */
+        emit: emit,
+        snapshot: function () {
+          var out = [];
+          for (var i = 0; i < pcount; i++) out.push({ x: pool[i].x, y: pool[i].y, age: pool[i].age });
+          return out;
+        },
+        stepDraw: function (dt) { particlesUpdate(dt); particlesDraw(); },
+        enemyPoint: enemyPoint,
+        footOf: function (id) { return footPoint(el[id] || el.hero); },
+        layerPoint: layerPoint,
+        hitstopRemaining: function () { return hitstopT; },
+        forceHitstop: hitstop,
+        sheetReady: sheetReady,
+        lastEmit: function () { return lastEmit; },
+        caps: function () { return { particle: PARTICLE_CAP, reserve: INFO_RESERVE, dom: FX_CAP, domCount: fxCount }; },
       },
     };
   }
 
-  return { create: create, BEAT: BEAT, FX_CAP: FX_CAP, PARTICLE_CAP: PARTICLE_CAP };
+  return { create: create, BEAT: BEAT, FX_CAP: FX_CAP, PARTICLE_CAP: PARTICLE_CAP, INFO_RESERVE: INFO_RESERVE, SHEETS: SHEETS };
 });

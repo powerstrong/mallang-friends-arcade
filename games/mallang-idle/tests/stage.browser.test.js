@@ -108,6 +108,97 @@ async function main(pg) {
     ' return { collapsed:a.collapsed, dispatched:a.dispatched };})()')));
   ok(live.dispatched > live.collapsed,
     '정상 재생된 사건이 몰아본 사건보다 많다 (몰아보기가 기본이 되면 연출이 죽는다)', live);
+
+  // ═══ 단계 1 기반 (COMBAT_STAGE_OVERHAUL 6절) ═══════════════════
+
+  // ── 좌표 일치 — 캔버스 세계좌표와 DOM 액터 접점이 같은 곳을 가리킨다 ──
+  /* 전에는 fxLayer 원점 기준 좌표를 캔버스(stage-cam 원점)에 그대로 그려 117px 위에
+   * 찍혔다(codex 리뷰 실측). 세계좌표 = fx-canvas 로컬로 통일한 것을 고정한다. */
+  var coord = JSON.parse(await pg.eval(J(
+    '(function(){var H=window.__mallangIdle;' +
+    ' for (var i=0;i<40 && H.state.phase==="advance";i++) H.advance(3);' +
+    ' var cv=document.getElementById("fxCanvas").getBoundingClientRect();' +
+    ' var er=document.getElementById("enemyArt").getBoundingClientRect();' +
+    ' var fr=document.getElementById("fxLayer").getBoundingClientRect();' +
+    ' var p=H.Stage.fx.enemyPoint();' +
+    ' var lp=H.Stage.fx.layerPoint(p.x,p.y);' +
+    ' return { phase:H.state.phase,' +
+    '   dx: Math.abs(p.x-(er.left+er.width*0.5-cv.left)),' +
+    '   dy: Math.abs(p.y-(er.top+er.height*0.55-cv.top)),' +
+    '   ldx: Math.abs(lp.x-(er.left+er.width*0.5-fr.left)),' +
+    '   ldy: Math.abs(lp.y-(er.top+er.height*0.55-fr.top)),' +
+    '   layerOffset: fr.top-cv.top };})()')));
+  ok(coord.phase !== 'advance', '좌표 검증 전제 — 교전 상태를 만들었다', coord);
+  ok(coord.dx < 2 && coord.dy < 2, '캔버스 세계좌표가 적 접점과 일치한다 (117px 오프셋 회귀)', coord);
+  ok(coord.ldx < 2 && coord.ldy < 2, 'DOM 레이어 변환도 같은 접점을 가리킨다', coord);
+  ok(coord.layerOffset > 10, '전제 확인 — 두 레이어의 원점이 실제로 다르다 (오프셋 존재)', coord);
+
+  // ── 히트스톱 — 파티클 하위 시계만 얼고, DOM 클래스와 함께 풀린다 ──
+  var hs = JSON.parse(await pg.eval(J(
+    '(function(){var H=window.__mallangIdle; var fx=H.Stage.fx;' +
+    ' fx.stepDraw(30);' +
+    ' fx.emit("dust", 100, 100, { vx: 60, vy: 0, life: 5 });' +
+    ' fx.forceHitstop(0.06); fx.forceHitstop(0.02);' +
+    ' var rem0=fx.hitstopRemaining();' +
+    ' var s0=fx.snapshot()[0];' +
+    ' H.Stage.update(0.03, 0, H.state);' +
+    ' var s1=fx.snapshot()[0];' +
+    ' var frozen = !!(s1 && s0.x===s1.x && s0.age===s1.age);' +
+    ' var cls1=document.getElementById("arena").className.indexOf("hitstop")>=0;' +
+    ' H.Stage.update(0.2, 0, H.state);' +
+    ' H.Stage.update(0.05, 0, H.state);' +
+    ' var s2=fx.snapshot()[0];' +
+    ' var moved = !!(s2 && s2.x>s1.x);' +
+    ' var cls2=document.getElementById("arena").className.indexOf("hitstop")>=0;' +
+    ' fx.stepDraw(30);' +
+    ' return { rem0:rem0, frozen:frozen, cls1:cls1, moved:moved, cls2:cls2 };})()')));
+  ok(hs.rem0 >= 0.05, '중첩 히트스톱은 더 긴 쪽이 이긴다 (조기 해제 금지)', hs);
+  ok(hs.frozen, '히트스톱 동안 파티클 위치·age 가 언다', hs);
+  ok(hs.cls1, '히트스톱 동안 DOM 정지 클래스가 걸려 있다 (캔버스·DOM 동기)', hs);
+  ok(hs.moved && !hs.cls2, '히트스톱이 끝나면 파티클이 다시 흐르고 클래스가 풀린다', hs);
+
+  // ── 상한 포화 — 장식은 정보 예약분을 침범하지 못한다 ──
+  var cap = JSON.parse(await pg.eval(J(
+    '(function(){var fx=window.__mallangIdle.Stage.fx; var caps=fx.caps();' +
+    ' fx.stepDraw(60);' +
+    ' for (var i=0;i<caps.particle+50;i++) fx.emit("spark", 5, 5, { life: 30 });' +
+    ' var deco=fx.particleCount();' +
+    ' fx.emit("gold", 5, 5, { info: true, life: 30 });' +
+    ' var withInfo=fx.particleCount();' +
+    ' for (var j=0;j<caps.reserve+20;j++) fx.emit("gold", 5, 5, { info: true, life: 30 });' +
+    ' var full=fx.particleCount();' +
+    ' var over=fx.emit("gold", 5, 5, { info: true });' +
+    ' fx.stepDraw(60);' +
+    ' return { caps:caps, deco:deco, withInfo:withInfo, full:full,' +
+    '          overRejected: over===undefined, cleaned: fx.particleCount() };})()')));
+  ok(cap.deco === cap.caps.particle - cap.caps.reserve, '장식은 정보 예약분 앞에서 멈춘다', cap);
+  ok(cap.withInfo === cap.deco + 1, '포화 상태에서도 정보는 받는다', cap);
+  ok(cap.full === cap.caps.particle && cap.overRejected, '정보도 절대 상한은 넘지 않는다', cap);
+  ok(cap.cleaned === 0, '수명이 다하면 풀이 완전히 복귀한다 (누수 없음)', cap);
+
+  // ── CI 성능 게이트 — 파티클 최대 부하 프레임타임 (이 러너의 회귀 기준선) ──
+  /* headless·GPU 비활성·고정 뷰포트라 "모바일 60fps"의 증거는 아니다 — 그 판정은
+   * 단계 5 실기기 게이트가 한다. 여기서는 같은 러너에서의 회귀만 잡는다 (결정 6). */
+  /* 평균은 상위 5% 절사 평균이다 — 헤드리스 러너의 단발 GC/스케줄링 이상치(실측 한
+   * 프레임 352ms)가 게이트를 뒤집으면 안 된다. 지속적인 저하는 절사해도 그대로 잡힌다. */
+  var perf = JSON.parse(await pg.eval(J(
+    '(function(){var fx=window.__mallangIdle.Stage.fx; var caps=fx.caps();' +
+    ' fx.stepDraw(120);' +
+    ' for (var i=0;i<caps.particle-caps.reserve;i++) fx.emit("spark", (i*7)%390, (i*13)%300, { vx: 40, vy: -20, life: 600 });' +
+    ' for (var j=0;j<caps.reserve;j++) fx.emit("gold", (j*11)%390, (j*17)%300, { info: true, vx: -30, vy: 10, life: 600 });' +
+    ' var n=fx.particleCount();' +
+    ' for (var w=0;w<30;w++) fx.stepDraw(1/240);' +
+    ' var samples=[];' +
+    ' for (var f=0;f<240;f++){ var t0=performance.now(); fx.stepDraw(1/240); var t1=performance.now(); samples.push(t1-t0); }' +
+    ' fx.stepDraw(1200);' +
+    ' samples.sort(function(a,b){return a-b;});' +
+    ' var keep=Math.floor(samples.length*0.95);' +
+    ' var sum=0; for (var k=0;k<keep;k++) sum+=samples[k];' +
+    ' return { cap:caps.particle, n:n, avg:sum/keep,' +
+    '          p95:samples[Math.floor(samples.length*0.95)], max:samples[samples.length-1] };})()')));
+  ok(perf.n === perf.cap, '측정 전제 — PARTICLE_CAP 포화 상태다', perf);
+  ok(perf.avg <= 8, 'CI 성능 게이트 — 최대 부하 절사 평균 프레임타임 ≤ 8ms', perf);
+  ok(perf.p95 <= 16, 'CI 성능 게이트 — p95 ≤ 16ms', perf);
 }
 
 /* 감속 모드 — 움직임은 줄되 정보는 남아야 한다. */
@@ -128,17 +219,58 @@ async function reduced(pg) {
     '          stats:H.Stage.queue.stats() };})()')));
 
   ok(r.reduced === true, '감속 모드가 인식된다 (--force-prefers-reduced-motion)', r);
-  ok(r.after === 0 && r.before === 0, '감속 모드에서는 캔버스 파티클을 만들지 않는다', r);
+  ok(r.after === 0 && r.before === 0, '감속 모드에서는 캔버스 파티클(장식)을 만들지 않는다', r);
   ok(r.stats.pushed === r.stats.dispatched, '감속 모드에서도 사건 유실이 없다', r.stats);
   var fighting = r.phase !== 'advance';
   ok(fighting ? r.enemyDisp !== 'none' : true,
     '감속 모드에서도 적은 화면에 남는다 (움직임만 줄고 정보는 유지)', r);
   ok(fighting ? /%/.test(r.hpW) : true, '감속 모드에서도 HP 가 갱신된다', r);
+
+  // ── 단계 1 — 감속 모드의 정보/장식 이원화 ──
+  /* 정보 FX 는 "사라지는 것"도 "그대로 움직이는 것"도 실패다 (체크리스트).
+   * 남되, 속도·성장 없이 페이드만 한다. 정지 연출(히트스톱)도 걸지 않는다. */
+  var r2 = JSON.parse(await pg.eval(J(
+    '(function(){var fx=window.__mallangIdle.Stage.fx;' +
+    ' var deco=fx.emit("spark", 30, 30, { vx: 50, life: 5 });' +
+    ' var info=fx.emit("gold", 40, 40, { info: true, vx: 50, life: 5 });' +
+    ' var n0=fx.particleCount(); var s0=fx.snapshot()[0];' +
+    ' fx.stepDraw(0.1);' +
+    ' var s1=fx.snapshot()[0];' +
+    ' fx.forceHitstop(0.1); var hsRem=fx.hitstopRemaining();' +
+    ' fx.stepDraw(10);' +
+    ' return { decoRejected: deco===undefined, n0:n0,' +
+    '          still: !!(s0 && s1 && s0.x===s1.x), aged: !!(s1 && s1.age>s0.age),' +
+    '          hsRem:hsRem, cleaned: fx.particleCount() };})()')));
+  ok(r2.decoRejected && r2.n0 === 1, '감속 모드 — 장식은 0, 정보 파티클은 남는다', r2);
+  ok(r2.still && r2.aged, '감속 모드 — 정보 파티클은 움직이지 않고 페이드만 한다', r2);
+  ok(r2.hsRem === 0, '감속 모드 — 히트스톱(정지 연출)을 걸지 않는다', r2);
+  ok(r2.cleaned === 0, '감속 모드 — 정보 파티클도 수명이 다하면 정리된다', r2);
+}
+
+/* DPR 2 — 백킹 해상도만 배가되고 좌표 수학(CSS px)은 그대로여야 한다. */
+async function dpr2(pg) {
+  await boot(pg);
+  await pg.sleep(400);
+  var d = JSON.parse(await pg.eval(J(
+    '(function(){var H=window.__mallangIdle;' +
+    ' for (var i=0;i<40 && H.state.phase==="advance";i++) H.advance(3);' +
+    ' var c=document.getElementById("fxCanvas");var r=c.getBoundingClientRect();' +
+    ' var er=document.getElementById("enemyArt").getBoundingClientRect();' +
+    ' var p=H.Stage.fx.enemyPoint();' +
+    ' return { dpr:window.devicePixelRatio, w:c.width, cssW:Math.round(r.width),' +
+    '   dx: Math.abs(p.x-(er.left+er.width*0.5-r.left)),' +
+    '   dy: Math.abs(p.y-(er.top+er.height*0.55-r.top)) };})()')));
+  ok(d.dpr === 2, 'DPR 2 로 기동됐다 (--force-device-scale-factor=2)', d);
+  ok(Math.abs(d.w - d.cssW * 2) <= 2, 'DPR 2 — 캔버스 백킹이 CSS 의 2배다', d);
+  ok(d.dx < 2 && d.dy < 2, 'DPR 2 에서도 세계좌표가 접점과 일치한다', d);
 }
 
 H.withPage('/games/mallang-idle/index.html?dev=1', main).then(function () {
   return H.withPage('/games/mallang-idle/index.html?dev=1', reduced,
     { args: ['--force-prefers-reduced-motion'] });
+}).then(function () {
+  return H.withPage('/games/mallang-idle/index.html?dev=1', dpr2,
+    { args: ['--force-device-scale-factor=2'] });
 }).then(function () {
   console.log('\n' + passed + ' passed, ' + failed + ' failed');
   process.exit(failed ? 1 : 0);

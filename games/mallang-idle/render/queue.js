@@ -49,12 +49,23 @@
     var durationOf = opts.duration || function () { return 0; };
     /* 실제 화면 반영. info.collapsed 면 "몰아보는 중" — 파티클 같은 사치는 건너뛰라는 신호. */
     var onEvent = opts.onEvent || function () {};
+    /* 재생이 전부 끝나 idle 로 **전이되는 순간** 정확히 한 번 호출된다. 몰아보기로
+     * 끝나도 온다 — collapsed 처치에서 합산만 하고 표시를 미룬 정보(골드 등)를
+     * 여기서 플러시한다. 안 그러면 벽·보스에 머무는 동안 누적분이 영영 안 보인다. */
+    var onIdle = opts.onIdle || null;
 
     var queue = [];          // 대기 중 { ev, d }
     var cur = null;          // 재생 중인 사건 (이미 onEvent 로 전달됨)
     var curLeft = 0;         // 재생 중 사건의 잔여 시간
     var pendingSec = 0;      // 대기 중 사건들의 시간 합 (매 프레임 재계산하지 않으려고 유지)
+    var busy = false;        // busy → idle 전이 감지용 (onIdle 을 정확히 한 번만)
     var stats = { pushed: 0, dispatched: 0, collapsed: 0, maxBacklog: 0 };
+
+    function maybeIdle() {
+      var idleNow = (cur === null && queue.length === 0);
+      if (busy && idleNow) { busy = false; if (onIdle) onIdle(); }
+      else if (!idleNow) busy = true;
+    }
 
     function backlog() { return pendingSec + curLeft; }
 
@@ -84,10 +95,12 @@
       queue.length = 0;
       pendingSec = 0;
       for (var i = 0; i < items.length; i++) dispatch(items[i], true);
+      maybeIdle();   // 몰아보기로 끝났다 — 미뤄 둔 합산 정보를 지금 플러시할 기회
     }
 
     function push(events) {
       if (!events || !events.length) return;
+      var added = 0;
       for (var i = 0; i < events.length; i++) {
         var ev = events[i];
         if (!ev) continue;
@@ -95,7 +108,12 @@
         queue.push({ ev: ev, d: d });
         pendingSec += d;
         stats.pushed++;
+        added++;
       }
+      if (!added) return;
+      /* busy 는 여기서 세운다 — 아래 drainAll 이 같은 호출 안에서 큐를 비우는 경우
+       * (메모리 상한)에도 busy→idle 전이가 성립해 onIdle 이 나가야 한다. */
+      busy = true;
       if (backlog() > stats.maxBacklog) stats.maxBacklog = backlog();
       // 대량 투입 즉시 방어 — update 를 기다리지 않는다(메모리 상한).
       if (queue.length > cfg.maxQueue) drainAll();
@@ -122,6 +140,7 @@
         else { curLeft -= budget; budget = 0; }
       }
       if (pendingSec < 0) pendingSec = 0;   // 부동소수 누적 보정
+      maybeIdle();
     }
 
     return {
@@ -138,7 +157,9 @@
                  collapsed: stats.collapsed, maxBacklog: stats.maxBacklog };
       },
       reset: function () {
-        queue.length = 0; cur = null; curLeft = 0; pendingSec = 0;
+        /* reset 은 조용히 버린다 — onIdle 을 부르지 않는다. 컷신 복귀 등에서 리셋 직후
+         * 플러시가 터지면 스테일 표시가 새 장면 위에 얹힌다. */
+        queue.length = 0; cur = null; curLeft = 0; pendingSec = 0; busy = false;
       },
       config: cfg,
     };

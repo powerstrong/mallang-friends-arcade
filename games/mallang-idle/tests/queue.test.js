@@ -211,6 +211,53 @@ test('reset 은 대기 사건을 버리지만 통계는 유실을 보고한다',
   assert.ok(st.pushed > st.dispatched, 'reset 으로 버린 사건은 통계에 그대로 드러난다(숨기지 않는다)');
 });
 
+// ── 4. idle 전이 신호 (단계 1 — collapsed 합산 플러시의 기반) ──
+/* collapsed 처치는 골드 표시를 합산만 하고 미룬다. 배치가 몰아보기로 끝나면 그 누적분을
+ * 보여줄 계기가 없다 — onIdle 이 그 계기다. "정확히 한 번"이 계약이다. */
+
+test('재생이 끝나 idle 로 전이될 때 onIdle 이 정확히 한 번 온다', function () {
+  var sink = [], idles = 0;
+  var q = makeQueue(sink, { onIdle: function () { idles++; } });
+  q.push([{ type: 'mob_kill' }, { type: 'mob_kill' }]);
+  for (var i = 0; i < 120; i++) q.update(1 / 60);   // 1.1초분 재생 + 여유
+  assert.strictEqual(idles, 1, '재생 완료 시 한 번: ' + idles);
+  for (var j = 0; j < 60; j++) q.update(1 / 60);
+  assert.strictEqual(idles, 1, 'idle 상태가 계속되어도 다시 부르지 않는다');
+  q.push([{ type: 'mob_kill' }]);
+  for (var k = 0; k < 120; k++) q.update(1 / 60);
+  assert.strictEqual(idles, 2, '다음 배치가 끝나면 다시 한 번');
+});
+
+test('몰아보기(collapse)로 끝나도 onIdle 이 온다', function () {
+  var sink = [], idles = 0;
+  var q = makeQueue(sink, { collapseAt: 4, onIdle: function () { idles++; } });
+  q.push([{ type: 'mob_kill' }, { type: 'mob_kill' }, { type: 'mob_kill' }, { type: 'mob_kill' }]);
+  q.update(1 / 60);
+  assert.strictEqual(q.stats().collapsed, 4, '몰아보기 경로여야 이 테스트가 의미 있다');
+  assert.strictEqual(idles, 1, '몰아보기 종료도 idle 전이다: ' + idles);
+});
+
+test('update 없이 push 만으로 몰아본 경우에도 onIdle 이 온다 (메모리 상한 경로)', function () {
+  var sink = [], idles = 0;
+  var q = makeQueue(sink, { maxQueue: 100, onIdle: function () { idles++; } });
+  var evs = [];
+  for (var i = 0; i < 500; i++) evs.push({ type: 'mob_kill', gold: 1 });
+  q.push(evs);
+  assert.strictEqual(idles, 1, 'push 내부 drainAll 뒤에도 플러시 기회가 와야 한다: ' + idles);
+});
+
+test('reset 과 빈 push 는 onIdle 을 만들지 않는다', function () {
+  var sink = [], idles = 0;
+  var q = makeQueue(sink, { onIdle: function () { idles++; } });
+  q.push([]);
+  q.update(1 / 60);
+  assert.strictEqual(idles, 0, '아무것도 재생하지 않았는데 플러시가 오면 안 된다');
+  q.push([{ type: 'mob_kill' }, { type: 'mob_kill' }]);
+  q.update(1 / 60);
+  q.reset();
+  assert.strictEqual(idles, 0, 'reset 은 조용히 버린다 — 스테일 표시를 새 장면에 얹지 않는다');
+});
+
 var pass = 0, fail = 0;
 tests.forEach(function (t) {
   try { t.fn(); console.log('  ok   ' + t.name); pass++; }
