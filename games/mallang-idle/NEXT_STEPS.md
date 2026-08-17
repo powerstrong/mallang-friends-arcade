@@ -28,14 +28,42 @@
 | 단계 | 상태 |
 |---|---|
 | 0 — 씬 렌더러 골격 + 연출 이벤트 버퍼 | ✅ **완료** (10차, 커밋 `518d454`) |
-| 1 — 캔버스 FX/파티클 (D기둥) | ⬅ **다음** |
-| 2 — 이동감: 다층 시차 + 걷기/달리기 (A기둥) | 대기 — *"토끼가 걷는다"는 여기서 해결된다* |
+| 1 — 캔버스 FX/파티클 (D기둥) | ✅ **완료** (12차, 커밋 4개 `a4a3cfc`~`2070dc2`) |
+| 2 — 이동감: 다층 시차 + 걷기/달리기 (A기둥) | ⬅ **다음** — *"토끼가 걷는다"는 여기서 해결된다* |
 | 3 — 전투 안무: 캐릭터별 공격·스킬 (B기둥) | 대기 |
 | 4 — 카메라 & 보스 개성 (C·E기둥) | 대기 |
 | 5 — 오디오 싱크 · 접근성 · 성능 마감 (F·G기둥) | 대기 |
 
-**다음 세션은** 그 문서 6절의 단계 1 체크리스트를 작업 정의로 삼고, 10절 착수점부터
+**다음 세션은** 그 문서 6절의 단계 2 체크리스트를 작업 정의로 삼고, 10절 착수점부터
 시작한다. 엔진(`engine/*` · `data/*`)은 이 트랙 내내 **불변**이다 — 연출은 전부 표현 계층에서.
+
+### 2026-08-17 (12차) — 전투 화면 개편 **단계 1 완료**: 캔버스 FX/파티클 시스템
+
+10절 순서(기반 → 테스트 먼저 → 수직 슬라이스, 슬라이스마다 성능 측정)를 그대로 밟았다.
+커밋 4개, 매 슬라이스 회귀 전부 초록 상태로 적재.
+
+- **기반**(`a4a3cfc`): 세계좌표 = fx-canvas 로컬로 통일(117px 좌표 버그 수정 — DOM 은
+  spawnFx 가 레이어 변환), stage FX 시계(히트스톱은 **파티클 하위 시계만** 동결, 중첩은
+  긴 쪽, DOM 정지 클래스 동기), 정보/장식 이원화(감속 = 장식 0 + 정보 저동작, CAP
+  포화 = 장식부터 거절 · INFO_RESERVE 48/400), 시트 캐시 + decode 추적.
+  `queue.js` 에 onIdle(busy→idle 전이 정확히 1회, 메모리 상한 경로 포함) 신설
+- **슬라이스 1**(`1d4eeee`): 임팩트 = 플립북 drawImage + 검격 궤적 + 방사 스파크
+  (가산 발광·잔상) + 섬광 합성. **데미지 숫자 진실원 = 관측 HP 델타**(결정 8 —
+  DPS 공식 재계산 폐지, crit→accent 개명), 크기/색이 타격 크기에 반응(big/huge)
+- **슬라이스 2**(`8fc4bf7`): 처치 = poof 플립북 + 구름 파편 + 골드 분출 + 섬광
+  세트피스. **collapsed 합산 골드 queue idle 플러시**(벽·보스 대기 중 증발 결함 봉인),
+  골드 플로트 FX_CAP 편입, 합성 순서 z 계약(정보 DOM > 장식 캔버스)
+- **슬라이스 3**(`2070dc2`): 별 투사체 WAAPI → 캔버스 탄도(수명 종료 = 착탄, 히트스톱이
+  궤적도 동결). 장식 DOM FX 전폐(.fx-impact/.fx-proj/.fx-slash/.fx-poof CSS 제거) —
+  DOM 잔존은 정보(.fx-dmg·.gold-float)뿐. ui-contract 이관(완화 아님 — 상한·소유권·
+  z 순서·플러시 배선 계약 추가)
+- **성능 CI 게이트**: 혼합 최대부하(시트 60 + 가산·스트레치 스파크 + 정보 48 =
+  CAP 400 포화) **절사평균 0.56ms · p95 2.20ms** (예산 8/16ms — 매 실행 실측 출력).
+  모바일 60fps 판정은 단계 5 실기기 게이트로 명시 이관
+- **검증**: 정적 65(balance 36 · ui-contract 11 · queue 18) + 실브라우저 69(first-visit
+  10 · multi-tab 6 · stage 53) = **134개 전부 초록** + 시각 스모크 4컷(타격/처치/보스/
+  투사체) 육안 확인 — 접점 정확·숫자 가독·레이아웃 무결
+- 다음: **단계 2 — 이동감** (COMBAT_STAGE_OVERHAUL.md 10절 갱신됨)
 
 ### 2026-08-17 (11차) — 단계 1 착수 전 계획 보강 + codex 계획 리뷰 반영 (문서만, 코드 불변)
 
@@ -333,7 +361,7 @@ codex 재미 평가(TOP 10, scratchpad review — 요지는 커밋 메시지들�
 | 챕터 데이터 `data/chapters.js` | 완료 — **7챕터**(들판→언덕→전선→심장부→정원→별빛 바다→달 공장) |
 | 헤드리스 시뮬 `tools/sim.js` | 완료 — 24h 시뮬 0.2초 + **오프라인 세션 모델 `--sessions=15/120`** |
 | 그리드 서치 `tools/tune.js` | 완료 — 120조합 11.6초 |
-| 회귀 테스트 | **정적 60개**(balance 36 + UI 계약 10 + 연출 큐 14) + **실브라우저 35개**(first-visit 10 + multi-tab 6 + stage 19) |
+| 회귀 테스트 | **정적 65개**(balance 36 + UI 계약 11 + 연출 큐 18) + **실브라우저 69개**(first-visit 10 + multi-tab 6 + stage 53) |
 | 게임 화면 `index.html/game.js/style.css` | 완료 — 횡스크롤 자동 전진, 강화 3축 x1/x10/MAX, 탭 점진 공개 |
 | `?dev=1` 치트 패널 | 완료 — 골드/스테이지/오프라인/배속 x20/세이브 |
 | 캐릭터 `data/characters.js` | 완료 — **6명**(수달 포함), 해금 1/5/22/55/90/120, 슬롯 1/10/40, 파티 보너스 6축 |
@@ -344,11 +372,11 @@ codex 재미 평가(TOP 10, scratchpad review — 요지는 커밋 메시지들�
 
 ```bash
 node games/mallang-idle/tests/balance.test.js              # 36 passed
-node games/mallang-idle/tests/ui-contract.test.js          # 10 passed
-node games/mallang-idle/tests/queue.test.js                # 14 passed
+node games/mallang-idle/tests/ui-contract.test.js          # 11 passed
+node games/mallang-idle/tests/queue.test.js                # 18 passed
 node games/mallang-idle/tests/first-visit.browser.test.js  # 10 passed (헤드리스 실브라우저)
 node games/mallang-idle/tests/multi-tab.browser.test.js    # 6 passed (헤드리스 실브라우저)
-node games/mallang-idle/tests/stage.browser.test.js        # 19 passed (헤드리스 실브라우저)
+node games/mallang-idle/tests/stage.browser.test.js        # 53 passed (헤드리스 실브라우저)
 node games/mallang-idle/tools/sim.js --minutes=5           # baseline + upper 두 시나리오 출력
 node games/mallang-idle/tools/tune.js --top=5
 node scripts/validate-games.js                             # registry 검증 통과

@@ -180,11 +180,16 @@ async function main(pg) {
   /* headless·GPU 비활성·고정 뷰포트라 "모바일 60fps"의 증거는 아니다 — 그 판정은
    * 단계 5 실기기 게이트가 한다. 여기서는 같은 러너에서의 회귀만 잡는다 (결정 6). */
   /* 평균은 상위 5% 절사 평균이다 — 헤드리스 러너의 단발 GC/스케줄링 이상치(실측 한
-   * 프레임 352ms)가 게이트를 뒤집으면 안 된다. 지속적인 저하는 절사해도 그대로 잡힌다. */
+   * 프레임 352ms)가 게이트를 뒤집으면 안 된다. 지속적인 저하는 절사해도 그대로 잡힌다.
+   * 부하는 실제 최악 혼합이다: 시트 drawImage 60(회전 포함) + 가산·스트레치 스파크 +
+   * 일반 파편 + 정보 예약분 — 전 코드패스가 측정에 든다. */
   var perf = JSON.parse(await pg.eval(J(
     '(function(){var fx=window.__mallangIdle.Stage.fx; var caps=fx.caps();' +
     ' fx.stepDraw(120);' +
-    ' for (var i=0;i<caps.particle-caps.reserve;i++) fx.emit("spark", (i*7)%390, (i*13)%300, { vx: 40, vy: -20, life: 600 });' +
+    ' for (var s=0;s<60;s++) fx.emit("sheet", 30+(s*11)%330, 40+(s*17)%260,' +
+    '   { sheet: (s%2?"impact":"poof"), life: 600, size: 100, rot: s, rotVel: 1.5 });' +
+    ' for (var i=0;i<caps.particle-caps.reserve-60;i++) fx.emit("spark", (i*7)%390, (i*13)%300,' +
+    '   { vx: 40, vy: -20, life: 600, blend: (i%3?null:"lighter"), stretch: (i%2?2.6:0) });' +
     ' for (var j=0;j<caps.reserve;j++) fx.emit("gold", (j*11)%390, (j*17)%300, { info: true, vx: -30, vy: 10, life: 600 });' +
     ' var n=fx.particleCount();' +
     ' for (var w=0;w<30;w++) fx.stepDraw(1/240);' +
@@ -199,6 +204,9 @@ async function main(pg) {
   ok(perf.n === perf.cap, '측정 전제 — PARTICLE_CAP 포화 상태다', perf);
   ok(perf.avg <= 8, 'CI 성능 게이트 — 최대 부하 절사 평균 프레임타임 ≤ 8ms', perf);
   ok(perf.p95 <= 16, 'CI 성능 게이트 — p95 ≤ 16ms', perf);
+  // 기준선 추적용 실측치 — 체크리스트 [x] 근거는 이 수치를 인용한다
+  console.log('  info 혼합 최대부하 실측: avg=' + perf.avg.toFixed(2) + 'ms p95=' +
+    perf.p95.toFixed(2) + 'ms max=' + perf.max.toFixed(1) + 'ms (cap ' + perf.cap + ')');
 
   // ── 슬라이스 1 — 타격 = 캔버스 버스트 + DOM 숫자(관측값) ──
   await pg.eval('(function(){var fx=window.__mallangIdle.Stage.fx; fx.stepDraw(1300);' +
