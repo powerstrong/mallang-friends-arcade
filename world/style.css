@@ -768,7 +768,8 @@ h1 {
   line-height: 56px;
   text-align: center;
 }
-.match-members li .glyph img {
+.match-members li .glyph img,
+.match-members li .glyph canvas {
   width: 100%;
   height: 100%;
   object-fit: cover;
@@ -821,7 +822,8 @@ h1 {
   font-size: 3rem;
   line-height: 1;
 }
-.starter-portrait img {
+.starter-portrait img,
+.starter-portrait canvas {
   width: 100%; height: 100%; object-fit: cover; display: block;
 }
 .starter-text {

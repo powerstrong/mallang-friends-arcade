@@ -1196,6 +1196,38 @@
     return meta?.portrait || null;
   }
 
+  /* 모달 glyph 채우기 — 동물은 portrait 이미지, 사람은 로스터(me/peers)에서
+   * 착장을 찾아 합성 시트 정면 셀을 그려준다(아이가 매칭 화면에서도 자기
+   * 코디를 본다). 착장을 모르면 emoji 폴백.
+   */
+  function fillCharacterGlyph(el, playerId, characterId) {
+    if (characterId === HUMAN_ID) {
+      el.textContent = characterEmoji(HUMAN_ID);
+      const p = (me && me.id === playerId) ? me : peers.get(playerId);
+      if (p && p.characterId === HUMAN_ID) {
+        ensureHumanSheet(window.WARDROBE.sanitizeOutfit(p.outfit)).promise.then((e) => {
+          if (!e.ready || !el.isConnected) return;
+          const canvas = document.createElement('canvas');
+          canvas.width = canvas.height = 96;
+          const c = canvas.getContext('2d');
+          const cell = HUMAN_SHEET_SIZE / 3;
+          c.drawImage(e.img, 0, 0, cell, cell, 0, 0, 96, 96);
+          el.replaceChildren(canvas);
+        });
+      }
+      return;
+    }
+    const src = characterPortrait(characterId);
+    if (src) {
+      const img = document.createElement('img');
+      img.src = src;
+      img.alt = '';
+      el.replaceChildren(img);
+    } else {
+      el.textContent = characterEmoji(characterId);
+    }
+  }
+
   function handleMatchProposal(d) {
     if (!d?.matchId || !Array.isArray(d.players)) return;
     activeProposal = {
@@ -1244,17 +1276,9 @@
     const who = starter.name || '누군가';
     const title = activeProposal.title || '게임';
 
-    // Starter 의 캐릭터 portrait (있으면 이미지, 없으면 이모지).
-    const portraitSrc = characterPortrait(starter.characterId);
+    // Starter 의 캐릭터 — 동물은 portrait, 사람은 착장 합성 정면 셀.
     starterPortrait.innerHTML = '';
-    if (portraitSrc) {
-      const img = document.createElement('img');
-      img.src = portraitSrc;
-      img.alt = '';
-      starterPortrait.appendChild(img);
-    } else {
-      starterPortrait.textContent = characterEmoji(starter.characterId);
-    }
+    fillCharacterGlyph(starterPortrait, starter.id, starter.characterId);
     starterText.innerHTML = `<strong>${escapeHtml(who)}</strong>님이 모두를 <strong>${escapeHtml(title)}</strong>(으)로 데려갑니다<span class="arrow">→</span>`;
 
     matchModalCard.classList.add('is-starting');
@@ -1391,15 +1415,7 @@
 
       const glyph = document.createElement('span');
       glyph.className = 'glyph';
-      const src = characterPortrait(m.characterId);
-      if (src) {
-        const img = document.createElement('img');
-        img.src = src;
-        img.alt = '';
-        glyph.appendChild(img);
-      } else {
-        glyph.textContent = characterEmoji(m.characterId);
-      }
+      fillCharacterGlyph(glyph, m.id, m.characterId);
 
       const name = document.createElement('span');
       name.className = 'name';
