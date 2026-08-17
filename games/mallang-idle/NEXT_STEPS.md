@@ -1,6 +1,6 @@
 # 말랑프렌즈 키우기 — 현재 상태와 다음 작업
 
-`mallang-idle` · 최종 갱신 2026-08-16
+`mallang-idle` · 최종 갱신 2026-08-17
 
 > 새 세션은 이 문서 → [AGENT_PROTOCOL.md](AGENT_PROTOCOL.md) 순으로 읽고 이어간다.
 
@@ -36,6 +36,36 @@
 
 **다음 세션은** 그 문서 6절의 단계 1 체크리스트를 작업 정의로 삼고, 10절 착수점부터
 시작한다. 엔진(`engine/*` · `data/*`)은 이 트랙 내내 **불변**이다 — 연출은 전부 표현 계층에서.
+
+### 2026-08-17 (11차) — 단계 1 착수 전 계획 보강 + codex 계획 리뷰 반영 (문서만, 코드 불변)
+
+단계 1 계획을 코드 실물과 대조해 빈틈을 메우고, codex 리뷰(판정: 보류)를 받아 차단점을
+계획에 선반영했다. **구현 착수 전에 잡았으므로 전부 문서 수정으로 끝났다.**
+
+- **보강 1차(자체)**: 히트스톱이 DOM 전용(`animation-play-state`)이라 캔버스 이관 시
+  타격감이 빠지는 문제, reduced-motion 의 `emit()` 전면 차단이 정보 FX 까지 지우는 문제,
+  collapsed/CAP 우선순위·성능 측정 근거 부재를 실패 조건으로 추가하고 설계 결정을 신설
+- **codex 계획 리뷰 반영(차단점 3)**: ① `.fx-layer`(field 안)와 `.fx-canvas`(stage-cam
+  직속)의 **좌표계가 이미 어긋나 있다**(실측 117.5px — 단계 0 먼지가 현재 이 버그를
+  가짐) ② 데미지 숫자의 `Combat.dps×simDt` 누적 + `effAspd` 타이밍은 **표현 계층의
+  전투 공식 재계산** = 3.1절 원칙 충돌 → **관측 HP 델타로 교체 확정**(결정 8, `crit`→
+  `accent` 개명) ③ 평균 8ms/p95 16ms 는 headless·`--disable-gpu` 하니스에서 "모바일
+  60fps"의 증거가 못 됨 → **CI 회귀 게이트(단계 1)와 실기기 완료 게이트(단계 5)로 분리**
+- **codex 추가 발견 반영**: collapsed 로 배치가 끝나면 `floatAccum` 합산 골드가 영영
+  안 보임(queue idle 플러시 조건 신설), 감속 CSS 블록에 `.fx-dmg`·`.gold-float`·
+  `.boss-ring` 부재(정보는 "유지+정적 대체"로 명문화), `.fx-layer`/`.fx-canvas`
+  z-index 3 동률로 장식 캔버스가 숫자를 덮을 수 있음(합성 순서 확정), 골드 플로트가
+  `FX_CAP` 밖(잔존 DOM 상한 신설), `fx-slash` 는 시트가 아니라 단일 이미지+변형,
+  이미지 decode·수명 조건 신설, 정적 계약(ui-contract)과 동작 검증(stage.browser)의
+  역할 분리
+- 결과: 단계 1 실패 조건 4개 → **13개**, 착수 전 설계 결정 **8개** 확정, 10절 착수
+  순서를 "기반 → 테스트 먼저 → 수직 슬라이스, 슬라이스마다 성능 측정"으로 재작성.
+  리뷰 원문: `.omc/artifacts/ask/codex-…2026-08-17T00-08-11….md` (세션 산출물)
+- 문서 정리: 회귀 테스트 수 정합(정적 60 + 실브라우저 35 — 표·명령 블록이 8차 수치에
+  머물러 있었다), 이미 8차에 구현된 "시뮬 오프라인 모델 검토" 백로그 항목 제거
+- 검증: balance 36 · ui-contract 10 · queue 14 전부 초록 재확인 (코드 무변경)
+- 다음: 10절 순서 1 — **기반(좌표 통일·decode·FX 시계·정책표)**부터. 첫 커밋은
+  "117px 좌표 버그 수정 + 좌표 일치 브라우저 테스트"가 자연스러운 출발점
 
 ### 2026-08-16 (10차) — 전투 화면 개편 **단계 0 완료**: 씬 렌더러 + 연출 버퍼
 
@@ -303,7 +333,7 @@ codex 재미 평가(TOP 10, scratchpad review — 요지는 커밋 메시지들�
 | 챕터 데이터 `data/chapters.js` | 완료 — **7챕터**(들판→언덕→전선→심장부→정원→별빛 바다→달 공장) |
 | 헤드리스 시뮬 `tools/sim.js` | 완료 — 24h 시뮬 0.2초 + **오프라인 세션 모델 `--sessions=15/120`** |
 | 그리드 서치 `tools/tune.js` | 완료 — 120조합 11.6초 |
-| 회귀 테스트 | **정적 44개**(balance 36 + UI 계약 8) + **실브라우저 16개**(first-visit 10 + multi-tab 6) |
+| 회귀 테스트 | **정적 60개**(balance 36 + UI 계약 10 + 연출 큐 14) + **실브라우저 35개**(first-visit 10 + multi-tab 6 + stage 19) |
 | 게임 화면 `index.html/game.js/style.css` | 완료 — 횡스크롤 자동 전진, 강화 3축 x1/x10/MAX, 탭 점진 공개 |
 | `?dev=1` 치트 패널 | 완료 — 골드/스테이지/오프라인/배속 x20/세이브 |
 | 캐릭터 `data/characters.js` | 완료 — **6명**(수달 포함), 해금 1/5/22/55/90/120, 슬롯 1/10/40, 파티 보너스 6축 |
@@ -313,10 +343,12 @@ codex 재미 평가(TOP 10, scratchpad review — 요지는 커밋 메시지들�
 ### 검증한 것
 
 ```bash
-node games/mallang-idle/tests/balance.test.js              # 35 passed
-node games/mallang-idle/tests/ui-contract.test.js          # 8 passed
+node games/mallang-idle/tests/balance.test.js              # 36 passed
+node games/mallang-idle/tests/ui-contract.test.js          # 10 passed
+node games/mallang-idle/tests/queue.test.js                # 14 passed
 node games/mallang-idle/tests/first-visit.browser.test.js  # 10 passed (헤드리스 실브라우저)
 node games/mallang-idle/tests/multi-tab.browser.test.js    # 6 passed (헤드리스 실브라우저)
+node games/mallang-idle/tests/stage.browser.test.js        # 19 passed (헤드리스 실브라우저)
 node games/mallang-idle/tools/sim.js --minutes=5           # baseline + upper 두 시나리오 출력
 node games/mallang-idle/tools/tune.js --top=5
 node scripts/validate-games.js                             # registry 검증 통과
@@ -362,13 +394,6 @@ scratchpad 의 평가 전문은 세션과 함께 사라지므로 요지를 여�
 - [ ] **HP·생존형 던전** — HP 축 도입은 밸런스 전면 재작업, 광장 연동과 함께 판단
 - [ ] **챕터 8+** — `data/chapters.js` 데이터 추가만으로 확장 가능 (에셋 파이프라인은
       scratchpad imagegen 스크립트 원형 참고 — 30장 병렬 생성 → 선별 → un-blend)
-
-### 3. 밸런스 후속
-
-- [ ] **시뮬레이터에 오프라인 모델 추가 검토** — 현재 시뮬은 연속 플레이만 본다.
-      실제 리텐션은 "8시간 비웠다 돌아오기"에 크게 의존하므로, 이걸 모델링하면
-      24시간 지표가 실제에 훨씬 가까워진다. 세션 패턴(예: 10분 플레이 + 2시간 오프라인
-      반복)을 정책으로 두고 "활동 시간 기준 벽"을 재면 정직한 지표가 된다.
 
 ---
 
