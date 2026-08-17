@@ -13,7 +13,7 @@
 | 단계 | 상태 |
 |---|---|
 | 구현 | ✅ P0~P5 전 범위 + **2막(챕터 6·7)·6번째 캐릭터** (2026-08-15~16) |
-| 기계적 검증 | ✅ 정적 회귀 60개 + **실브라우저 회귀 35개**(CDP 실좌표 클릭) · 시뮬 지표 · 시각 스모크 |
+| 기계적 검증 | ✅ 정적 회귀 66개 + **실브라우저 회귀 74개**(CDP 실좌표 클릭) · 시뮬 지표 · 시각 스모크 |
 | **사람 게이트** | ⏳ **대기** — P1 "5분 뒤 한 번 더 강화하고 싶은가"는 사람만 판정 가능 |
 | 배포 검증 | ⏳ 8차 수정분 재배포 후 신규 사용자 플로우 재확인 필요 |
 
@@ -29,13 +29,32 @@
 |---|---|
 | 0 — 씬 렌더러 골격 + 연출 이벤트 버퍼 | ✅ **완료** (10차, 커밋 `518d454`) |
 | 1 — 캔버스 FX/파티클 (D기둥) | ✅ **완료** (12차, 커밋 4개 `a4a3cfc`~`2070dc2`) |
-| 2 — 이동감: 다층 시차 + 걷기/달리기 (A기둥) | ⬅ **다음** — *"토끼가 걷는다"는 여기서 해결된다* |
-| 3 — 전투 안무: 캐릭터별 공격·스킬 (B기둥) | 대기 |
+| 2 — 이동감: 다층 시차 + 걷기/달리기 (A기둥) | ✅ **완료** (13차, `9390477` — 시트·전용 아트는 부채) |
+| 3 — 전투 안무: 캐릭터별 공격·스킬 (B기둥) | ⬅ **다음** — *에셋 imagegen 위탁 선행 (단계 2 부채 포함)* |
 | 4 — 카메라 & 보스 개성 (C·E기둥) | 대기 |
 | 5 — 오디오 싱크 · 접근성 · 성능 마감 (F·G기둥) | 대기 |
 
-**다음 세션은** 그 문서 6절의 단계 2 체크리스트를 작업 정의로 삼고, 10절 착수점부터
+**다음 세션은** 그 문서 6절의 단계 3 체크리스트를 작업 정의로 삼고, 10절 착수점부터
 시작한다. 엔진(`engine/*` · `data/*`)은 이 트랙 내내 **불변**이다 — 연출은 전부 표현 계층에서.
+
+### 2026-08-17 (13차) — 전투 화면 개편 **단계 2 완료**: 이동감 (`9390477`)
+
+*"토끼가 걷지 않는다"* 의 구조적 해소. 전부 표현 계층 — 엔진·데이터 무변경.
+
+- **전진 beat**: mob_kill 0.55→0.95 · boss_clear 1.05 — 처치 후 다음 몹까지
+  걷는 구간이 화면에 실존한다. 배속·복귀 밀림은 단계 0 큐 가속이 그대로 흡수
+- **시차 4겹**(0.22/0.5/1.0/1.8): 구름·원경 실루엣 신규 — CSS 플레이스홀더
+  (radial-gradient 스캘럽) + 챕터 무드 틴트(FAR_TINT) + 실내 구간 구름 감쇠.
+  전용 아트 없이 입체감이 선다 (에셋 대기로 정체 금지 원칙)
+- **걷기/달리기 구분**: 큐 따라잡기(rate>1.25) 구간 = 달리기 — 걸음 주기
+  0.48→0.3s·전경 기울임·발밑 먼지 궤적·시차 1.7배. 따라잡으면 걷기 복귀.
+  게임 상태와 맞물린 구분이라 장식이자 정보다. 동료 위상차는 주행에도 별도
+- **검증**: 정적 66(balance 36·ui-contract 12·queue 18) + 실브라우저 74(first-visit
+  10·multi-tab 6·stage 58) = **140개 전부 초록** + 전진 컷 육안 확인(실루엣이
+  원화와 자연스럽게 겹침)
+- **부채**(단계 3 에셋 배치에 통합): 걷기/달리기 6~8프레임 시트, 시차 전용 아트,
+  "볼 만한 길이" 최종 체감은 사람 게이트
+- 다음: **단계 3 — 전투 안무** (imagegen 에셋 위탁 선행, 10절 갱신됨)
 
 ### 2026-08-17 (12차) — 전투 화면 개편 **단계 1 완료**: 캔버스 FX/파티클 시스템
 
@@ -361,7 +380,7 @@ codex 재미 평가(TOP 10, scratchpad review — 요지는 커밋 메시지들�
 | 챕터 데이터 `data/chapters.js` | 완료 — **7챕터**(들판→언덕→전선→심장부→정원→별빛 바다→달 공장) |
 | 헤드리스 시뮬 `tools/sim.js` | 완료 — 24h 시뮬 0.2초 + **오프라인 세션 모델 `--sessions=15/120`** |
 | 그리드 서치 `tools/tune.js` | 완료 — 120조합 11.6초 |
-| 회귀 테스트 | **정적 65개**(balance 36 + UI 계약 11 + 연출 큐 18) + **실브라우저 69개**(first-visit 10 + multi-tab 6 + stage 53) |
+| 회귀 테스트 | **정적 66개**(balance 36 + UI 계약 12 + 연출 큐 18) + **실브라우저 74개**(first-visit 10 + multi-tab 6 + stage 58) |
 | 게임 화면 `index.html/game.js/style.css` | 완료 — 횡스크롤 자동 전진, 강화 3축 x1/x10/MAX, 탭 점진 공개 |
 | `?dev=1` 치트 패널 | 완료 — 골드/스테이지/오프라인/배속 x20/세이브 |
 | 캐릭터 `data/characters.js` | 완료 — **6명**(수달 포함), 해금 1/5/22/55/90/120, 슬롯 1/10/40, 파티 보너스 6축 |
@@ -372,11 +391,11 @@ codex 재미 평가(TOP 10, scratchpad review — 요지는 커밋 메시지들�
 
 ```bash
 node games/mallang-idle/tests/balance.test.js              # 36 passed
-node games/mallang-idle/tests/ui-contract.test.js          # 11 passed
+node games/mallang-idle/tests/ui-contract.test.js          # 12 passed
 node games/mallang-idle/tests/queue.test.js                # 18 passed
 node games/mallang-idle/tests/first-visit.browser.test.js  # 10 passed (헤드리스 실브라우저)
 node games/mallang-idle/tests/multi-tab.browser.test.js    # 6 passed (헤드리스 실브라우저)
-node games/mallang-idle/tests/stage.browser.test.js        # 53 passed (헤드리스 실브라우저)
+node games/mallang-idle/tests/stage.browser.test.js        # 58 passed (헤드리스 실브라우저)
 node games/mallang-idle/tools/sim.js --minutes=5           # baseline + upper 두 시나리오 출력
 node games/mallang-idle/tools/tune.js --top=5
 node scripts/validate-games.js                             # registry 검증 통과
