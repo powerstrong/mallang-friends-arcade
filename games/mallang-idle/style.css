@@ -121,6 +121,37 @@ body {
   will-change: background-position;
 }
 
+/* ── 시차 보강 겹 (단계 2) — 전용 아트 전까지의 CSS 플레이스홀더 ──
+ * 배경 그림(bg-layer, 1.0배) 위에 구름(0.22배)·원경 실루엣(0.5배)이 다른 속도로
+ * 흘러 겹 사이 깊이가 생긴다. 색은 stage.js 가 챕터 무드로 주입(--pl-far). */
+.cloud-layer {
+  position: absolute;
+  inset: 0 0 55% 0;
+  background-image:
+    radial-gradient(ellipse 90px 24px at 15% 34%, rgba(255, 255, 255, .52) 55%, transparent 62%),
+    radial-gradient(ellipse 130px 30px at 52% 16%, rgba(255, 255, 255, .40) 55%, transparent 62%),
+    radial-gradient(ellipse 68px 19px at 84% 44%, rgba(255, 255, 255, .45) 55%, transparent 62%);
+  background-repeat: repeat-x;
+  background-size: 560px 100%;
+  opacity: .85;
+  pointer-events: none;
+  will-change: background-position;
+}
+.far-layer {
+  position: absolute;
+  left: 0; right: 0;
+  bottom: 33%;
+  height: 15%;
+  background-image:
+    radial-gradient(circle 95px at 22% 128%, var(--pl-far, rgba(122, 156, 110, .30)) 99%, transparent 100%),
+    radial-gradient(circle 130px at 64% 148%, var(--pl-far, rgba(122, 156, 110, .26)) 99%, transparent 100%),
+    radial-gradient(circle 80px at 92% 122%, var(--pl-far, rgba(122, 156, 110, .28)) 99%, transparent 100%);
+  background-repeat: repeat-x;
+  background-size: 430px 100%;
+  pointer-events: none;
+  will-change: background-position;
+}
+
 .ground {
   position: absolute;
   left: 0; right: 0; bottom: 0;
@@ -215,6 +246,18 @@ body {
 /* 동료는 반 박자 어긋나게 — 셋이 같은 위상으로 튀면 기계체조가 된다 */
 .follower.f1.walking { animation-delay: 0s, .12s; }
 .follower.f2.walking { animation-delay: 0s, .26s; }
+/* 달리기 (단계 2) — 큐가 밀려 따라잡는 구간: 걸음이 빨라지고 몸이 앞으로 기운다.
+ * 걷기와 달리기가 한눈에 구분되는 것이 A기둥 체크리스트다. 시트가 오기 전에는
+ * 같은 3프레임을 빠르게 돌리고 자세(기울임·보폭 밥)로 구분한다. */
+.hero.walking.running, .follower.walking.running {
+  animation: heroWalk .3s steps(3) infinite, runBob .3s ease-in-out infinite;
+}
+.follower.f1.walking.running { animation-delay: 0s, .08s; }
+.follower.f2.walking.running { animation-delay: 0s, .17s; }
+@keyframes runBob {
+  0%, 100% { transform: scale(var(--sc, .40)) translateY(0) rotate(2.6deg); }
+  25%      { transform: scale(var(--sc, .40)) translateY(-8px) rotate(4.2deg); }
+}
 @keyframes heroWalk { to { background-position: var(--walk-shift, -561px) 0; } }
 @keyframes walkBob {
   0%, 100% { transform: scale(var(--sc, .40)) translateY(0) rotate(0deg); }

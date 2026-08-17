@@ -28,12 +28,14 @@
 
   /* 연출 beat 길이(초) — "이 사건이 화면에서 최소 이만큼은 보인다".
    * 엔진의 실제 간격과 다르며, 밀리면 queue.js 가 가속해 따라잡는다.
-   * 단계 2 에서 전진 구간을 늘리며 이 표를 다시 만진다. */
+   * 단계 2: mob_kill 을 0.55→0.95 로 늘렸다 — 처치 후 다음 몹 등장까지가 "전진
+   * 구간"이고, 이 beat 의 꼬리가 걷는 시간이다(A기둥: 전진이 순간이동으로 보이면
+   * 실패). 엔진 advanceSeconds(0.6)는 불변 — 밀림은 큐 가속이 흡수한다. */
   var BEAT = {
-    mob_spawn: 0.20,
-    mob_kill: 0.55,
+    mob_spawn: 0.30,
+    mob_kill: 0.95,
     boss_start: 0.70,
-    boss_clear: 0.90,
+    boss_clear: 1.05,
     boss_fail: 0.60,
   };
 
@@ -57,6 +59,15 @@
     meadow: 'assets/pt-petal.png', garden: 'assets/pt-petal.png',
     gears: 'assets/pt-gear.png', machine: 'assets/pt-gear.png', core: 'assets/pt-gear.png',
     starsea: 'assets/fx-star.png', moonfactory: 'assets/pt-gear.png',
+  };
+
+  /* 원경 실루엣 플레이스홀더의 챕터 무드 색 (단계 2) — 표현 계층 소유라 data/* 불변.
+   * 전용 시차 아트(7.3절)가 오면 이 틴트는 이미지로 교체된다. */
+  var FAR_TINT = {
+    meadow: 'rgba(122, 156, 110, .30)', garden: 'rgba(150, 170, 105, .30)',
+    gears: 'rgba(150, 132, 150, .30)', machine: 'rgba(140, 126, 148, .32)',
+    core: 'rgba(158, 118, 138, .32)',
+    starsea: 'rgba(96, 116, 178, .34)', moonfactory: 'rgba(134, 128, 158, .32)',
   };
 
   function create(opts) {
@@ -327,8 +338,12 @@
     }
 
     // ── 시차 배경 ─────────────────────────────────────────────
-    /* 단계 2 에서 sky/far/mid 레이어가 이 배열에 추가된다. 지금은 기존 2겹 그대로. */
+    /* 단계 2 — 4겹: 구름(0.22) · 원경 실루엣(0.5) · 배경 그림(1.0, 지면 기준) ·
+     * 전경 띠(1.8). 계수가 다르면 겹 사이에 깊이가 생긴다. 구름·원경은 전용 아트
+     * 전까지 CSS 플레이스홀더(style.css)로 굴린다 — 에셋 대기로 정체 금지(9절). */
     var LAYERS = [
+      { node: el.cloudLayer, factor: 0.22, key: 'cloud' },
+      { node: el.farLayer, factor: 0.5, key: 'far' },
       { node: el.bgLayer, factor: 1.0, key: 'bg' },
       { node: el.fgLayer, factor: 1.8, key: 'fg' },
     ];
@@ -337,11 +352,19 @@
     function setChapter(ch) {
       el.bgLayer.style.backgroundImage = "url('" + ch.bg + "')";
       el.fgLayer.style.backgroundImage = ch.fg ? "url('" + ch.fg + "')" : 'none';
+      if (el.farLayer) {
+        var tint = FAR_TINT[ch.id];
+        if (tint) el.farLayer.style.setProperty('--pl-far', tint);
+        /* 실내·기계 구간에서도 구름이 흐르면 이상하다 — 야외 무드에만 보인다 */
+        var outdoor = ch.id === 'meadow' || ch.id === 'garden' || ch.id === 'starsea';
+        if (el.cloudLayer) el.cloudLayer.style.opacity = outdoor ? '' : '0.25';
+      }
     }
 
-    function parallaxUpdate(dt) {
+    /* 걷기 90px/s, 달리기(큐 따라잡기 구간)는 1.7배 — 발걸음과 세계가 같이 빨라진다 */
+    function parallaxUpdate(dt, running) {
       if (view.mode !== 'advance') return;      // 전진 중에만 세계가 흐른다
-      scrollX -= dt * 90;
+      scrollX -= dt * 90 * (running ? 1.7 : 1);
       for (var i = 0; i < LAYERS.length; i++) {
         var L = LAYERS[i];
         if (L.node) L.node.style.backgroundPositionX = (scrollX * L.factor) + 'px';
@@ -513,6 +536,17 @@
         var c = party[i + 1] ? Chars.byId(party[i + 1]) : null;
         node.hidden = !c;
         if (c) applySprite(node, c);
+      });
+    }
+
+    /* 주행 상태 (단계 2) — 큐가 밀려 가속 재생 중이면 파티도 달린다. 걷기/달리기
+     * 구분이 실제 상태(따라잡기)와 맞물려 있어 장식이 아니라 정보이기도 하다. */
+    var lastGait = false, runDustT = 0;
+    function setGait(running) {
+      if (running === lastGait) return;
+      lastGait = running;
+      [el.hero, el.follower1, el.follower2].forEach(function (n) {
+        n.classList.toggle('running', running);
       });
     }
 
@@ -808,7 +842,18 @@
       queue.update(dt);
       if (queue.idle()) syncTo(state);
 
-      parallaxUpdate(dt);
+      var running = view.mode === 'advance' && queue.rate() > 1.25;
+      setGait(running);
+      parallaxUpdate(dt, running);
+      if (running && !reducedMotion) {
+        runDustT += dt;
+        if (runDustT >= 0.24) {                // 달릴 때만 발밑 먼지가 궤적처럼 남는다
+          runDustT = 0;
+          var hf = footPoint(el.hero);
+          dustPuff(hf.x, hf.y, false);
+        }
+      } else runDustT = 0;
+
       ambientUpdate(dt, state);
       combatFxUpdate(dt, simDt, state);
 

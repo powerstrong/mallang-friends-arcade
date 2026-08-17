@@ -102,6 +102,20 @@ test('단계 1 — 장식 FX 는 캔버스 소유, 정보 DOM 은 캔버스 위'
     'collapsed 합산 골드는 queue idle 플러시로 반드시 표시된다');
 });
 
+/* 단계 2 계약 — 이동감의 뼈대가 배선되어 있다 (동작 검증은 stage.browser 가 한다) */
+test('단계 2 — 시차 겹·전진 beat·주행 상태가 배선되어 있다', function () {
+  assert.ok(/id="cloudLayer"/.test(html) && /id="farLayer"/.test(html),
+    '시차 보강 겹(구름·원경) 노드가 있어야 한다');
+  assert.ok(/\.cloud-layer/.test(css) && /\.far-layer/.test(css), '겹 스타일이 있어야 한다');
+  assert.ok(/key:\s*'cloud'/.test(stageJs) && /key:\s*'far'/.test(stageJs),
+    '겹이 시차 스택(LAYERS)에 들어 있어야 한다');
+  var killBeat = Number((stageJs.match(/mob_kill:\s*([\d.]+)/) || [])[1]);
+  assert.ok(killBeat >= 0.9,
+    '전진 구간(mob_kill beat)은 0.9s 이상이어야 한다 — 줄이면 다시 순간이동이 된다: ' + killBeat);
+  assert.ok(/\.hero\.walking\.running/.test(css) && /setGait/.test(stageJs),
+    '걷기/달리기 구분(주행 상태)이 있어야 한다');
+});
+
 /* 단계 0 의 핵심 계약 — 전투 화면이 엔진 사건을 **연출 큐를 통해** 소비하는가.
  * game.js 가 무대를 직접 그리기 시작하면 페이싱이 다시 엔진에 붙어 버린다
  * (COMBAT_STAGE_OVERHAUL.md 5절 — 이 개편의 심장). */

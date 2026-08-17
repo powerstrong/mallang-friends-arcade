@@ -58,6 +58,7 @@
     stageProgress: $('stageProgress'), dpsHint: $('dpsHint'), exitBtn: $('exitBtn'),
     follower1: $('follower1'), follower2: $('follower2'), fxLayer: $('fxLayer'), bossNeed: $('bossNeed'),
     fgLayer: $('fgLayer'), ambientLayer: $('ambientLayer'), speedLines: $('speedLines'),
+    cloudLayer: $('cloudLayer'), farLayer: $('farLayer'),
     storyOverlay: $('storyOverlay'), storyCard: $('storyCard'), storyPortrait: $('storyPortrait'),
     storyName: $('storyName'), storyText: $('storyText'), storySkip: $('storySkip'),
     bossBubble: $('bossBubble'), chapterBanner: $('chapterBanner'),

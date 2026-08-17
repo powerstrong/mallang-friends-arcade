@@ -261,6 +261,50 @@ async function main(pg) {
   ok(s3.domProj === 0, 'DOM 투사체 노드가 더는 생기지 않는다', s3);
   ok(s3.maxN >= 4, '착탄 순간 섬광+스파크가 터진다 (수명 종료 = 착탄)', s3);
   ok(s3.end === 0, '착탄 잔여물까지 수명이 다하면 풀이 완전히 복귀한다', s3);
+
+  // ═══ 단계 2 — 이동감 (A기둥) ═══════════════════════════════════
+
+  // ── 전진 구간이 볼 만한 길이로 흐르고, 시차 겹이 서로 다른 속도로 움직인다 ──
+  var walk = JSON.parse(await pg.eval(J(
+    '(function(){var H=window.__mallangIdle;' +
+    ' H.advance(3);' +
+    ' H.Stage.push([{ type:"mob_kill", gold:1, stage:H.state.stage, index:H.state.mobIndex }]);' +
+    ' function offs(){ return ["cloudLayer","farLayer","bgLayer","fgLayer"].map(function(id){' +
+    '   return parseFloat(document.getElementById(id).style.backgroundPositionX)||0; }); }' +
+    ' H.Stage.update(0.01, 0, H.state);' +
+    ' var offs0=offs(), walkFrames=0;' +
+    ' for (var i=0;i<16;i++){ H.Stage.update(0.05, 0, H.state);' +
+    '   if (H.Stage.view.mode==="advance") walkFrames++; }' +
+    ' var offs1=offs();' +
+    ' var deltas=offs1.map(function(v,k){ return Math.abs(v-offs0[k]); });' +
+    ' var distinct = deltas[0]>0 && deltas[1]>deltas[0]*1.5 && deltas[2]>deltas[1]*1.5 && deltas[3]>deltas[2]*1.5;' +
+    ' return { walkFrames:walkFrames, deltas:deltas, distinct:distinct,' +
+    '          enemyHidden: document.getElementById("enemy").hidden };})()')));
+  ok(walk.walkFrames >= 14 && walk.enemyHidden, '처치 후 전진 구간이 볼 만한 길이로 흐른다 (kill beat 0.95s)', walk);
+  ok(walk.distinct, '시차 4겹이 서로 다른 속도로 흐른다 (0.22/0.5/1.0/1.8)', walk);
+
+  // ── 달리기 — 큐 따라잡기 구간에서 걸음이 빨라지고, 따라잡으면 다시 걷는다 ──
+  var run = JSON.parse(await pg.eval(J(
+    '(function(){var H=window.__mallangIdle;' +
+    ' H.advance(2);' +
+    ' var evs=[]; for (var i=0;i<7;i++) evs.push({ type:"mob_kill", gold:1, stage:H.state.stage, index:0 });' +
+    ' H.Stage.push(evs);' +
+    ' H.Stage.update(0.05, 0, H.state);' +
+    ' var rate=H.Stage.queue.rate();' +
+    ' var runningMid=document.getElementById("hero").className.indexOf("running")>=0;' +
+    ' for (var j=0;j<400 && !H.Stage.queue.idle();j++) H.Stage.update(0.05, 0, H.state);' +
+    ' H.Stage.update(0.05, 0, H.state);' +
+    ' var runningEnd=document.getElementById("hero").className.indexOf("running")>=0;' +
+    ' return { rate:rate, runningMid:runningMid, runningEnd:runningEnd };})()')));
+  ok(run.rate > 1.25 && run.runningMid, '큐가 밀리면 달리기 상태가 된다 (rate 연동)', run);
+  ok(!run.runningEnd, '따라잡으면 다시 걷는다 (달리기 상시화 금지)', run);
+
+  // ── 동료 위상차 — 셋이 같은 박자로 튀면 기계체조다 ──
+  var phase = JSON.parse(await pg.eval(J(
+    '(function(){var d1=getComputedStyle(document.getElementById("follower1")).animationDelay;' +
+    ' var d2=getComputedStyle(document.getElementById("follower2")).animationDelay;' +
+    ' return { d1:d1, d2:d2, differ: d1!==d2 };})()')));
+  ok(phase.differ, '동료 위상차 — 걸음 박자가 서로 어긋난다', phase);
 }
 
 /* 감속 모드 — 움직임은 줄되 정보는 남아야 한다. */

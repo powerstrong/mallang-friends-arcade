@@ -26,6 +26,10 @@
          화면이 흔들려도 숫자는 읽힌다. render/stage.js 가 이 요소의 transform 을 소유한다. -->
     <div class="stage-cam" id="stageCam">
       <div class="bg-layer" id="bgLayer"></div>
+      <!-- 시차 보강 겹 (단계 2) — 구름·원경 실루엣이 서로 다른 속도로 흘러 입체감을 만든다.
+           전용 아트 전까지는 CSS 플레이스홀더(그라데이션)로 굴린다. -->
+      <div class="cloud-layer" id="cloudLayer"></div>
+      <div class="far-layer" id="farLayer"></div>
       <div class="ambient-layer" id="ambientLayer"></div>
 
       <div class="field">
