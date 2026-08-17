@@ -114,19 +114,24 @@ async function main(pg) {
   // ── 좌표 일치 — 캔버스 세계좌표와 DOM 액터 접점이 같은 곳을 가리킨다 ──
   /* 전에는 fxLayer 원점 기준 좌표를 캔버스(stage-cam 원점)에 그대로 그려 117px 위에
    * 찍혔다(codex 리뷰 실측). 세계좌표 = fx-canvas 로컬로 통일한 것을 고정한다. */
+  /* 세계좌표(enemyPoint)는 fx-canvas 로컬(줌 이전) px 이고, getBoundingClientRect 는
+   * 카메라 스케일이 반영된 스크린 px 다. stage-cam 안의 두 점 사이 거리는 원점과
+   * 무관하게 배수 sc 로 스케일되므로(P↦O+s(P−O)), 기대값을 sc 로 나눠 되돌린다.
+   * 단계 4 보스 줌(sc≠1)에서도 117px 오프셋 회귀를 그대로 잡는다. */
   var coord = JSON.parse(await pg.eval(J(
     '(function(){var H=window.__mallangIdle;' +
     ' for (var i=0;i<40 && H.state.phase==="advance";i++) H.advance(3);' +
+    ' var sc=H.Stage.camera.scale||1;' +
     ' var cv=document.getElementById("fxCanvas").getBoundingClientRect();' +
     ' var er=document.getElementById("enemyArt").getBoundingClientRect();' +
     ' var fr=document.getElementById("fxLayer").getBoundingClientRect();' +
     ' var p=H.Stage.fx.enemyPoint();' +
     ' var lp=H.Stage.fx.layerPoint(p.x,p.y);' +
-    ' return { phase:H.state.phase,' +
-    '   dx: Math.abs(p.x-(er.left+er.width*0.5-cv.left)),' +
-    '   dy: Math.abs(p.y-(er.top+er.height*0.55-cv.top)),' +
-    '   ldx: Math.abs(lp.x-(er.left+er.width*0.5-fr.left)),' +
-    '   ldy: Math.abs(lp.y-(er.top+er.height*0.55-fr.top)),' +
+    ' return { phase:H.state.phase, sc:sc,' +
+    '   dx: Math.abs(p.x-(er.left+er.width*0.5-cv.left)/sc),' +
+    '   dy: Math.abs(p.y-(er.top+er.height*0.55-cv.top)/sc),' +
+    '   ldx: Math.abs(lp.x-(er.left+er.width*0.5-fr.left)/sc),' +
+    '   ldy: Math.abs(lp.y-(er.top+er.height*0.55-fr.top)/sc),' +
     '   layerOffset: fr.top-cv.top };})()')));
   ok(coord.phase !== 'advance', '좌표 검증 전제 — 교전 상태를 만들었다', coord);
   ok(coord.dx < 2 && coord.dy < 2, '캔버스 세계좌표가 적 접점과 일치한다 (117px 오프셋 회귀)', coord);
@@ -370,6 +375,64 @@ async function main(pg) {
     ' var has=motions.some(function(m){return hero.split(" ").indexOf(m)>=0;});' +
     ' return { hero:hero, has:has };})()')));
   ok(motionApplied.has, '타격 시 스타일 모션 클래스가 히어로 노드에 걸린다', motionApplied);
+
+  // ═══ 단계 4 — 카메라 & 보스 개성 (C·E기둥) ═══════════════════════
+  /* 헤드리스에선 CSS transform 애니메이션이 얼지만, 카메라는 JS 가 transform 을
+   * 직접 쓰므로 camera.scale/renderScale/target 상태로 판정한다(AGENT_PROTOCOL 7절). */
+
+  // ── 보스 등장 = 컷인 줌 (체크리스트 1: "큰 몹 + 타이머 바"만이 아니다) ──
+  var boss = JSON.parse(await pg.eval(J(
+    '(function(){var H=window.__mallangIdle; var found=false;' +
+    ' for (var i=0;i<400 && !found;i++){ H.advance(1); if (H.state.phase==="boss") found=true; }' +
+    ' for (var j=0;j<8;j++) H.Stage.update(0.1, 0, H.state);' +   // 엔진은 그대로, 컷인 줌만 이즈업
+    ' var cam=H.Stage.camera;' +
+    ' return { phase:H.state.phase, mode:H.Stage.view.mode, targetScale:cam.targetScale,' +
+    '   scale:cam.scale, render:cam.renderScale,' +
+    '   bossMode: document.getElementById("arena").className.indexOf("boss-mode")>=0 };})()')));
+  ok(boss.phase === 'boss' && boss.mode === 'boss', '전제 — 보스 교전 상태에 도달했다', boss);
+  ok(boss.targetScale > 1.05 && boss.scale > 1.03, '보스 등장에 카메라가 무대를 당겨 잡는다 (컷인 줌)', boss);
+  ok(boss.bossMode, '보스 구간 모드 클래스가 걸린다', boss);
+
+  // ── 제한시간 임박 = 분노 페이즈 (체크리스트 3: 화면 긴장이 오른다) ──
+  var rage = JSON.parse(await pg.eval(J(
+    '(function(){var H=window.__mallangIdle; var B=H.Balance.BALANCE;' +
+    ' if (H.state.phase!=="boss"){ for (var i=0;i<400 && H.state.phase!=="boss";i++) H.advance(1); }' +
+    ' H.state.bossT = B.bossTimeLimit * 0.8;' +    // 제한시간 80% 경과로 몰아넣는다
+    ' for (var j=0;j<6;j++) H.Stage.update(0.1, 0, H.state);' +
+    ' var cam=H.Stage.camera;' +
+    ' return { phase:H.state.phase, raging: document.getElementById("arena").className.indexOf("boss-rage")>=0,' +
+    '   targetScale:cam.targetScale };})()')));
+  ok(rage.phase === 'boss', '전제 — 보스전에서 제한시간을 임박시켰다', rage);
+  ok(rage.raging, '제한시간이 임박하면 분노 페이즈 틴트가 켜진다 (화면 긴장)', rage);
+  ok(rage.targetScale >= 1.15, '분노 페이즈에서 카메라가 더 조인다 (긴장 상승)', rage);
+
+  // ── 막타·돌파 줌 펀치가 붙었다 되돌아온다 (체크리스트 2·4) ──
+  var punch = JSON.parse(await pg.eval(J(
+    '(function(){var H=window.__mallangIdle; var cam=H.Stage.camera;' +
+    ' var adv={phase:"advance",party:H.state.party,enemyMaxHp:0,stage:1,enemyHp:0,mobIndex:0};' +
+    ' cam.reset(); for (var i=0;i<40;i++) H.Stage.update(0.05, 0, adv);' +
+    ' cam.punch(0.13, 0.32);' +
+    ' H.Stage.update(0.016, 0, adv);' +
+    ' var spiked=cam.renderScale;' +
+    ' for (var j=0;j<50;j++) H.Stage.update(0.05, 0, adv);' +
+    ' return { spiked:spiked, settled:cam.renderScale, target:cam.targetScale };})()')));
+  ok(punch.spiked > 1.05, '막타·돌파에 카메라가 줌 펀치로 반응한다', punch);
+  ok(Math.abs(punch.settled - 1) < 0.02 && punch.target === 1, '펀치가 1.0 으로 되돌아온다 (멀미 방지)', punch);
+
+  // ── 카메라 진폭 상한 — 어떤 입력도 상한을 못 넘는다 (체크리스트 4: 멀미 방지) ──
+  /* 과입력을 넣고 클램프 결과를 즉시 읽는다(update 가 advance 에서 목표를 되돌리기 전).
+   * 상한은 멀미의 하드 가드다 — 어떤 연출 코드가 큰 값을 줘도 화면이 안 튄다. */
+  var caps = JSON.parse(await pg.eval(J(
+    '(function(){var cam=window.__mallangIdle.Stage.camera;' +
+    ' cam.frame(999, -999, 999); var tS=cam.targetScale, tPx=cam.targetPanX, tPy=cam.targetPanY;' +
+    ' cam.shake(999, 0.3); var sh=cam.shakeAmp;' +
+    ' cam.punch(999, 0.3); var pu=cam.punchAmp;' +
+    ' return { tS:tS, tPx:tPx, tPy:tPy, sh:sh, pu:pu,' +
+    '   maxScale:cam.maxScale, maxPan:cam.maxPan, maxShake:cam.maxShake };})()')));
+  ok(caps.tS === caps.maxScale && Math.abs(caps.tPx) === caps.maxPan && Math.abs(caps.tPy) === caps.maxPan,
+    '줌·팬 목표가 상한으로 클램프된다 (과입력 방지)', caps);
+  ok(caps.sh === caps.maxShake && caps.pu <= 0.14,
+    '흔들림·펀치 진폭이 상한으로 클램프된다 (멀미 방지)', caps);
 }
 
 /* 감속 모드 — 움직임은 줄되 정보는 남아야 한다. */
@@ -416,6 +479,17 @@ async function reduced(pg) {
   ok(r2.still && r2.aged, '감속 모드 — 정보 파티클은 움직이지 않고 페이드만 한다', r2);
   ok(r2.hsRem === 0, '감속 모드 — 히트스톱(정지 연출)을 걸지 않는다', r2);
   ok(r2.cleaned === 0, '감속 모드 — 정보 파티클도 수명이 다하면 정리된다', r2);
+
+  // ── 단계 4 — 감속 모드에서 카메라(줌·팬·펀치)가 전면 정지한다 ──
+  var camR = JSON.parse(await pg.eval(J(
+    '(function(){var H=window.__mallangIdle; var cam=H.Stage.camera;' +
+    ' cam.frame(1.24, -30, 0); cam.punch(0.14, 0.3); cam.shake(7, 0.3);' +
+    ' var adv={phase:"advance",party:H.state.party,enemyMaxHp:0,stage:1,enemyHp:0,mobIndex:0};' +
+    ' H.Stage.update(0.05, 0, adv);' +
+    ' return { render:cam.renderScale, target:cam.targetScale,' +
+    '   transform: document.getElementById("stageCam").style.transform };})()')));
+  ok(camR.render === 1 && camR.target === 1, '감속 모드 — 카메라 줌·팬이 걸리지 않는다', camR);
+  ok(!camR.transform, '감속 모드 — stage-cam transform 이 비어 있다 (멀미·움직임 0)', camR);
 }
 
 /* DPR 2 — 백킹 해상도만 배가되고 좌표 수학(CSS px)은 그대로여야 한다. */
@@ -425,12 +499,13 @@ async function dpr2(pg) {
   var d = JSON.parse(await pg.eval(J(
     '(function(){var H=window.__mallangIdle;' +
     ' for (var i=0;i<40 && H.state.phase==="advance";i++) H.advance(3);' +
+    ' var sc=H.Stage.camera.scale||1;' +   // 보스 줌(단계 4)에서도 좌표가 일치함을 확인
     ' var c=document.getElementById("fxCanvas");var r=c.getBoundingClientRect();' +
     ' var er=document.getElementById("enemyArt").getBoundingClientRect();' +
     ' var p=H.Stage.fx.enemyPoint();' +
     ' return { dpr:window.devicePixelRatio, w:c.width, cssW:Math.round(r.width),' +
-    '   dx: Math.abs(p.x-(er.left+er.width*0.5-r.left)),' +
-    '   dy: Math.abs(p.y-(er.top+er.height*0.55-r.top)) };})()')));
+    '   dx: Math.abs(p.x-(er.left+er.width*0.5-r.left)/sc),' +
+    '   dy: Math.abs(p.y-(er.top+er.height*0.55-r.top)/sc) };})()')));
   ok(d.dpr === 2, 'DPR 2 로 기동됐다 (--force-device-scale-factor=2)', d);
   ok(Math.abs(d.w - d.cssW * 2) <= 2, 'DPR 2 — 캔버스 백킹이 CSS 의 2배다', d);
   ok(d.dx < 2 && d.dy < 2, 'DPR 2 에서도 세계좌표가 접점과 일치한다', d);

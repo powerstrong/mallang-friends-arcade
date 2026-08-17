@@ -100,6 +100,9 @@ body {
   position: absolute;
   inset: 0;
   will-change: transform;
+  /* 줌 원점을 무대 바닥·액션 쪽(우하)으로 — 보스 컷인이 발밑을 중심으로 당겨진다.
+   * 단계 4 카메라 줌(render/stage.js camera)이 이 원점을 기준으로 스케일한다. */
+  transform-origin: 60% 82%;
 }
 
 /* 캔버스 파티클 레이어 — 액터(.field, z 2~3) 위, 전경(.fg-layer, z 4) 아래 */
@@ -511,6 +514,25 @@ body {
 
 /* 보스 구간에는 화면을 살짝 조인다 */
 .arena.boss-mode .bg-layer { filter: saturate(.85) brightness(.94); }
+
+/* ── 단계 4: 분노 페이즈 (제한시간 임박) — 화면 긴장을 올린다 (E기둥, 체크리스트 3)
+ * 붉은 비네트가 가장자리에서 맥동한다. .arena 위(HUD 아래)라 보스 타이머·진행도는
+ * 안 가린다. 감속 모드에선 맥동 없이 정적 틴트만(움직임만 줄고 긴장은 유지). */
+.arena.boss-rage::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 5;   /* stage-cam(파티클 z3) 위, HUD 아래 */
+  box-shadow: inset 0 0 90px 20px rgba(210, 40, 60, .34);
+  background: radial-gradient(120% 90% at 50% 55%, transparent 55%, rgba(190, 30, 55, .16));
+  animation: rageThrob 1.1s ease-in-out infinite;
+}
+@keyframes rageThrob {
+  0%, 100% { opacity: .72; }
+  50%      { opacity: 1; }
+}
+.arena.boss-rage .bg-layer { filter: saturate(1.05) brightness(.9) hue-rotate(-8deg); }
 
 /* 스테이지 진행 */
 .stage-progress {
@@ -953,7 +975,7 @@ body {
   .enemy img.spawn-in,
   .enemy img.boss-in, .enemy.is-boss::before,
   .ambient-pt, .speedlines.flash, .hero.hop, .follower.hop, .fx-heartp,
-  .hero.walking, .follower.walking,
+  .hero.walking, .follower.walking, .arena.boss-rage::after,
   .story-card.pop, .boss-bubble.pop, .chapter-banner.show, .story-more { animation: none; }
   .confetti, .ambient-pt, .speedlines,
   .fx-heartp { display: none; }

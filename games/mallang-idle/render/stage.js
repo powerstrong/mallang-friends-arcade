@@ -130,31 +130,74 @@
      * 큐가 비면 syncTo() 가 엔진 진실로 스냅하므로 영구히 어긋나지 않는다. */
     var view = { mode: 'advance', enemyKey: '', alive: false, isBoss: false };
     var party = [];
+    var bossFrameT = 0;      // 보스 컷인 홀드 타이머 — 강한 초기 줌을 잠깐 유지(단계 4)
+    var lastRage = false;    // 분노 페이즈(제한시간 임박) 진입/이탈 1회 토글
 
-    // ── 카메라 ────────────────────────────────────────────────
-    /* 단계 0 에서는 흔들림만 한다. 줌·팬·슬로모는 단계 4.
-     * 흔들림 대상이 .arena 가 아니라 .stage-cam 인 것이 중요하다 — HUD(진행도·보스
-     * 타이머)는 흔들리지 않아야 읽힌다(F 기둥). */
+    // ── 카메라 (단계 4 — 줌·팬·펀치) ─────────────────────────────
+    /* 대상이 .arena 가 아니라 .stage-cam 인 것이 중요하다 — HUD(진행도·보스 타이머)는
+     * 흔들리지도 당겨지지도 않아야 읽힌다(F 기둥). fx-canvas 는 stage-cam **안**이라
+     * 줌과 함께 스케일되고, 좌표 수학이 camera.scale 로 되돌린다.
+     *
+     * 멀미 방지(체크리스트 4) — 세 축 전부 상한을 두고, 목표를 향한 감쇠는
+     * 프레임레이트 독립 지수 접근이라 배속·프레임 드랍에서도 진폭이 안 튄다.
+     * 감속 모드에서는 전면 정지한다(줌·팬·흔들림 0). */
+    var CAM_MAX_SCALE = 1.24;    // 줌 상한 — 넘으면 화면이 잘리고 멀미가 온다
+    var CAM_MAX_PAN = 30;        // 팬 상한(px)
+    var CAM_MAX_SHAKE = 7;       // 흔들림 진폭 상한
+    var CAM_MAX_PUNCH = 0.14;    // 막타 줌 펀치 상한
     var camera = {
-      scale: 1,
-      x: 0, y: 0,
+      scale: 1, targetScale: 1, renderScale: 1,   // renderScale = 펀치까지 얹은 실제 렌더 배수
+      maxScale: CAM_MAX_SCALE, maxPan: CAM_MAX_PAN, maxShake: CAM_MAX_SHAKE,   // 상한(검증·멀미 가드)
+      x: 0, y: 0,                              // 흔들림 오프셋
+      panX: 0, panY: 0, targetPanX: 0, targetPanY: 0,
+      punchAmp: 0, punchT: 0, punchDur: 0.32,
       shakeAmp: 0, shakeT: 0, shakeDur: 0,
       shake: function (amp, dur) {
         if (reducedMotion) return;
-        // 이미 더 센 흔들림이 진행 중이면 덮어쓰지 않는다(돌파 연출이 잔진동에 먹히지 않게)
+        amp = Math.min(amp, CAM_MAX_SHAKE);
+        // 이미 더 센 흔들림이 진행 중이면 덮어쓰지 않는다(돌파 연출이 잔진동에 안 먹히게)
         if (this.shakeT > 0 && this.shakeAmp > amp) return;
         this.shakeAmp = amp; this.shakeDur = dur; this.shakeT = dur;
       },
+      /* 무대를 당겨 잡는다(보스 컷인·긴장). 목표만 주면 update 가 감쇠로 접근한다.
+       * 전 축 클램프 — 어떤 입력도 상한을 못 넘는다(멀미 방지의 하드 가드). */
+      frame: function (scale, panX, panY) {
+        if (reducedMotion) return;
+        this.targetScale = Math.max(1, Math.min(CAM_MAX_SCALE, scale));
+        this.targetPanX = Math.max(-CAM_MAX_PAN, Math.min(CAM_MAX_PAN, panX || 0));
+        this.targetPanY = Math.max(-CAM_MAX_PAN, Math.min(CAM_MAX_PAN, panY || 0));
+      },
+      reset: function () { this.targetScale = 1; this.targetPanX = 0; this.targetPanY = 0; },
+      /* 막타/돌파 — 짧고 강한 줌 펀치(빠르게 붙었다 감쇠). frame 위에 얹힌다 */
+      punch: function (amp, dur) {
+        if (reducedMotion) return;
+        this.punchAmp = Math.min(amp, CAM_MAX_PUNCH); this.punchDur = dur || 0.32; this.punchT = this.punchDur;
+      },
       update: function (dt) {
+        if (reducedMotion) {                   // 감속 모드 — 카메라 전면 정지
+          this.renderScale = 1;
+          if (this._last !== '') { el.cam.style.transform = ''; this._last = ''; }
+          return;
+        }
         if (this.shakeT > 0) {
           this.shakeT -= dt;
-          var k = Math.max(0, this.shakeT / this.shakeDur);   // 선형 감쇠
+          var k = Math.max(0, this.shakeT / this.shakeDur);   // 이차 감쇠
           var a = this.shakeAmp * k * k;
           this.x = (Math.random() * 2 - 1) * a;
           this.y = (Math.random() * 2 - 1) * a * 0.6;
         } else { this.x = 0; this.y = 0; }
-        var t = (this.x || this.y)
-          ? 'translate(' + this.x.toFixed(2) + 'px,' + this.y.toFixed(2) + 'px)'
+        // 줌·팬 지수 접근(프레임레이트 독립) — 접근 속도를 낮게 잡아 부드럽게
+        var ease = 1 - Math.pow(0.0016, Math.min(0.05, dt));   // dt=1/60 → ~0.10
+        this.scale += (this.targetScale - this.scale) * ease;
+        this.panX += (this.targetPanX - this.panX) * ease;
+        this.panY += (this.targetPanY - this.panY) * ease;
+        var punch = 0;
+        if (this.punchT > 0) { this.punchT -= dt; punch = this.punchAmp * Math.max(0, this.punchT / this.punchDur); }
+        var sc = Math.min(CAM_MAX_SCALE + CAM_MAX_PUNCH, this.scale + punch);
+        this.renderScale = sc;
+        var tx = this.panX + this.x, ty = this.panY + this.y;
+        var t = (Math.abs(sc - 1) > 0.001 || Math.abs(tx) > 0.01 || Math.abs(ty) > 0.01)
+          ? 'translate(' + tx.toFixed(2) + 'px,' + ty.toFixed(2) + 'px) scale(' + sc.toFixed(4) + ')'
           : '';
         if (t !== this._last) { el.cam.style.transform = t; this._last = t; }
       },
@@ -673,11 +716,17 @@
       void el.enemyArt.offsetWidth;
       el.enemyArt.classList.add(isBoss ? 'boss-in' : 'spawn-in');
       if (isBoss) {
+        /* 보스 컷인 (체크리스트 1) — 무대를 확 당겨 잡는다. 강한 초기 줌을 홀드
+         * 타이머 동안 유지하고, update 가 이후 전투 프레이밍으로 부드럽게 내린다. */
+        el.arena.classList.add('boss-mode');
+        bossFrameT = 0.55;
+        camera.frame(CAM_MAX_SCALE, -16, -4);
         setTimeout(function () {
           if (!view.alive) return;
           var bp = footPoint(el.enemyArt);
           dustPuff(bp.x, bp.y, true);
           camera.shake(3, 0.26);
+          camera.punch(0.09, 0.28);   // 착지 순간 줌 스냅
         }, 250);   // bossIn 55% 지점(≈250ms)이 착지 프레임
       }
     }
@@ -687,6 +736,10 @@
       view.enemyKey = '';
       el.enemy.hidden = true;
       el.bossRing.hidden = true;
+      // 보스 프레이밍·분노 틴트 해제 (update 가 카메라를 1.0 으로 되돌린다)
+      if (el.arena.classList.contains('boss-mode')) el.arena.classList.remove('boss-mode');
+      if (lastRage) { lastRage = false; el.arena.classList.remove('boss-rage'); }
+      bossFrameT = 0;
     }
 
     // ── 연출 beat 재생 ────────────────────────────────────────
@@ -723,7 +776,7 @@
         case 'boss_clear':
           if (!collapsed) {
             if (view.alive) { var bp = enemyPoint(); killBurst(bp.x, bp.y, true); }
-            if (fxReady()) { camera.shake(4.5, 0.34); confettiBurst(); }
+            if (fxReady()) { camera.shake(4.5, 0.34); camera.punch(0.13, 0.36); confettiBurst(); }  // 막타·돌파 줌 펀치 (체크리스트 2)
             speedLineFlash();
           }
           hideEnemy();
@@ -983,6 +1036,19 @@
       if (view.alive && state.enemyMaxHp > 0) {
         var ratio = Math.max(0, state.enemyHp / state.enemyMaxHp);
         el.enemyHpFill.style.width = (ratio * 100) + '%';
+      }
+
+      /* 카메라 프레이밍 (단계 4, C·E기둥) — 보스는 무대를 당겨 잡고(컷인 홀드 후
+       * 전투 프레이밍으로 정착), 제한시간이 임박하면 분노 페이즈로 긴장이 오른다.
+       * 보스 타이머는 엔진 진실(state.bossT / B.bossTimeLimit)을 **읽기만** 한다. */
+      if (view.mode === 'boss' && view.alive) {
+        var rageRatio = B && B.bossTimeLimit ? (state.bossT || 0) / B.bossTimeLimit : 0;
+        var raging = rageRatio >= 0.62;
+        if (bossFrameT > 0) bossFrameT -= dt;            // 컷인 홀드 — 강한 초기 줌 유지
+        else camera.frame(raging ? 1.18 : 1.08, -10, 0); // 정착: 전투 프레이밍 → 분노 줌 크립
+        if (raging !== lastRage) { lastRage = raging; el.arena.classList.toggle('boss-rage', raging); }
+      } else if (camera.targetScale !== 1 || camera.targetPanX !== 0 || camera.targetPanY !== 0) {
+        camera.reset();                                  // 전진·잡몹 — 카메라를 1.0 으로 되돌린다
       }
 
       camera.update(dt);
