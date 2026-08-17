@@ -13,10 +13,10 @@ window.WARDROBE = {
   slots: ['outfit', 'hair', 'hat', 'faceAcc'],
 
   /* 남/녀는 캐릭터 종이 아니라 초기 프리셋 (§3). characterId 는 'human' 하나.
-   * 이름은 말랑프렌즈 음식 명명(라떼·모찌·푸딩·민트·피치)을 따른다:
-   * 솜이=솜사탕, 쿠키. sub 는 피커 카드의 성별 안내 줄. */
+   * 이름은 말랑프렌즈 음식 명명(라떼·모찌·푸딩·민트·피치)을 따르는 간식 듀오
+   * "젤리 & 쿠키"(말랑말랑=젤리). sub 는 피커 카드의 성별 안내 줄. */
   presets: {
-    girl: { label: '솜이', sub: '여자아이 · 꾸미기', emoji: '👧', outfit: 'outfit_dress_peach', hair: 'hair_long', hairColor: 'choco', hat: null, faceAcc: null },
+    girl: { label: '젤리', sub: '여자아이 · 꾸미기', emoji: '👧', outfit: 'outfit_dress_peach', hair: 'hair_long', hairColor: 'choco', hat: null, faceAcc: null },
     boy:  { label: '쿠키', sub: '남자아이 · 꾸미기', emoji: '👦', outfit: 'outfit_tee_sky',     hair: 'hair_short', hairColor: 'choco', hat: null, faceAcc: null },
   },
 
