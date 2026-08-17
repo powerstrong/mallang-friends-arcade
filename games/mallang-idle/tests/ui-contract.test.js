@@ -134,6 +134,20 @@ test('캐릭터 전원이 다중 프레임 시트 규격을 갖는다', function
     'stage.js 가 프레임 수 클래스를 실제로 스왑해야 한다');
 });
 
+/* R1 벽 결정권 (RULES_REVIEW R1) — 파밍/도전 토글이 엔진 소유의 전이로 배선된다.
+ * CORE_LOOP 4절의 "재도전할까 / 더 파밍할까" 긴장 복원. 동작은 balance/stage.browser 가 검증. */
+test('파밍/도전 토글(R1)이 엔진 소유 전이로 배선되어 있다', function () {
+  var toggleTag = html.match(/<button[^>]*id="modeToggle"[^>]*>/);
+  assert.ok(toggleTag && /hidden/.test(toggleTag[0]), '토글 버튼이 hidden 으로 시작해야 한다');
+  assert.ok(/\.mode-toggle/.test(css), '토글 스타일이 있어야 한다');
+  var combatJs = read('engine/combat.js');
+  assert.ok(/farmMode/.test(combatJs) && /function challengeNow/.test(combatJs),
+    '파밍 모드·즉시 도전은 엔진이 소유한다');
+  assert.ok(/Combat\.challengeNow\(state\)/.test(gameJs) && /Combat\.setFarmMode\(state, true\)/.test(gameJs),
+    'UI 는 엔진 전이 함수만 호출한다(켜기/끄기 대칭) — 전투 로직 UI 중복 금지');
+  assert.ok(/farmMode/.test(read('engine/save.js')), '파밍 모드는 저장·마이그레이션에 편입된다');
+});
+
 /* 단계 0 의 핵심 계약 — 전투 화면이 엔진 사건을 **연출 큐를 통해** 소비하는가.
  * game.js 가 무대를 직접 그리기 시작하면 페이싱이 다시 엔진에 붙어 버린다
  * (COMBAT_STAGE_OVERHAUL.md 5절 — 이 개편의 심장). */

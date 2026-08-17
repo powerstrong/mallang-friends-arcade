@@ -1,4 +1,4 @@
-# 말랑프렌즈 키우기 — 현재 상태와 다음 작업
+﻿# 말랑프렌즈 키우기 — 현재 상태와 다음 작업
 
 `mallang-idle` · 최종 갱신 2026-08-17
 
@@ -13,7 +13,7 @@
 | 단계 | 상태 |
 |---|---|
 | 구현 | ✅ P0~P5 전 범위 + **2막(챕터 6·7)·6번째 캐릭터** + **전투 화면 개편 단계 0~5 + 에셋 실장** (2026-08-15~17) |
-| 기계적 검증 | ✅ 정적 회귀 67개 + **실브라우저 회귀 124개**(CDP 실좌표 클릭) · 시뮬 지표 · 시각 스모크 |
+| 기계적 검증 | ✅ 정적 회귀 72개 + **실브라우저 회귀 127개**(CDP 실좌표 클릭) · 시뮬 지표 · 시각 스모크 |
 | **사람 게이트** | ⏳ **대기** — P1 "5분 뒤 한 번 더 강화하고 싶은가"는 사람만 판정 가능 |
 | 배포 검증 | ⏳ 8차 이후 수정분 재배포 후 신규 사용자 플로우 재확인 필요 |
 
@@ -39,6 +39,30 @@
 **개편 트랙의 에이전트 작업은 전부 끝났다(에셋 포함).** 남은 것은 **사람 게이트**다 —
 20초 첫인상, 실기기 성능(결정 6②), 7기둥 종합(COMBAT_STAGE_OVERHAUL.md 10절).
 엔진(`engine/*` · `data/*` 수치)은 이 트랙 내내 **불변**이었다 — 연출은 전부 표현 계층에서.
+
+### 2026-08-17 (20차) — R1 벽 결정권 구현: 파밍/도전 모드 + 첫 클로드 리뷰
+
+RULES_REVIEW R1 뒤집기의 실행. CORE_LOOP 4절이 명시한 "지금 재도전할까 / 더
+파밍하고 갈까" 긴장이 이제 실제 UI 선택이다.
+
+- **엔진**(결정론 유지): `state.farmMode` — 켜면 `spawnNext` 가 보스를 미루고 같은
+  구간 잡몹을 계속 돈다(골드·처치 지속, 진행·조각 포기). `Combat.setFarmMode` /
+  `Combat.challengeNow`(즉시 도전 — 교전 몹은 마저 잡고, 보스전 중엔 no-op false).
+  **세이브 v6**(farmMode, boolean 강제, v5 마이그레이션)
+- **UI**: 무대 우상단 `모드 토글` — 첫 보스를 만난 뒤 노출. 평시 "🌾 파밍 모드",
+  파밍 중엔 강조 펄스 "⚔️ 지금 도전!"(행동 버튼화). 던전 리플레이 중 숨김.
+  **벽 코치**: 같은 벽 3연속 실패 시 파밍 모드를 한 번 안내(스테이지당 1회)
+- **선택의 경제학이 회귀로 고정됨**: 벽에서 1시간 — 도전 유지가 조각을 더 벌고
+  (실패 조각), 파밍이 골드를 더 번다(보스 시도 25초의 기회비용 회수). 상시 최적이
+  없는 진짜 트레이드오프 (`balance.test.js` '파밍 모드는 벽에서의 진짜 선택이다')
+- **리뷰 채널 전환 첫 적용**: codex 리뷰 폐지(사용자 지시) → **클로드 리뷰
+  세션**(code-reviewer 서브에이전트). 판정 APPROVE — 불변조건 4종(결정론·로직
+  단일 소유·세이브 방어·표현 분리) 통과, LOW 3건 발견 → 전부 반영(challengeNow
+  반환값 가드·BOSS/ADVANCE 경로 테스트·켜기/끄기 엔진 함수 대칭)
+- **검증**: 정적 **72**(balance 40 · ui-contract 14 · queue 18) + 실브라우저
+  **127**(stage 111 · first-visit 10 · multi-tab 6) 전부 초록 + 시각 스모크 3컷
+  (토글 노출·파밍 토스트·도전→보스 컷인)
+- 다음: **R4 — 던전 충전형 케이던스 + 요일 변칙** (RULES_REVIEW 5절 순서)
 
 ### 2026-08-17 (19차) — 공식 규칙 전면 재심: **[RULES_REVIEW.md](RULES_REVIEW.md)** 신설
 
@@ -534,7 +558,7 @@ codex 재미 평가(TOP 10, scratchpad review — 요지는 커밋 메시지들�
 | 챕터 데이터 `data/chapters.js` | 완료 — **7챕터**(들판→언덕→전선→심장부→정원→별빛 바다→달 공장) |
 | 헤드리스 시뮬 `tools/sim.js` | 완료 — 24h 시뮬 0.2초 + **오프라인 세션 모델 `--sessions=15/120`** |
 | 그리드 서치 `tools/tune.js` | 완료 — 120조합 11.6초 |
-| 회귀 테스트 | **정적 67개**(balance 36 + UI 계약 13 + 연출 큐 18) + **실브라우저 124개**(first-visit 10 + multi-tab 6 + stage 108) |
+| 회귀 테스트 | **정적 72개**(balance 40 + UI 계약 14 + 연출 큐 18) + **실브라우저 127개**(first-visit 10 + multi-tab 6 + stage 111) |
 | 게임 화면 `index.html/game.js/style.css` | 완료 — 횡스크롤 자동 전진, 강화 3축 x1/x10/MAX, 탭 점진 공개 |
 | `?dev=1` 치트 패널 | 완료 — 골드/스테이지/오프라인/배속 x20/세이브 |
 | 캐릭터 `data/characters.js` | 완료 — **6명**(수달 포함), 해금 1/5/22/55/90/120, 슬롯 1/10/40, 파티 보너스 6축 |
@@ -544,12 +568,12 @@ codex 재미 평가(TOP 10, scratchpad review — 요지는 커밋 메시지들�
 ### 검증한 것
 
 ```bash
-node games/mallang-idle/tests/balance.test.js              # 36 passed
-node games/mallang-idle/tests/ui-contract.test.js          # 13 passed
+node games/mallang-idle/tests/balance.test.js              # 40 passed
+node games/mallang-idle/tests/ui-contract.test.js          # 14 passed
 node games/mallang-idle/tests/queue.test.js                # 18 passed
 node games/mallang-idle/tests/first-visit.browser.test.js  # 10 passed (헤드리스 실브라우저)
 node games/mallang-idle/tests/multi-tab.browser.test.js    # 6 passed (헤드리스 실브라우저)
-node games/mallang-idle/tests/stage.browser.test.js        # 108 passed (헤드리스 실브라우저)
+node games/mallang-idle/tests/stage.browser.test.js        # 111 passed (헤드리스 실브라우저)
 node games/mallang-idle/tools/sim.js --minutes=5           # baseline + upper 두 시나리오 출력
 node games/mallang-idle/tools/tune.js --top=5
 node scripts/validate-games.js                             # registry 검증 통과
@@ -593,8 +617,8 @@ node scripts/validate-games.js                             # registry 검증 통
 3. **[중형] 하루 케이던스·던전 변칙** — 리뷰 #7·#9 이월: 던전 3회 연타 소모(오전/저녁
    충전 검토), 과제 고정 목표(진행도 비례 검토), 별빛 시련의 일일 변칙(공속 특화 등).
    ~~던전이 "하는 느낌"이 없다~~ → **18차에서 해소**(리플레이 의식). 변칙·케이던스는 남음
-4. ~~[사용자 결정 필요] 벽에서의 결정권~~ → **[R1 로 확정](RULES_REVIEW.md)** (19차) —
-   재심 권한 위임에 따라 뒤집기 판정. 파밍/도전 모드 토글 + 도전 의식으로 구현 예정
+4. ~~[사용자 결정 필요] 벽에서의 결정권~~ → **[R1 구현 완료](RULES_REVIEW.md)** (20차) —
+   파밍/도전 모드 토글 + 벽 코치 + 즉시 도전. 남은 재심 실행분은 R4→R2→R5→R6
 5. **[소형·연출 폴리시]** (전부 표현 계층, 증분 가능):
    - 걷기↔달리기 노드 폭 차이(시트별 152~290px)로 gait 전환 순간 시각 중심이 살짝
      점프 — 시트 재가공(폭 통일) 또는 중심 보정

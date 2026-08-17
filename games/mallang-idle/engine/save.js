@@ -17,7 +17,7 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function (Combat, Bal) {
   'use strict';
 
-  var CURRENT_VERSION = 5;
+  var CURRENT_VERSION = 6;
   var STORAGE_KEY = 'mallang-idle-save';
 
   /* 상태 → 저장 객체. 파생값(전투력·DPS)은 저장하지 않는다. 저장은 원본 데이터만
@@ -29,6 +29,7 @@
       stage: state.stage,
       safeStage: state.safeStage,
       mobIndex: state.mobIndex,
+      farmMode: state.farmMode === true,
       gold: state.gold,
       up: { atk: state.up.atk, aspd: state.up.aspd, gold: state.up.gold },
       party: Array.isArray(state.party) ? state.party.slice() : [],
@@ -66,6 +67,7 @@
     s.stage = int(save.stage, 1, 1, B.maxStage);
     s.safeStage = int(save.safeStage, 0, 0, s.stage);
     s.mobIndex = int(save.mobIndex, 0, 0, B.mobsPerStage);
+    s.farmMode = save.farmMode === true;   // boolean 강제 — 조작 세이브의 truthy 쓰레기 차단
     s.gold = num(save.gold, 0, 0);
     s.t = num(save.playtime, 0, 0);
     if (save.up) {
@@ -203,6 +205,12 @@
     /* 5: 스토리 도입. 본 장면 id 목록만 저장한다. */
     5: function (save) {
       if (!Array.isArray(save.storySeen)) save.storySeen = [];
+      return save;
+    },
+
+    /* 6: R1 벽 결정권 — 파밍 모드 플래그. 기존 세이브는 전부 꺼짐(현행 동작 유지). */
+    6: function (save) {
+      if (typeof save.farmMode !== 'boolean') save.farmMode = false;
       return save;
     },
   };

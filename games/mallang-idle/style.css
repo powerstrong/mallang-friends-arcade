@@ -543,6 +543,31 @@ body {
 /* 별조각 플로트 (던전 리플레이) — 같은 정보 계층, 별빛 색 */
 .gold-float.star { color: #7a5bd6; text-shadow: 0 1px 0 #fff, 0 0 8px rgba(255, 230, 140, .9); }
 
+/* ── R1 벽 결정권 — 파밍/도전 모드 토글 (첫 보스 이후 노출) ── */
+.mode-toggle {
+  position: absolute;
+  top: 46px; right: 10px;
+  z-index: 6;
+  padding: 6px 12px;
+  min-height: 32px;
+  border: none;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .88);
+  color: var(--ink-soft);
+  font: inherit; font-size: 12.5px; font-weight: 800;
+  box-shadow: var(--shadow);
+  cursor: pointer;
+}
+/* 파밍 중 = "지금 도전!" 이 행동 버튼이 된다 — 눈에 띄게 */
+.mode-toggle.on {
+  background: var(--accent);
+  color: #fff;
+  animation: modePulse 1.6s ease-in-out infinite;
+}
+@keyframes modePulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.06); } }
+.arena.dungeon-mode .mode-toggle { display: none; }
+@media (prefers-reduced-motion: reduce) { .mode-toggle.on { animation: none !important; } }
+
 /* ── 던전 리플레이 의식 (별빛 시련) — 카메라 밖 UI 층 ──────────
  * 베일(장면 전환)·카운트다운·연승 칩·결과 배너. 전부 pointer-events 없음 —
  * 아레나 탭(스킵)을 가로채지 않는다. */

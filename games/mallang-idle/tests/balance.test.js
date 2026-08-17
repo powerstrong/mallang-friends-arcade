@@ -733,6 +733,101 @@ test('세이브 v4 → v5 마이그레이션 (스토리)', function () {
     '중복·비문자열은 걸러진다');
 });
 
+// ── R1 벽 결정권 — 파밍/도전 모드 (RULES_REVIEW R1) ───────────
+test('파밍 모드는 보스를 미루고 같은 구간을 돈다', function () {
+  var s = Combat.createState();
+  Combat.step(s, 3600);                  // 정상 진행으로 벽 근처까지
+  var stage0 = s.stage;
+  s.farmMode = true;
+  var tries0 = s.stats.bossTries, gold0 = s.gold, kills0 = s.stats.kills;
+  Combat.step(s, 1800);
+  assert.strictEqual(s.stage, stage0, '파밍 중에는 스테이지가 오르지 않는다');
+  assert.strictEqual(s.stats.bossTries, tries0, '파밍 중에는 보스를 만나지 않는다');
+  assert.ok(s.phase !== Combat.PHASE_BOSS, '보스 페이즈로 들어가지 않는다');
+  assert.ok(s.gold > gold0 && s.stats.kills > kills0, '골드·처치는 계속 흐른다');
+});
+
+test('challengeNow — 파밍을 끄고 즉시 보스를 연다 (교전 몹은 마저 잡는다)', function () {
+  var s = Combat.createState();
+  Combat.step(s, 3600);
+  s.farmMode = true;
+  Combat.step(s, 120);
+  var guard = 0;
+  while (s.phase !== Combat.PHASE_FIGHT && guard++ < 1000) Combat.step(s, 0.05);
+  assert.strictEqual(s.phase, Combat.PHASE_FIGHT, '전제 — 교전 중 상태를 만들었다');
+  var kills0 = s.stats.kills, tries0 = s.stats.bossTries;
+  var r = Combat.challengeNow(s);
+  assert.ok(r === true && s.farmMode === false, '파밍이 꺼진다');
+  Combat.step(s, 60);
+  assert.ok(s.stats.kills >= kills0 + 1, '교전 중이던 몹의 골드를 버리지 않는다');
+  assert.ok(s.stats.bossTries >= tries0 + 1, '곧장 보스 관문이 열린다');
+  // 결정론 — 같은 상태에 같은 전이는 같은 결과
+  var a = Combat.createState(); Combat.step(a, 500); a.farmMode = true; Combat.step(a, 100);
+  var b = Combat.clone(a);
+  Combat.challengeNow(a); Combat.challengeNow(b);
+  Combat.step(a, 50); Combat.step(b, 50);
+  assert.strictEqual(JSON.stringify(a), JSON.stringify(b), 'challengeNow 는 결정론이다');
+
+  // PHASE_ADVANCE 경로 — 전진 타이머가 끝나면 곧장 보스 (클로드 리뷰 LOW: 경로 커버)
+  var adv = Combat.createState();
+  Combat.step(adv, 3600);
+  Combat.setFarmMode(adv, true);
+  Combat.step(adv, 30);
+  var g2 = 0;
+  while (adv.phase !== Combat.PHASE_ADVANCE && g2++ < 2000) Combat.step(adv, 0.03);
+  assert.strictEqual(adv.phase, Combat.PHASE_ADVANCE, '전제 — 전진 상태를 만들었다');
+  var advTries = adv.stats.bossTries;
+  Combat.challengeNow(adv);
+  Combat.step(adv, 5);
+  assert.strictEqual(adv.stats.bossTries, advTries + 1, '전진 중 도전 — 다음 스폰이 보스다');
+
+  // PHASE_BOSS 경로 — 전이 없음(false), 파밍 플래그만 꺼지고 전투 상태는 그대로
+  var bs = Combat.createState();
+  Combat.step(bs, 3600);
+  var g3 = 0;
+  while (bs.phase !== Combat.PHASE_BOSS && g3++ < 5000) Combat.step(bs, 0.05);
+  assert.strictEqual(bs.phase, Combat.PHASE_BOSS, '전제 — 보스전 상태를 만들었다');
+  Combat.setFarmMode(bs, true);
+  var snap = JSON.stringify({ stage: bs.stage, mobIndex: bs.mobIndex, hp: bs.enemyHp, tries: bs.stats.bossTries });
+  assert.strictEqual(Combat.challengeNow(bs), false, '보스전 중에는 전이가 없다(false)');
+  assert.strictEqual(bs.farmMode, false, '파밍 플래그는 꺼진다');
+  assert.strictEqual(JSON.stringify({ stage: bs.stage, mobIndex: bs.mobIndex, hp: bs.enemyHp, tries: bs.stats.bossTries }),
+    snap, '진행 중인 보스전 상태는 그대로다');
+});
+
+test('파밍 모드는 벽에서의 진짜 선택이다 — 골드 vs 조각·진행 (상시 최적 금지)', function () {
+  /* 강화 없이 오래 굴리면 DPS 가 고정된 채 단단한 벽에 선다. 그 벽에서 1시간:
+   * 도전 유지 = 실패 조각 수입 + 보스 시도 25초의 골드 기회비용,
+   * 파밍 모드 = 조각 0 + 그 25초까지 전부 골드. 어느 쪽도 공짜가 아니어야 한다. */
+  var base = Combat.createState();
+  Combat.step(base, 6 * 3600);
+  var normal = Combat.clone(base);
+  var farm = Combat.clone(base);
+  farm.farmMode = true;
+  Combat.step(normal, 3600);
+  Combat.step(farm, 3600);
+  assert.ok(normal.shards > farm.shards, '도전 유지가 조각을 더 번다 (실패 조각)');
+  assert.ok(farm.stats.goldEarned > normal.stats.goldEarned,
+    '벽에서는 파밍이 골드를 더 번다 (보스 시도의 기회비용 회수)');
+  assert.ok(normal.stage >= farm.stage, '진행은 도전 쪽이 앞서거나 같다');
+});
+
+test('세이브 v5 → v6 마이그레이션 (파밍 모드)', function () {
+  var legacy = JSON.stringify({ version: 5, stage: 40, shards: 7, storySeen: ['ch-meadow'] });
+  var res = Save.load(legacy);
+  assert.ok(res.ok, 'v5 세이브를 읽을 수 있어야 한다');
+  assert.strictEqual(res.state.farmMode, false, '기존 세이브는 파밍 꺼짐(현행 동작 유지)');
+  assert.strictEqual(res.state.stage, 40, '진행도 보존');
+
+  // 왕복 + 조작 세이브의 truthy 쓰레기 방어
+  var s = Combat.createState();
+  s.farmMode = true;
+  var round = Save.load(Save.dump(s, 0));
+  assert.strictEqual(round.state.farmMode, true, '파밍 상태 왕복 보존');
+  var dirty = Save.load(JSON.stringify({ version: 6, farmMode: 'yes' }));
+  assert.strictEqual(dirty.state.farmMode, false, 'boolean 이 아니면 꺼짐으로 강제');
+});
+
 // ── 실행 ──────────────────────────────────────────────────────
 var pass = 0, fail = 0;
 tests.forEach(function (t) {

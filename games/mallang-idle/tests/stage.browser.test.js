@@ -637,6 +637,31 @@ async function main(pg) {
   ok(dg5.during.active && dg5.during.modalHidden && dg5.during.runsUp,
     '입장 버튼: 횟수·보상은 즉시(진실원), 결과 팝업은 리플레이 뒤로 미뤄진다', dg5);
   ok(dg5.after.modalHidden === false, '리플레이가 끝난 뒤에야 결과 팝업이 뜬다', dg5);
+
+  // ═══ R1 벽 결정권 — 파밍/도전 토글 (RULES_REVIEW R1) ═══════════════
+  /* 계약: ① 첫 보스를 만난 뒤 토글이 보인다 ② 파밍을 켜면 보스가 다시 오지 않는다
+   * (진행 정지·골드 지속) ③ "지금 도전!"은 즉시 보스 관문을 연다. */
+  var r1 = JSON.parse(await pg.eval(J(
+    '(function(){var H=window.__mallangIdle; var t=document.getElementById("modeToggle");' +
+    ' H.advance(0.1);' +                              // HUD 갱신 — bossTries>0 이므로 보여야 한다
+    ' var visible0=!t.hidden;' +
+    ' t.click();' +                                   // 파밍 모드 켜기
+    ' var farmOn=H.state.farmMode===true;' +
+    ' var on1=t.className.indexOf("on")>=0; var label1=t.textContent;' +
+    ' H.advance(3);' +                                // 진행 중이던 보스전을 정리할 시간
+    ' var tries0=H.state.stats.bossTries; var stage0=H.state.stage; var gold0=H.state.gold;' +
+    ' H.advance(120);' +                              // 파밍 2분
+    ' var noBoss=H.state.stats.bossTries===tries0 && H.state.stage===stage0;' +
+    ' var goldFlow=H.state.gold>gold0;' +
+    ' t.click();' +                                   // 지금 도전!
+    ' var farmOff=H.state.farmMode===false;' +
+    ' for (var i=0;i<60 && H.state.phase!=="boss";i++) H.advance(0.5);' +
+    ' return { visible0:visible0, farmOn:farmOn, on1:on1, label1:label1,' +
+    '   noBoss:noBoss, goldFlow:goldFlow, farmOff:farmOff, phase2:H.state.phase };})()')));
+  ok(r1.visible0 && r1.farmOn && r1.on1 && /도전/.test(r1.label1),
+    '토글이 보이고, 켜면 파밍 모드 + "지금 도전!" 버튼이 된다', r1);
+  ok(r1.noBoss && r1.goldFlow, '파밍 중에는 보스·진행이 멈추고 골드만 흐른다', r1);
+  ok(r1.farmOff && r1.phase2 === 'boss', '"지금 도전!"이 즉시 보스 관문을 연다', r1);
 }
 
 /* 감속 모드 — 움직임은 줄되 정보는 남아야 한다. */

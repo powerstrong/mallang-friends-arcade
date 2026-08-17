@@ -52,6 +52,7 @@
     goldNum: $('goldNum'), powerNum: $('powerNum'),
     progressText: $('progressText'), progressPips: $('progressPips'),
     bossTimer: $('bossTimer'), bossTimerFill: $('bossTimerFill'), bossTimerNum: $('bossTimerNum'),
+    modeToggle: $('modeToggle'),
     hero: $('hero'), enemy: $('enemy'), enemyArt: $('enemyArt'),
     enemyName: $('enemyName'), enemyHpFill: $('enemyHpFill'), bossRing: $('bossRing'),
     upgrades: $('upgrades'), bulkToggle: $('bulkToggle'),
@@ -727,14 +728,28 @@
    * **읽어야 하는 숫자** 뿐이다 — 진행도 pip, 보스 타이머, 필요 DPS. 이것들은 연출
    * 큐를 타지 않고 언제나 엔진 현재값을 보여준다(가독성은 연출보다 우선). */
   var lastPhase = '', lastMobIndex = -1, lastPipCount = 0;
+  var lastFarmUi = null;   // R1 토글 표시 캐시 — 매 프레임 DOM 쓰기 방지
 
   function renderHudOverlays() {
     /* 던전 리플레이 중에는 본편 전투 HUD(보스 타이머·모드 클래스)를 덮지 않는다 —
      * 엔진은 계속 돌지만 화면은 시련의 것이다. 복귀 프레임에 강제 재평가(센티널). */
     if (Stage.dungeonActive && Stage.dungeonActive()) {
       el.bossTimer.hidden = true;
+      el.modeToggle.hidden = true;
       lastPhase = '__dungeon';
+      lastFarmUi = null;
       return;
+    }
+    /* R1 벽 결정권 — 파밍/도전 토글. 첫 보스를 만난 뒤부터 의미가 생긴다.
+     * 파밍 중에는 "지금 도전!"이 행동 버튼이 된다 (RULES_REVIEW R1). */
+    var farmUi = state.stats.bossTries > 0 ? (state.farmMode ? 'farm' : 'normal') : 'hidden';
+    if (farmUi !== lastFarmUi) {
+      lastFarmUi = farmUi;
+      el.modeToggle.hidden = farmUi === 'hidden';
+      if (farmUi !== 'hidden') {
+        el.modeToggle.textContent = farmUi === 'farm' ? '⚔️ 지금 도전!' : '🌾 파밍 모드';
+        el.modeToggle.classList.toggle('on', farmUi === 'farm');
+      }
     }
     var phase = state.phase;
     var phaseChanged = phase !== lastPhase;
@@ -786,6 +801,8 @@
    *
    * 로직을 큐에 태우면 안 된다. 몰아보기에서 도감이 빠지거나 컷신 순서가 어긋난다.
    * 반대로 연출을 즉시 처리하면 지금까지처럼 리듬이 사라진다. */
+  var wallFails = 0, wallCoachedStage = 0;   // R1 벽 코치 — 연속 실패 카운트(세션 한정)
+
   function consumeEvents() {
     var needPanel = false;
     for (var i = 0; i < state.events.length; i++) {
@@ -802,6 +819,7 @@
         needPanel = true;
       }
       else if (ev.type === 'boss_clear') {
+        wallFails = 0;   // R1 — 벽이 뚫리면 코치 카운트 초기화
         toast('스테이지 ' + ev.stage + ' 돌파!', 'win');
         /* 돌파 스팅(clear)은 무대의 boss_clear 비트가 낸다 — 세트피스와 같은 순간에
          * 울려야 화면·소리가 맞는다(단계 5). 여기 로직(토스트·해금·BGM)만 즉시. */
@@ -822,7 +840,16 @@
           queueStory('rescue', endedCh.id);   // 하트는 컷신이 끝나는 순간(endStory) 터진다
         }
       }
-      else if (ev.type === 'boss_fail') { toast('아깝다! ⭐+' + ev.shards, 'fail'); renderRelics(); renderBattle(); syncBgm(); }  // fail 스팅은 무대 비트가 낸다(단계 5)
+      else if (ev.type === 'boss_fail') {
+        toast('아깝다! ⭐+' + ev.shards, 'fail'); renderRelics(); renderBattle(); syncBgm();  // fail 스팅은 무대 비트가 낸다(단계 5)
+        /* R1 벽 코치 — 같은 벽에서 3연속 실패하면 파밍 모드를 한 번 알려 준다.
+         * 결정권은 알려 주되 강요하지 않는다(스테이지당 1회, 세션 한정). */
+        wallFails++;
+        if (wallFails >= 3 && !state.farmMode && wallCoachedStage !== state.stage) {
+          wallCoachedStage = state.stage;
+          toast('벽이 단단해요 — 🌾 파밍 모드로 모아서 강화하는 방법도 있어요');
+        }
+      }
       else if (ev.type === 'boss_start') {
         toast('보스 등장!');   // 포효(bossIn)는 무대의 컷인이 낸다 — 화면과 동기(단계 5)
         bossTaunt(Chapters.chapterFor(state.stage).id);
@@ -1012,6 +1039,25 @@
   // 던전 리플레이 중 무대 탭 = 스킵 (의식은 남기되 반복 피로는 스킵으로 푼다)
   el.arena.addEventListener('click', function () {
     if (Stage.dungeonSkip) Stage.dungeonSkip();
+  });
+
+  /* R1 벽 결정권 — 파밍 모드(보스 미루고 벌기) ↔ 지금 도전(즉시 보스).
+   * CORE_LOOP 4절이 명시한 "재도전할까 / 더 파밍할까" 긴장을 플레이어 손에 돌려준다
+   * (RULES_REVIEW R1). challengeNow 는 엔진 상태 전이라 결정론이 유지된다. */
+  el.modeToggle.addEventListener('click', function (e) {
+    e.stopPropagation();               // 아레나 탭(던전 스킵)과 분리
+    if (state.stats.bossTries <= 0) return;
+    if (state.farmMode) {
+      // 보스전 중이면 전이는 없다(false) — 헛 팡파르를 울리지 않는다(클로드 리뷰 LOW)
+      if (Combat.challengeNow(state)) { toast('도전!', 'win'); sfx('go'); }
+      else { toast('이미 보스와 싸우는 중이에요!'); sfx('tap'); }
+    } else {
+      Combat.setFarmMode(state, true);
+      toast('파밍 모드 — 보스는 잠시 미뤄 둘게요');
+      sfx('tap');
+    }
+    renderHudOverlays();
+    persist();
   });
   el.exitBtn4.addEventListener('click', function () { persist(); window.GameBoot ? window.GameBoot.exit() : (location.href = '/'); });
   el.exitBtn5.addEventListener('click', function () { persist(); window.GameBoot ? window.GameBoot.exit() : (location.href = '/'); });

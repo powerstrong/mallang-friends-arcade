@@ -162,6 +162,7 @@
       stage: 1,
       safeStage: 0,         // 보스를 돌파한 최고 스테이지 (오프라인 보상 기준)
       mobIndex: 0,          // 현재 스테이지에서 처치한 일반몹 수
+      farmMode: false,      // R1 벽 결정권 — 켜면 보스를 미루고 같은 구간을 계속 파밍
       phase: PHASE_ADVANCE,
       phaseT: 0,            // 전진 경과
       enemyHp: 0,
@@ -219,7 +220,7 @@
 
   function spawnNext(s) {
     s.phaseT = 0;
-    if (s.mobIndex >= B.mobsPerStage) {
+    if (s.mobIndex >= B.mobsPerStage && !s.farmMode) {
       s.phase = PHASE_BOSS;
       s.enemyMaxHp = bossHp(s.stage);
       s.enemyHp = s.enemyMaxHp;
@@ -227,11 +228,34 @@
       s.stats.bossTries++;
       s.events.push({ type: 'boss_start', stage: s.stage });
     } else {
+      /* 파밍 모드(R1) — 보스를 미루고 같은 구간의 잡몹을 계속 돈다.
+       * 골드는 계속 벌지만 돌파·별조각(실패 조각 포함)은 포기하는 선택이다
+       * (CORE_LOOP 4절의 "재도전할까 / 더 파밍할까" 긴장을 플레이어 손에). */
+      if (s.mobIndex >= B.mobsPerStage) s.mobIndex = 0;
       s.phase = PHASE_FIGHT;
       s.enemyMaxHp = mobHp(s.stage);
       s.enemyHp = s.enemyMaxHp;
       s.events.push({ type: 'mob_spawn', stage: s.stage, index: s.mobIndex });
     }
+  }
+
+  /* R1 — 파밍 모드 스위치. UI 가 상태를 직접 대입하지 않도록 엔진이 소유한다
+   * (켜기/끄기 경로 대칭 — 클로드 리뷰 LOW). */
+  function setFarmMode(s, on) {
+    s.farmMode = on === true;
+    return s.farmMode;
+  }
+
+  /* R1 — 파밍 모드 해제 + 즉시 도전. 표현이 아니라 엔진 상태 전이다(결정론 유지 —
+   * dev 패널의 '보스 즉시'와 같은 문법). 교전 중인 잡몹은 마저 잡는다(골드 유실 금지).
+   * 이미 보스전이면 파밍만 끄고 false — 호출자는 전이 여부로 피드백을 갈라야 한다. */
+  function challengeNow(s) {
+    s.farmMode = false;
+    if (s.phase === PHASE_BOSS) return false;
+    s.mobIndex = B.mobsPerStage;        // 다음 스폰 = 보스
+    if (s.phase === PHASE_FIGHT) return true;
+    s.phase = PHASE_ADVANCE;
+    return true;
   }
 
   /* 이벤트 종류는 nextEvent 가 이미 확정했다. 여기서 HP 잔량으로 다시 판정하지 않는다. */
@@ -399,5 +423,6 @@
     upgradeCost: upgradeCost, bulkCost: bulkCost, affordable: affordable,
     buy: buy, canBuyAnything: canBuyAnything,
     offlineReward: offlineReward,
+    setFarmMode: setFarmMode, challengeNow: challengeNow,
   };
 });
