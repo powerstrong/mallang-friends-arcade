@@ -2086,6 +2086,7 @@
   let wardrobeModal = null;
   let wardrobeDraft = null;      // 편집 중 착장(항상 sanitize 완료 상태)
   let wardrobeSaved = null;      // 열 때 스냅샷 — 되돌리기 대상
+  let wardrobeStash = null;      // ✕로 닫을 때 미저장 초안 보관 {preset, draft} — 재오픈 시 복원(P2-1)
   let wardrobePreset = 'girl';   // 저장 시 world_outfit.preset 에 실릴 값
   let wardrobeTab = 'outfit';
   let wardrobeDir = 'down';      // 미리보기 방향 (탭하면 회전)
@@ -2133,6 +2134,10 @@
     });
     modal.querySelector('.wardrobe-save').addEventListener('click', () => {
       sendOutfitChange({ ...wardrobeDraft }, wardrobePreset);
+      // 저장했으니 draft===saved 로 맞춰 닫는다 — closeWardrobePanel 이 스태시를
+      // 걸지 않게(P2-1). 남아있던 미저장 스태시도 폐기.
+      wardrobeSaved = { ...wardrobeDraft };
+      wardrobeStash = null;
       closeWardrobePanel();
     });
     // 프리셋 기본 버튼 — 이름·이모지는 카탈로그(WARDROBE.presets) 단일 진실.
@@ -2180,6 +2185,13 @@
     wardrobePreset = (saved && saved.preset) || selectedPreset || 'girl';
     wardrobeDraft = window.WARDROBE.sanitizeOutfit(me.outfit, wardrobePreset);
     wardrobeSaved = { ...wardrobeDraft };
+    // 지난번 ✕로 닫을 때 미저장 초안이 있고 프리셋이 같으면 복원(P2-1). 프리셋이
+    // 다르면(그 사이 처음으로 바꿈 등) 폐기. wardrobeSaved 는 실제 저장본 유지 —
+    // ↩️ 되돌리기·다음 close 비교 기준이 흔들리지 않게.
+    if (wardrobeStash && wardrobeStash.preset === wardrobePreset) {
+      wardrobeDraft = window.WARDROBE.sanitizeOutfit(wardrobeStash.draft, wardrobePreset);
+    }
+    wardrobeStash = null;
     wardrobeDir = 'down';
     wardrobeLastSheet = null;
     renderWardrobeControls();
@@ -2189,6 +2201,15 @@
 
   function closeWardrobePanel() {
     if (!wardrobeModal) return;
+    // 미저장 편집(draft≠saved)이면 조용히 폐기하지 않고 스태시 — 재오픈 시 복원(P2-1).
+    // 저장 경로는 닫기 전에 wardrobeSaved 를 draft 로 맞춰 이 분기를 타지 않는다.
+    const W = window.WARDROBE;
+    if (wardrobeDraft && wardrobeSaved &&
+        W.outfitKey(wardrobeDraft) !== W.outfitKey(wardrobeSaved)) {
+      wardrobeStash = { preset: wardrobePreset, draft: { ...wardrobeDraft } };
+    } else {
+      wardrobeStash = null;
+    }
     wardrobeModal.classList.add('hidden');
     wardrobeModal.setAttribute('aria-hidden', 'true');
   }
