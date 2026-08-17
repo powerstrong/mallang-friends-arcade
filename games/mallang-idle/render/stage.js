@@ -277,6 +277,28 @@
         color: '255, 245, 210', alpha: 0.85, blend: 'lighter' });
     }
 
+    /* 처치 세트피스 — 펑 플립북 + 구름 파편 + 골드 분출 + 섬광 (체크리스트 4번).
+     * 골드 **수치**는 DOM 플로트(정보)가 나르고, 여기 동전 파티클은 장식이다. */
+    function killBurst(x, y, big) {
+      emit('poof', x, y, { sheet: 'poof', life: 0.44, size: big ? 150 : 110,
+        grow: 1.2, alpha: 1 });
+      var nd = big ? 10 : 7;
+      for (var i = 0; i < nd; i++) {
+        var a = Math.random() * TAU, sp = 60 + Math.random() * 110;
+        emit('debris', x, y, { vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 60,
+          life: 0.4 + Math.random() * 0.2, size: 5 + Math.random() * 4, grow: 0.5,
+          color: '236, 226, 238', alpha: 0.9, grav: 420 });
+      }
+      var ng = big ? 10 : 6;
+      for (var g = 0; g < ng; g++) {
+        emit('coin', x, y + 6, { vx: (Math.random() - 0.5) * 160, vy: -120 - Math.random() * 120,
+          life: 0.5 + Math.random() * 0.25, size: 4.5 + Math.random() * 2, grow: 1,
+          color: '255, 205, 90', alpha: 1, blend: 'lighter', grav: 640 });
+      }
+      emit('flash', x, y, { life: 0.16, size: big ? 56 : 40, grow: 2.0,
+        color: '255, 250, 225', alpha: 0.7, blend: 'lighter' });
+    }
+
     /* 발밑 먼지 — 돌진 시작·보스 착지. CSS .fx-dust 를 대체한다(캔버스 파이프라인 증명). */
     function dustPuff(x, y, big) {
       var n = big ? 7 : 4;
@@ -430,7 +452,10 @@
     var floatAccum = 0, floatCooldown = 0;
     function floatGold(amount) {
       floatAccum += amount;
+      if (floatAccum <= 0) return;
       if (floatCooldown > 0) return;
+      if (fxCount >= FX_CAP) return;          // 골드 플로트도 잔존 DOM 상한에 든다 (결정 3)
+      fxCount++;
       floatCooldown = 0.25;
       sfx('coin');
       var n = document.createElement('div');
@@ -438,7 +463,16 @@
       n.textContent = '+' + fmt(floatAccum);
       floatAccum = 0;
       el.field.appendChild(n);
-      setTimeout(function () { n.remove(); }, 900);
+      setTimeout(function () { n.remove(); fxCount--; }, 900);
+    }
+
+    /* 몰아보기(collapsed)로 배치가 끝나면 합산 골드를 보여줄 다음 처치가 없을 수 있다.
+     * queue idle 전이에서 정확히 한 번 플러시한다 — 안 하면 벽·보스에 머무는 동안
+     * 누적분이 영영 안 보인다 (codex 리뷰 발견, 체크리스트). */
+    function flushPending() {
+      if (floatAccum <= 0) return;
+      floatCooldown = 0;                      // 마지막 기회다 — 배칭 쿨다운을 무시한다
+      floatGold(0);
     }
 
     // ── 액터 ──────────────────────────────────────────────────
@@ -535,11 +569,11 @@
         case 'mob_kill':
           if (!collapsed && view.alive) {
             var pp = enemyPoint();
-            spawnFx('fx-poof', pp.x, pp.y, 460);
+            killBurst(pp.x, pp.y, false);      // 펑 + 파편 + 골드 분출 + 섬광 (캔버스)
             sfx('kill');
           }
           if (!collapsed) floatGold(ev.gold);
-          else floatAccum += ev.gold;          // 몰아보기 — 숫자는 다음 표시에 합산된다
+          else floatAccum += ev.gold;          // 몰아보기 — queue idle 플러시가 받아 준다
           hideEnemy();
           view.mode = 'advance';
           setLocomotion(true, false);
@@ -547,6 +581,7 @@
 
         case 'boss_clear':
           if (!collapsed) {
+            if (view.alive) { var bp = enemyPoint(); killBurst(bp.x, bp.y, true); }
             if (fxReady()) { camera.shake(4.5, 0.34); confettiBurst(); }
             speedLineFlash();
           }
@@ -749,7 +784,7 @@
     }
 
     // ── 연출 큐 ───────────────────────────────────────────────
-    var queue = Queue.create({ duration: beatDuration, onEvent: playBeat });
+    var queue = Queue.create({ duration: beatDuration, onEvent: playBeat, onIdle: flushPending });
 
     /* 매 프레임. dt = 실제 프레임 간격(연출 시계), simDt = 엔진에 준 시간(배속 포함).
      * 연출은 dt 로 돌고, "얼마나 아팠나"만 simDt 를 따른다. */
@@ -817,7 +852,7 @@
         shot: followerShot,
         dust: dustPuff,
         particleCount: function () { return pcount; },
-        poofAt: function () { var p = enemyPoint(); return spawnFx('fx-poof', p.x, p.y, 460); },
+        poofAt: function () { var p = enemyPoint(); killBurst(p.x, p.y, false); },
         /* 단계 1 회귀용 훅 — 좌표 일치·히트스톱 정지·정책·성능을 밖에서 검증한다 */
         emit: emit,
         snapshot: function () {

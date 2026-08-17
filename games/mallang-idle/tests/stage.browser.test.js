@@ -214,6 +214,31 @@ async function main(pg) {
   ok(/huge/.test(s1r.cls || ''), '숫자 크기가 타격 크기(최대 HP 대비 몫)에 반응한다', s1r);
   ok(s1r.particles >= 8, '타격 접점에서 임팩트·궤적·스파크·섬광이 캔버스에 함께 터진다', s1r);
   ok(s1r.sheets, '플립북 시트가 decode 되어 캔버스 재생 준비가 되어 있다', s1r);
+
+  // ── 슬라이스 2 — 처치 세트피스 + collapsed 합산 플러시 ──
+  var s2a = JSON.parse(await pg.eval(J(
+    '(function(){var fx=window.__mallangIdle.Stage.fx;' +
+    ' fx.stepDraw(1300);' +
+    ' fx.poofAt();' +
+    ' return { particles: fx.particleCount(), poofSheet: fx.sheetReady("poof") };})()')));
+  ok(s2a.particles >= 12, '처치가 펑 한 장이 아니다 — 플립북+파편+골드 분출+섬광 합성', s2a);
+  ok(s2a.poofSheet, '처치 플립북 시트가 캔버스 재생 준비가 되어 있다', s2a);
+
+  /* 몰아보기로만 끝나는 배치 — 합산 골드가 queue idle 플러시로 반드시 표시된다.
+   * (전에는 다음 비-collapsed 처치가 있어야만 보였다 — 벽에 머물면 영영 증발) */
+  var s2b = JSON.parse(await pg.eval(J(
+    '(function(){var H=window.__mallangIdle;' +
+    ' H.Stage.push([{ type:"mob_kill", gold:0, stage:H.state.stage, index:0 }]);' +   // 라이브 잔여 합산분 선플러시
+    ' H.Stage.update(1, 0, H.state);' +
+    ' H.Stage.update(1, 0, H.state);' +          // 표시 쿨다운(0.25s)까지 소진
+    ' document.querySelectorAll(".gold-float").forEach(function(n){n.remove();});' +
+    ' var evs=[]; for (var i=0;i<60;i++) evs.push({ type:"mob_kill", gold:5, stage:H.state.stage, index:0 });' +
+    ' H.Stage.push(evs);' +
+    ' H.Stage.update(1/60, 0, H.state);' +       // collapseAt 초과 → 몰아보기 → idle 플러시
+    ' var g=document.querySelector(".gold-float");' +
+    ' return { gold: g ? g.textContent : null, idle: H.Stage.queue.idle() };})()')));
+  ok(s2b.idle, '몰아본 배치가 즉시 소진된다', s2b);
+  ok(s2b.gold === '+300', 'collapsed 로 끝난 배치의 합산 골드가 플러시된다 (60×5)', s2b);
 }
 
 /* 감속 모드 — 움직임은 줄되 정보는 남아야 한다. */

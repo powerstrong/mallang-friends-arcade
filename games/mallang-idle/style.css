@@ -344,11 +344,12 @@ body {
 @keyframes ringIn { from { opacity: 0; transform: scale(.6); } }
 @keyframes ringPulse { 50% { opacity: .55; } }
 
-/* 골드 획득 플로팅 */
+/* 골드 획득 플로팅 — 정보 DOM: 장식 캔버스(z 3)보다 항상 위 (단계 1 결정 2) */
 .gold-float {
   position: absolute;
   right: 20%;
   bottom: 46%;
+  z-index: 6;
   font-size: 14px;
   font-weight: 800;
   color: var(--gold-deep);
@@ -722,11 +723,13 @@ body {
 }
 
 /* ── 전투 이펙트 레이어 ────────────────────────────────────── */
+/* 합성 순서 계약 (단계 1 결정 2): 정보 DOM(숫자·골드) > 장식 캔버스(z 3) > 장식 DOM.
+ * 장식 파티클이 아무리 쏟아져도 읽어야 하는 숫자를 덮지 못한다. */
 .fx-layer {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  z-index: 3;
+  z-index: 5;
 }
 .fx-layer > * { position: absolute; transform: translate(-50%, -50%); }
 
@@ -745,13 +748,7 @@ body {
 
 /* 검격 궤적은 캔버스로 이관 (단계 1 슬라이스 1 — stage.js impactBurst) */
 
-/* 처치 펑 — 4프레임 플립북 */
-.fx-poof {
-  width: 110px; height: 110px;
-  background: url('assets/fx-poof-sheet.png') 0 0 / 400% 100% no-repeat;
-  animation: poofFlip .44s steps(4) forwards, impactFade .44s linear forwards;
-}
-@keyframes poofFlip { to { background-position: -400% 0; } }
+/* 처치 펑은 캔버스로 이관 (단계 1 슬라이스 2 — stage.js killBurst: 펑+파편+골드+섬광) */
 
 .fx-proj {
   width: 40px; height: 40px;
@@ -824,11 +821,11 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .confetti, .hero.strike, .hero.fighting,
   .follower.fighting, .follower.cast, .enemy.squash img, .enemy img.spawn-in,
-  .enemy img.boss-in, .enemy.is-boss::before, .fx-impact, .fx-poof,
+  .enemy img.boss-in, .enemy.is-boss::before, .fx-impact,
   .ambient-pt, .speedlines.flash, .hero.hop, .follower.hop, .fx-heartp,
   .hero.walking, .follower.walking,
   .story-card.pop, .boss-bubble.pop, .chapter-banner.show, .story-more { animation: none; }
-  .confetti, .fx-impact, .fx-poof, .fx-proj, .ambient-pt, .speedlines,
+  .confetti, .fx-impact, .fx-proj, .ambient-pt, .speedlines,
   .fx-heartp { display: none; }
   /* 정보 FX(숫자·골드)는 **남되 정적**이다 — 사라져도, 날아다녀도 실패 (단계 1).
    * animation 을 끄면 제자리에 떠 있다가 TTL 로 정리된다. */
