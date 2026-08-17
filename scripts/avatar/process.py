@@ -49,6 +49,79 @@ def has_real_alpha(img: Image.Image) -> bool:
     return bool((a < 250).mean() > 0.05)  # 5% 이상이 투명하면 이미 누끼
 
 
+def _morph(mask: np.ndarray, op: str, iters: int = 1) -> np.ndarray:
+    """3x3 erosion/dilation (numpy roll 기반, scipy 불필요)."""
+    m = mask
+    for _ in range(iters):
+        stack = [m]
+        for dy in (-1, 0, 1):
+            for dx in (-1, 0, 1):
+                if dy or dx:
+                    stack.append(np.roll(np.roll(m, dy, axis=0), dx, axis=1))
+        s = np.stack(stack)
+        m = s.all(axis=0) if op == 'erode' else s.any(axis=0)
+    return m
+
+
+def extract_worn(worn: Image.Image, ref: Image.Image,
+                 thresh_weak: int = 26, thresh_strong: int = 80) -> Image.Image:
+    """착용 시트(정본 편집 결과)에서 정본과 달라진 픽셀만 추출 → 아이템 레이어.
+
+    부유 레이어 생성(위치 실패)을 대체하는 0단계 확정 파이프라인:
+    정본 편집은 0.5px 정합이 실측됐으므로, 차분 = 추가된 아이템이다.
+
+    이력(hysteresis) 추출: 강한 차이(아이템 본체)를 시드로 약한 차이를 연결
+    확장한다. 모델이 전신 음영을 미세하게 다시 그려 생기는 얇은 고스트 윤곽은
+    강한 시드와 연결되지 않아 탈락한다(모자 추출에서 실측된 실패 모드).
+    """
+    if worn.size != ref.size:
+        worn = worn.resize(ref.size, Image.LANCZOS)
+    w = np.asarray(worn.convert('RGBA'), dtype=np.int32)
+    r = np.asarray(ref.convert('RGBA'), dtype=np.int32)
+    dist = np.abs(w[..., :3] - r[..., :3]).max(axis=-1)
+    visible = w[..., 3] > 16
+    new_px = visible & (r[..., 3] <= 16)          # 정본에 없던 픽셀(실루엣 확장)은 무조건 강함
+    weak = visible & (new_px | (dist > thresh_weak))
+    strong = visible & (new_px | (dist > thresh_strong))
+    strong = _morph(_morph(strong, 'erode'), 'dilate')  # 강한 시드의 스펙클 제거
+    # 형태 판별: 고스트 잔상은 "얇은 선"(전신 재음영 윤곽), 진짜 아이템은 "넓은 면".
+    # 2회 침식을 견디는 두꺼운 약영역만 인정하고, 얇은 선은 강한 시드가 없는 한 버린다.
+    thick_weak = _morph(_morph(weak, 'erode', 2), 'dilate', 2) & weak
+    changed = strong | thick_weak
+    changed = _morph(changed, 'dilate') & weak            # 가장자리 안티앨리어스 1px 회수
+    changed = _morph(_morph(changed, 'dilate'), 'erode')  # close: 핀홀 메움
+    out = w.copy()
+    out[..., 3] = np.where(changed, w[..., 3], 0)
+    return Image.fromarray(out.astype(np.uint8), 'RGBA')
+
+
+def split_hair(img: Image.Image, ref_img: Image.Image, frac: float = 0.5):
+    """헤어 레이어를 턱선 기준 front(머리 위)/back(몸 뒤) 두 파트로 분리 (§5 z-order).
+
+    row0/row1: 정본 콘텐츠 top + frac*height 아래 픽셀 → back. row2: 전부 front.
+    """
+    ref_cells = cell_metrics(ref_img)
+    arr = np.asarray(img.convert('RGBA')).copy()
+    h, w = arr.shape[:2]
+    ch = h // 3
+    front, back = arr.copy(), arr.copy()
+    for row in range(3):
+        y0, y1 = row * ch, (row + 1) * ch
+        if row == 2:
+            back[y0:y1, :, 3] = 0
+            continue
+        rc = [c for c in ref_cells[row * 3:(row + 1) * 3] if c]
+        if not rc:
+            back[y0:y1, :, 3] = 0
+            continue
+        top = int(np.median([c['top'] for c in rc]))
+        height = int(np.median([c['height'] for c in rc]))
+        chin = y0 + top + int(height * frac)
+        front[chin:y1, :, 3] = 0
+        back[y0:chin, :, 3] = 0
+    return Image.fromarray(front, 'RGBA'), Image.fromarray(back, 'RGBA')
+
+
 def replicate_views(img: Image.Image) -> Image.Image:
     """레이어 시트: 각 행의 col0 셀을 col1/col2 에 복제 (머리 위치 고정 전제)."""
     w, h = img.size
@@ -159,11 +232,20 @@ def main():
     ap.add_argument('--metrics-only', action='store_true')
     ap.add_argument('--align', help='행 정렬 JSON 적용 (마네킹에서 산출한 공통 보정)')
     ap.add_argument('--align-out', help='이 시트에서 행 정렬 JSON 산출 (정본 전용)')
+    ap.add_argument('--extract-worn', help='정본 raw 경로 — 착용 시트와의 차분으로 레이어 추출')
+    ap.add_argument('--split-hair', action='store_true', help='추출 레이어를 턱선 기준 front/back 분리 (out 은 스템)')
+    ap.add_argument('--chin-frac', type=float, default=0.5)
     args = ap.parse_args()
 
     img = Image.open(args.inp).convert('RGBA')
     if not args.no_chroma and not has_real_alpha(img):
         img = unblend_chroma(img)
+    ref_img = None
+    if args.extract_worn:
+        ref_img = Image.open(args.extract_worn).convert('RGBA')
+        if not has_real_alpha(ref_img):
+            ref_img = unblend_chroma(ref_img)
+        img = extract_worn(img, ref_img)
     if args.layer:
         img = replicate_views(img)
 
@@ -209,8 +291,20 @@ def main():
 
     print('QA: ' + ('PASS' if ok else 'FAIL'))
     if args.out and not args.metrics_only:
-        img.save(args.out, 'PNG', optimize=True)
-        print(f'saved: {args.out}')
+        if args.split_hair:
+            if ref_img is None:
+                print('--split-hair 는 --extract-worn 과 함께 사용', file=sys.stderr)
+                sys.exit(2)
+            ref_n = ref_img.crop((0, 0, min(ref_img.size), min(ref_img.size))).resize((args.size, args.size), Image.LANCZOS)
+            if args.align or args.align_out:
+                ref_n = apply_row_align(ref_n, dys)
+            front, back = split_hair(img, ref_n, args.chin_frac)
+            front.save(args.out + '_front.png', 'PNG', optimize=True)
+            back.save(args.out + '_back.png', 'PNG', optimize=True)
+            print(f'saved: {args.out}_front.png / _back.png')
+        else:
+            img.save(args.out, 'PNG', optimize=True)
+            print(f'saved: {args.out}')
     sys.exit(0 if ok else 3)
 
 
