@@ -240,9 +240,11 @@ body {
  * (.arena.shake / .arena.microshake 폐지). 세기·지속을 상황마다 다르게 주고,
  * 여러 흔들림이 겹칠 때 센 쪽이 이기게 하려면 키프레임으로는 부족하다. */
 
-/* --walk-shift = -(3프레임 × frameW)
+/* --walk-shift = -(N프레임 × frameW) (stage.js applySprite 가 주입)
  * 시트 플립북(heroWalk)에 수직 밥+미세 기울임(walkBob)을 겹쳐 발걸음마다 통통 튀게.
- * 두 애니메이션은 서로 다른 속성(배경 위치 / transform)이라 충돌하지 않는다. */
+ * 두 애니메이션은 서로 다른 속성(배경 위치 / transform)이라 충돌하지 않는다.
+ * 프레임 수는 .frames-6 클래스로 고른다 — steps(var()) 는 Chrome 이 셔한드에서
+ * 소비하지 못한다(실브라우저 회귀로 실측). 시트 없는 캐릭터는 3프레임 폴백. */
 .hero.walking, .follower.walking {
   animation: heroWalk .48s steps(3) infinite, walkBob .48s ease-in-out infinite;
 }
@@ -250,10 +252,17 @@ body {
 .follower.f1.walking { animation-delay: 0s, .12s; }
 .follower.f2.walking { animation-delay: 0s, .26s; }
 /* 달리기 (단계 2) — 큐가 밀려 따라잡는 구간: 걸음이 빨라지고 몸이 앞으로 기운다.
- * 걷기와 달리기가 한눈에 구분되는 것이 A기둥 체크리스트다. 시트가 오기 전에는
- * 같은 3프레임을 빠르게 돌리고 자세(기울임·보폭 밥)로 구분한다. */
+ * 걷기와 달리기가 한눈에 구분되는 것이 A기둥 체크리스트다. 전용 달리기 시트는
+ * stage.js setGait 가 스왑하고, 자세(기울임·보폭 밥)가 구분을 더한다. */
 .hero.walking.running, .follower.walking.running {
   animation: heroWalk .3s steps(3) infinite, runBob .3s ease-in-out infinite;
+}
+/* 6프레임 시트 (단계 2 부채 해소 — 워크사이클 확장) */
+.hero.walking.frames-6, .follower.walking.frames-6 {
+  animation: heroWalk .48s steps(6) infinite, walkBob .48s ease-in-out infinite;
+}
+.hero.walking.running.frames-6, .follower.walking.running.frames-6 {
+  animation: heroWalk .3s steps(6) infinite, runBob .3s ease-in-out infinite;
 }
 .follower.f1.walking.running { animation-delay: 0s, .08s; }
 .follower.f2.walking.running { animation-delay: 0s, .17s; }
@@ -283,6 +292,31 @@ body {
  * 이 애니메이션을 접촉 자세에서 잠깐 얼리므로 "맞는 순간"이 또렷하게 남는다.
  * 돌진 거리 --lunge 는 game.js syncLunge 가 매 타격 실측으로 넣는다(접점 통일). */
 .hero.strike { animation: heroStrike .3s cubic-bezier(.3, 1.2, .5, 1) !important; }
+/* 공격 시트 플립북 — 모션(transform)과 나란히 도는 배경 위치 애니메이션.
+ * --atk-shift 는 stage.js swapToAttackPose 가 주입하고, 프레임 수는 atk-6/atk-8
+ * 고정 클래스로 고른다 — steps(var()) 는 Chrome 셔한드가 소비하지 못한다(실측).
+ * 각 변형의 길이는 그 모션의 dur 과 일치해야 접점(setTimeout)과 맞물린다.
+ * 시트가 없으면 두 클래스 모두 없어 플립북이 돌지 않는다(단일 포즈 폴백). */
+@keyframes atkFlip {
+  from { background-position: 0 0; }
+  to   { background-position: var(--atk-shift, 0px) 0; }
+}
+.hero.strike.atk-6 { animation: heroStrike .3s cubic-bezier(.3, 1.2, .5, 1), atkFlip .3s steps(6) both !important; }
+.hero.strike.atk-8 { animation: heroStrike .3s cubic-bezier(.3, 1.2, .5, 1), atkFlip .3s steps(8) both !important; }
+.hero.jab.atk-6 { animation: heroJab .26s ease-out, atkFlip .26s steps(6) both !important; }
+.hero.jab.atk-8 { animation: heroJab .26s ease-out, atkFlip .26s steps(8) both !important; }
+.hero.st-slam.atk-6 { animation: stSlam .36s cubic-bezier(.3, 1.1, .4, 1), atkFlip .36s steps(6) both !important; }
+.hero.st-slam.atk-8 { animation: stSlam .36s cubic-bezier(.3, 1.1, .4, 1), atkFlip .36s steps(8) both !important; }
+.hero.st-combo.atk-6 { animation: stCombo .25s ease-out, atkFlip .25s steps(6) both !important; }
+.hero.st-combo.atk-8 { animation: stCombo .25s ease-out, atkFlip .25s steps(8) both !important; }
+.hero.st-spin.atk-6 { animation: stSpin .34s cubic-bezier(.3, 1, .5, 1), atkFlip .34s steps(6) both !important; }
+.hero.st-spin.atk-8 { animation: stSpin .34s cubic-bezier(.3, 1, .5, 1), atkFlip .34s steps(8) both !important; }
+.hero.st-leap.atk-6 { animation: stLeap .4s cubic-bezier(.25, 1.2, .4, 1), atkFlip .4s steps(6) both !important; }
+.hero.st-leap.atk-8 { animation: stLeap .4s cubic-bezier(.25, 1.2, .4, 1), atkFlip .4s steps(8) both !important; }
+.hero.st-dash.atk-6 { animation: stDash .3s cubic-bezier(.2, .9, .3, 1), atkFlip .3s steps(6) both !important; }
+.hero.st-dash.atk-8 { animation: stDash .3s cubic-bezier(.2, .9, .3, 1), atkFlip .3s steps(8) both !important; }
+.hero.st-flick.atk-6 { animation: stFlick .3s ease-out, atkFlip .3s steps(6) both !important; }
+.hero.st-flick.atk-8 { animation: stFlick .3s ease-out, atkFlip .3s steps(8) both !important; }
 @keyframes heroStrike {
   0%   { transform: scale(var(--sc, .40)) translateX(0); }
   16%  { transform: scale(var(--sc, .40)) translateX(-13px) rotate(-6deg) scaleX(.96) scaleY(1.05); }
@@ -975,8 +1009,13 @@ body {
   .enemy img.spawn-in,
   .enemy img.boss-in, .enemy.is-boss::before,
   .ambient-pt, .speedlines.flash, .hero.hop, .follower.hop, .fx-heartp,
-  .hero.walking, .follower.walking, .arena.boss-rage::after,
-  .story-card.pop, .boss-bubble.pop, .chapter-banner.show, .story-more { animation: none; }
+  .hero.walking, .follower.walking,
+  .hero.walking.frames-6, .follower.walking.frames-6,
+  .hero.walking.running.frames-6, .follower.walking.running.frames-6,
+  .arena.boss-rage::after,
+  .story-card.pop, .boss-bubble.pop, .chapter-banner.show, .story-more { animation: none !important; }
+  /* !important 인 이유: 모션 클래스(.hero.st-* 등)가 animation 을 !important 로
+   * 선언한다 — 여기가 평서술이면 감속 모드에서 타격 모션·플립북이 계속 돈다. */
   .confetti, .ambient-pt, .speedlines,
   .fx-heartp { display: none; }
   /* 정보 FX(숫자·골드)는 **남되 정적**이다 — 사라져도, 날아다녀도 실패 (단계 1).

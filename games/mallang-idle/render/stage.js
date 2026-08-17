@@ -62,12 +62,26 @@
   };
 
   /* 원경 실루엣 플레이스홀더의 챕터 무드 색 (단계 2) — 표현 계층 소유라 data/* 불변.
-   * 전용 시차 아트(7.3절)가 오면 이 틴트는 이미지로 교체된다. */
+   * 전용 아트가 없는 챕터가 생기면 이 틴트 그라디언트가 폴백으로 남는다. */
   var FAR_TINT = {
     meadow: 'rgba(122, 156, 110, .30)', garden: 'rgba(150, 170, 105, .30)',
     gears: 'rgba(150, 132, 150, .30)', machine: 'rgba(140, 126, 148, .32)',
     core: 'rgba(158, 118, 138, .32)',
     starsea: 'rgba(96, 116, 178, .34)', moonfactory: 'rgba(134, 128, 158, .32)',
+  };
+
+  /* 시차 전용 아트 (7.3절 — 단계 2 부채 해소, imagegen 위탁분).
+   * far = 원경 실루엣 띠(챕터별), sky = 하늘 장식 띠(야외 챕터만 — 실내 기계 구간은
+   * setChapter 의 기존 감쇠 규칙이 그대로 적용된다). 없으면 CSS 플레이스홀더 폴백. */
+  var FAR_ART = {
+    meadow: 'assets/far-meadow.png', gears: 'assets/far-gears.png',
+    machine: 'assets/far-machine.png', core: 'assets/far-core.png',
+    garden: 'assets/far-garden.png',
+    starsea: 'assets/far-starsea.png', moonfactory: 'assets/far-moonfactory.png',
+  };
+  var SKY_ART = {
+    meadow: 'assets/sky-day.png', garden: 'assets/sky-day.png',
+    starsea: 'assets/sky-star.png',
   };
 
   /* ── 단계 3: 전투 안무 (B기둥) — 캐릭터별 공격 + 스킬 ────────────────────
@@ -500,9 +514,18 @@
       if (el.farLayer) {
         var tint = FAR_TINT[ch.id];
         if (tint) el.farLayer.style.setProperty('--pl-far', tint);
+        /* 전용 원경 아트 — 있으면 그라디언트 플레이스홀더 대신 이미지가 흐른다 */
+        var farArt = FAR_ART[ch.id];
+        el.farLayer.style.backgroundImage = farArt ? "url('" + farArt + "')" : '';
+        el.farLayer.style.backgroundSize = farArt ? 'auto 100%' : '';
         /* 실내·기계 구간에서도 구름이 흐르면 이상하다 — 야외 무드에만 보인다 */
         var outdoor = ch.id === 'meadow' || ch.id === 'garden' || ch.id === 'starsea';
-        if (el.cloudLayer) el.cloudLayer.style.opacity = outdoor ? '' : '0.25';
+        if (el.cloudLayer) {
+          el.cloudLayer.style.opacity = outdoor ? '' : '0.25';
+          var skyArt = SKY_ART[ch.id];
+          el.cloudLayer.style.backgroundImage = skyArt ? "url('" + skyArt + "')" : '';
+          el.cloudLayer.style.backgroundSize = skyArt ? 'auto 100%' : '';
+        }
       }
     }
 
@@ -661,12 +684,21 @@
 
     // ── 액터 ──────────────────────────────────────────────────
     /* 프레임 폭이 캐릭터마다 달라 background-size 까지 함께 바꿔야 워크사이클이 안 어긋난다.
-     * 단계 2·3 에서 이 함수가 "상태별 시트"를 다루도록 확장된다. */
-    function applySprite(node, c) {
-      node.style.width = c.frameW + 'px';
-      node.style.backgroundImage = "url('" + c.walk + "')";
-      node.style.backgroundSize = (c.frameW * 3) + 'px 220px';
-      node.style.setProperty('--walk-shift', '-' + (c.frameW * 3) + 'px');
+     * 상태별 시트(단계 2·3 에셋 부채 해소): 걷기/달리기 시트를 gait 에 따라 고르고,
+     * 프레임 수는 --walk-steps 로 CSS steps() 에 전달한다. 시트가 없으면 걷기 폴백. */
+    function sheetFor(c, running) {
+      if (running && c.run) return { img: c.run, w: c.runW || c.frameW, n: c.runN || c.walkN || 3 };
+      return { img: c.walk, w: c.frameW, n: c.walkN || 3 };
+    }
+    function applySprite(node, c, running) {
+      var s = sheetFor(c, running);
+      node.style.width = s.w + 'px';
+      node.style.backgroundImage = "url('" + s.img + "')";
+      node.style.backgroundSize = (s.w * s.n) + 'px 220px';
+      node.style.setProperty('--walk-shift', '-' + (s.w * s.n) + 'px');
+      node.style.setProperty('--walk-steps', s.n);
+      /* steps(var()) 는 Chrome 셔한드가 못 먹는다(실측) — 프레임 수 클래스로 고른다 */
+      node.classList.toggle('frames-6', s.n === 6);
     }
 
     var lastPartyKey = '';
@@ -676,11 +708,11 @@
       lastPartyKey = key;
       party = state.party.slice();
       var lead = Chars.byId(party[0]);
-      if (lead) applySprite(el.hero, lead);
+      if (lead) applySprite(el.hero, lead, lastGait);
       [el.follower1, el.follower2].forEach(function (node, i) {
         var c = party[i + 1] ? Chars.byId(party[i + 1]) : null;
         node.hidden = !c;
-        if (c) applySprite(node, c);
+        if (c) applySprite(node, c, lastGait);
       });
     }
 
@@ -692,6 +724,13 @@
       lastGait = running;
       [el.hero, el.follower1, el.follower2].forEach(function (n) {
         n.classList.toggle('running', running);
+      });
+      /* 달리기 전용 시트 스왑 — 히어로가 공격 포즈 중이면 복원(restoreWalkPose) 때 반영 */
+      var lead = Chars.byId(party[0]);
+      if (lead && !poseSwapped) applySprite(el.hero, lead, running);
+      [el.follower1, el.follower2].forEach(function (node, i) {
+        var c = party[i + 1] ? Chars.byId(party[i + 1]) : null;
+        if (c && !node.hidden) applySprite(node, c, running);
       });
     }
 
@@ -865,19 +904,35 @@
       frameKill = false;
     }
 
-    function swapToAttackPose() {
+    /* 다중 프레임 공격 시트(단계 3 에셋 부채 해소) — 스킬 세트피스는 전용 시트,
+     * 기본타는 공격 시트, 둘 다 없으면 기존 단일 포즈 폴백. 플립북 재생은 CSS
+     * atkFlip(각 모션 클래스에 함께 선언)이 --atk-steps/--atk-shift 로 한다. */
+    function swapToAttackPose(isSkill) {
       var c = Chars.byId(party[0]);
-      if (!c || !c.atk) return;
-      el.hero.style.backgroundImage = "url('" + c.atk + "')";
-      el.hero.style.width = c.atkW + 'px';
-      el.hero.style.backgroundSize = c.atkW + 'px 220px';
+      if (!c) return;
+      var sp = isSkill && c.atkSp ? { img: c.atkSp, w: c.atkSpW, n: c.atkSpN }
+             : c.atkSheet ? { img: c.atkSheet, w: c.atkSheetW, n: c.atkSheetN }
+             : c.atk ? { img: c.atk, w: c.atkW, n: 1 } : null;
+      if (!sp) return;
+      el.hero.style.backgroundImage = "url('" + sp.img + "')";
+      el.hero.style.width = sp.w + 'px';
+      el.hero.style.backgroundSize = (sp.w * sp.n) + 'px 220px';
+      el.hero.style.setProperty('--atk-shift', '-' + (sp.w * sp.n) + 'px');
+      el.hero.style.setProperty('--atk-steps', sp.n);
+      /* 프레임 수는 고정 클래스 — steps(var()) 를 Chrome 셔한드가 못 먹는다(실측) */
+      el.hero.classList.remove('atk-6', 'atk-8');
+      if (sp.n > 1) el.hero.classList.add('atk-' + sp.n);
       poseSwapped = true;
     }
     function restoreWalkPose() {
       if (!poseSwapped) return;
       poseSwapped = false;
+      /* 모션 클래스도 함께 걷어낸다 — atkFlip 의 fill(both)이 걷기 시트의
+       * background-position 을 물고 있으면 걸음 프레임이 어긋난다 */
+      el.hero.classList.remove('alt', 'accent', 'skill', 'atk-6', 'atk-8');
+      for (var m = 0; m < STRIKE_MOTIONS.length; m++) el.hero.classList.remove(STRIKE_MOTIONS[m]);
       var c = Chars.byId(party[0]);
-      if (c) applySprite(el.hero, c);
+      if (c) applySprite(el.hero, c, lastGait);
     }
 
     /* 타격 접점 통일 — 돌진 거리가 고정이면 캐릭터 폭(139~301px)에 따라 주먹이 적을
@@ -914,13 +969,15 @@
       // 모션 클래스 — 이전 것들을 싹 지우고 이번 것만 (교대·강조·스킬 마커 포함)
       el.hero.classList.remove('alt', 'accent', 'skill');
       for (var m = 0; m < STRIKE_MOTIONS.length; m++) el.hero.classList.remove(STRIKE_MOTIONS[m]);
+      /* 시트 스왑을 클래스보다 먼저 — atkFlip 애니메이션이 시작되는 순간
+       * --atk-steps/--atk-shift 가 이미 이번 타격의 시트를 가리켜야 한다 */
+      swapToAttackPose(isSkill);
       void el.hero.offsetWidth;
       el.hero.classList.add(motion);
       if (strikeAlt) el.hero.classList.add('alt');
       if (isSkill) el.hero.classList.add('skill');
       else if (accent) el.hero.classList.add('accent');
 
-      swapToAttackPose();
       syncLunge(useJab ? 0.9 : style.lungeK);
       sfx(isSkill ? 'skill' : 'hit');   // 스킬 발동 = 전용 스팅(단계 5), 기본타 = hit
       var p = enemyPoint();     // 좌표 고정 — 접촉까지 적이 바뀌어도 빈 곳에 안 찍힌다
@@ -1138,6 +1195,7 @@
         lastEmit: function () { return lastEmit; },
         caps: function () { return { particle: PARTICLE_CAP, reserve: INFO_RESERVE, dom: FX_CAP, domCount: fxCount }; },
         // 단계 3 회귀용 — 캐릭터별 모션·리듬 변주·적 반응을 밖에서 검증한다
+        restorePose: restoreWalkPose,   // 에셋 시트 회귀 — 타이머와 무관하게 동기 복원
         styleFor: function (id) { return styleFor(Chars.byId(id)).cls; },
         lastStrike: function () { return lastStrikeInfo; },
         lastReact: function () { return lastReactClass; },

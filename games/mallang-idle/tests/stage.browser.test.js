@@ -376,6 +376,85 @@ async function main(pg) {
     ' return { hero:hero, has:has };})()')));
   ok(motionApplied.has, '타격 시 스타일 모션 클래스가 히어로 노드에 걸린다', motionApplied);
 
+  // ═══ 에셋 시트 — 걷기/달리기/공격 다중 프레임 (단계 2·3 부채 해소) ═══════
+  /* 그림의 재미는 사람 게이트가 판정하지만, "규격 배선"은 기계가 잡는다:
+   * frameW×N = background-size, --walk-steps 를 CSS steps() 가 실제로 소비,
+   * 공격 시트 스왑 → 플립북 변수 → 복원까지가 계약이다. */
+  /* 자연 타격(실행 환경에 따라 rAF 가 돌면 발화)이 스냅샷 사이에 낄 수 있어,
+   * 시트 검증은 fx.restorePose() 로 포즈를 동기 복원한 뒤 잰다 — 레이스 무관. */
+  var walkSheet = JSON.parse(await pg.eval(J(
+    '(function(){window.__mallangIdle.Stage.fx.restorePose();' +
+    ' var hero=document.getElementById("hero");' +
+    ' var steps=hero.style.getPropertyValue("--walk-steps").trim();' +
+    ' var w=parseFloat(hero.style.width);' +
+    ' var bgw=parseFloat(hero.style.backgroundSize);' +
+    ' var frames6=hero.classList.contains("frames-6");' +
+    /* 라이브 노드는 컷신 잔류 클래스(hop 등)가 계측을 오염시킬 수 있어,
+     * CSS 계약(steps(6) 소비)은 격리 프로브로 잰다 */
+    ' var probe=document.createElement("div");' +
+    ' probe.className="hero walking frames-6";' +
+    ' probe.style.position="absolute"; probe.style.left="-9999px";' +
+    ' document.body.appendChild(probe);' +
+    ' var tf=getComputedStyle(probe).animationTimingFunction;' +
+    ' probe.remove();' +
+    ' return { steps:steps, w:w, bgw:bgw, frames6:frames6, tf:tf, bg:hero.style.backgroundImage };})()')));
+  ok(walkSheet.steps === '6' && walkSheet.frames6 && Math.round(walkSheet.bgw) === Math.round(walkSheet.w * 6),
+    '걷기 시트가 6프레임 규격으로 배선된다 (frameW×6 = background-size, frames-6)', walkSheet);
+  ok(/steps\(6/.test(walkSheet.tf), 'CSS steps(6) 가 6프레임 시트 클래스에 실제로 걸린다', walkSheet);
+
+  // ── 달리기 전용 시트 — 큐 따라잡기 구간에서 시트째 바뀐다 ──
+  /* 드레인 중 잔여 관측 데미지로 자연 타격이 낄 수 있다(공격 시트로 잠시 스왑).
+   * 복원 타이머(dur+20)가 소진된 뒤의 상태가 "따라잡은 뒤"의 진실이다. */
+  var runSheet = JSON.parse(await pg.eval(J(
+    '(function(){var H=window.__mallangIdle; var fx=H.Stage.fx;' +
+    ' fx.restorePose();' +
+    ' var evs=[]; for (var i=0;i<7;i++) evs.push({ type:"mob_kill", gold:1, stage:H.state.stage, index:0 });' +
+    ' H.Stage.push(evs); H.Stage.update(0.05, 0, H.state);' +
+    ' var hero=document.getElementById("hero");' +
+    ' var mid=hero.style.backgroundImage;' +
+    ' var midSteps=hero.style.getPropertyValue("--walk-steps").trim();' +
+    ' for (var j=0;j<400 && !H.Stage.queue.idle();j++) H.Stage.update(0.05, 0, H.state);' +
+    ' fx.restorePose();' +                    // 드레인 중 낀 자연 타격 복원 — 레이스 무관
+    ' H.Stage.update(0.05, 0, H.state);' +
+    ' return { mid:mid, midSteps:midSteps, end:hero.style.backgroundImage,' +
+    '   running:hero.className.indexOf("running")>=0 };})()')));
+  ok(/-run\.png/.test(runSheet.mid) && runSheet.midSteps === '6',
+    '달리기 구간에 전용 달리기 시트가 스왑된다', runSheet);
+  ok(/-walk\.png/.test(runSheet.end) && !runSheet.running, '따라잡으면 걷기 시트로 복귀한다', runSheet);
+
+  // ── 공격 시트 — 기본타 6프레임·스킬 8프레임 플립북 스왑 ──
+  var atkSheet = JSON.parse(await pg.eval(J(
+    '(function(){var fx=window.__mallangIdle.Stage.fx; var hero=document.getElementById("hero");' +
+    ' var basic=null, skill=null;' +
+    ' for (var i=0;i<10 && !(basic && skill);i++){ fx.strike(500,1000);' +
+    '   var t=fx.lastStrike().tier;' +
+    '   var snap={ bg:hero.style.backgroundImage, steps:hero.style.getPropertyValue("--atk-steps").trim(),' +
+    '     w:parseFloat(hero.style.width), bgw:parseFloat(hero.style.backgroundSize) };' +
+    '   if (t==="skill") skill=skill||snap; else basic=basic||snap; }' +
+    ' return { basic:basic, skill:skill };})()')));
+  ok(atkSheet.basic && /atk-[a-z]+-sheet\.png/.test(atkSheet.basic.bg) && atkSheet.basic.steps === '6'
+     && Math.round(atkSheet.basic.bgw) === Math.round(atkSheet.basic.w * 6),
+    '기본타에 6프레임 공격 시트가 스왑되고 플립북 변수가 함께 간다', atkSheet);
+  ok(atkSheet.skill && /atk-[a-z]+-sp\.png/.test(atkSheet.skill.bg) && atkSheet.skill.steps === '8',
+    '스킬 세트피스에 8프레임 전용 시트가 스왑된다', atkSheet);
+
+  var restored = JSON.parse(await pg.eval(J(
+    '(function(){var fx=window.__mallangIdle.Stage.fx; var hero=document.getElementById("hero");' +
+    ' fx.strike(500, 1000);' +
+    ' var duringAtk=/atk-/.test(hero.style.backgroundImage);' +
+    ' fx.restorePose();' +                    // 타이머 경로와 같은 함수를 동기 검증
+    ' var motions=["strike","jab","st-slam","st-combo","st-spin","st-leap","st-dash","st-flick","atk-6","atk-8"];' +
+    ' var lingering=motions.filter(function(m){return hero.classList.contains(m);});' +
+    ' return { duringAtk:duringAtk, bg:hero.style.backgroundImage, lingering:lingering };})()')));
+  ok(restored.duringAtk && /-(walk|run)\.png/.test(restored.bg) && restored.lingering.length === 0,
+    '복원 경로가 시트·모션 클래스를 걷기 상태로 되돌린다 (atkFlip 잔류 금지)', restored);
+
+  // ── 시차 전용 아트 — 원경 겹이 그라디언트가 아니라 이미지를 흘린다 ──
+  var farArt = JSON.parse(await pg.eval(J(
+    '(function(){var far=document.getElementById("farLayer");' +
+    ' return { bg: far ? far.style.backgroundImage : "" };})()')));
+  ok(/far-[a-z]+\.png/.test(farArt.bg), '원경 시차 겹에 챕터 전용 아트가 실린다', farArt);
+
   // ═══ 단계 4 — 카메라 & 보스 개성 (C·E기둥) ═══════════════════════
   /* 헤드리스에선 CSS transform 애니메이션이 얼지만, 카메라는 JS 가 transform 을
    * 직접 쓰므로 camera.scale/renderScale/target 상태로 판정한다(AGENT_PROTOCOL 7절). */

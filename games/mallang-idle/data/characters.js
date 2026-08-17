@@ -20,21 +20,30 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
 
+  /* 스프라이트 메타(표현 전용): walk/run = 6프레임 워크사이클(walkN·runN),
+   * atkSheet = 기본공격 6프레임, atkSp = 스킬 세트피스 8프레임 (7.1절 규격).
+   * atk(단일 포즈)는 시트 부재 시 폴백으로 남긴다. 스킬 '수치'는 불변. */
   var CHARACTERS = [
     {
       id: 'rabbit', name: '모찌 토끼', unlockStage: 1,
-      walk: 'assets/hero-rabbit-walk.png', frameW: 151,
+      walk: 'assets/hero-rabbit-walk.png', frameW: 172, walkN: 6,
+      run: 'assets/hero-rabbit-run.png', runW: 152, runN: 6,
       portrait: 'assets/portrait-rabbit.png',
       atk: 'assets/atk-rabbit.png', atkW: 265,
+      atkSheet: 'assets/atk-rabbit-sheet.png', atkSheetW: 244, atkSheetN: 6,
+      atkSp: 'assets/atk-rabbit-sp.png', atkSpW: 170, atkSpN: 8,
       skill: { key: 'atkMul', value: 0.20 },
       skillText: '공격력 +20%',
       desc: '한 방이 묵직한 기본기형',
     },
     {
       id: 'chick', name: '피치 병아리', unlockStage: 5,
-      walk: 'assets/hero-chick-walk.png', frameW: 188,
+      walk: 'assets/hero-chick-walk.png', frameW: 188, walkN: 6,
+      run: 'assets/hero-chick-run.png', runW: 242, runN: 6,
       portrait: 'assets/portrait-chick.png',
       atk: 'assets/atk-chick.png', atkW: 301,
+      atkSheet: 'assets/atk-chick-sheet.png', atkSheetW: 312, atkSheetN: 6,
+      atkSp: 'assets/atk-chick-sp.png', atkSpW: 270, atkSpN: 8,
       skill: { key: 'aspdMul', value: 0.18 },
       skillText: '공격 속도 +18%',
       desc: '빠르게 쪼아대는 속공형',
@@ -45,27 +54,36 @@
      * 컷신 화자-해금 정합(챕터 경계 31/71/131/211)은 무결성 테스트가 지킨다. */
     {
       id: 'hamster', name: '푸딩 햄스터', unlockStage: 22,
-      walk: 'assets/hero-hamster-walk.png', frameW: 191,
+      walk: 'assets/hero-hamster-walk.png', frameW: 194, walkN: 6,
+      run: 'assets/hero-hamster-run.png', runW: 290, runN: 6,
       portrait: 'assets/portrait-hamster.png',
       atk: 'assets/atk-hamster.png', atkW: 283,
+      atkSheet: 'assets/atk-hamster-sheet.png', atkSheetW: 236, atkSheetN: 6,
+      atkSp: 'assets/atk-hamster-sp.png', atkSpW: 216, atkSpN: 8,
       skill: { key: 'goldMul', value: 0.25 },
       skillText: '골드 획득 +25%',
       desc: '볼주머니 가득 모으는 살림꾼',
     },
     {
       id: 'latte', name: '라떼 퍼피', unlockStage: 55,
-      walk: 'assets/hero-latte-walk.png', frameW: 139,
+      walk: 'assets/hero-latte-walk.png', frameW: 202, walkN: 6,
+      run: 'assets/hero-latte-run.png', runW: 224, runN: 6,
       portrait: 'assets/portrait-latte.png',
       atk: 'assets/atk-latte.png', atkW: 253,
+      atkSheet: 'assets/atk-latte-sheet.png', atkSheetW: 204, atkSheetN: 6,
+      atkSp: 'assets/atk-latte-sp.png', atkSpW: 200, atkSpN: 8,
       skill: { key: 'bossMul', value: 0.35 },
       skillText: '보스에게 주는 피해 +35%',
       desc: '큰 상대일수록 신나는 돌파형',
     },
     {
       id: 'mintcat', name: '민트 키튼', unlockStage: 90,
-      walk: 'assets/hero-mintcat-walk.png', frameW: 202,
+      walk: 'assets/hero-mintcat-walk.png', frameW: 208, walkN: 6,
+      run: 'assets/hero-mintcat-run.png', runW: 286, runN: 6,
       portrait: 'assets/portrait-mintcat.png',
       atk: 'assets/atk-mintcat.png', atkW: 258,
+      atkSheet: 'assets/atk-mintcat-sheet.png', atkSheetW: 334, atkSheetN: 6,
+      atkSp: 'assets/atk-mintcat-sp.png', atkSpW: 254, atkSpN: 8,
       skill: { key: 'advanceMul', value: 0.40 },
       skillText: '이동 시간 -40%',
       desc: '사뿐사뿐 빨리 도는 발바닥',
@@ -75,9 +93,12 @@
      * 새 갈림길을 만든다 — 코어 루프의 긴장 2번을 깊게 하는 축. */
     {
       id: 'otter', name: '별사탕 수달', unlockStage: 120,
-      walk: 'assets/hero-otter-walk.png', frameW: 190,
+      walk: 'assets/hero-otter-walk.png', frameW: 182, walkN: 6,
+      run: 'assets/hero-otter-run.png', runW: 276, runN: 6,
       portrait: 'assets/portrait-otter.png',
       atk: 'assets/atk-otter.png', atkW: 236,
+      atkSheet: 'assets/atk-otter-sheet.png', atkSheetW: 278, atkSheetN: 6,
+      atkSp: 'assets/atk-otter-sp.png', atkSpW: 254, atkSpN: 8,
       skill: { key: 'shardMul', value: 0.35 },
       skillText: '별조각 획득 +35%',
       desc: '반짝이는 건 놓치지 않는 수집가',
