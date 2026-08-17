@@ -441,12 +441,10 @@
   // ── Picker state ────────────────────────────────────────────────────────────
   let selectedCharacterId = null; // 동물 worldId 또는 'human'
   let selectedPreset = null;      // human 일 때 'girl'|'boy' (카드 하이라이트 용)
-  let selectedBuddyId = null;     // human 일 때 게임에 데려갈 말랑 친구
   let pendingOutfit = null;       // human 일 때 입장에 쓸 착장(항상 sanitize 완료)
   // buildPicker() 가 이 IIFE 본문 실행 중에 곧장 돌기 때문에, 피커가 만지는
   // let 상태는 전부 이 지점 위에서 선언돼야 한다(아래 joinParams TDZ 주석과
-  // 같은 함정 — 실제로 buddyRowEl 을 아래 두었다가 TDZ ReferenceError 발생).
-  let buddyRowEl = null;
+  // 같은 함정 — 과거 buddyRowEl 을 아래 두었다가 TDZ ReferenceError 발생).
   buildPicker();
   restoreSavedName();
   startOnlinePoll();
@@ -593,7 +591,6 @@
         btn.innerHTML = `
           <div class="preview" aria-hidden="true">${preset.emoji || '🧒'}</div>
           <span class="label">${escapeHtml(preset.label)}</span>
-          <span class="sub-label">${escapeHtml(preset.sub || '꾸미기 가능')}</span>
         `;
         // 프리뷰: 프리셋 기본 착장의 정면 셀을 합성해 카드에 그린다(완성 전엔 emoji).
         paintHumanCardPreview(btn.querySelector('.preview'), W.sanitizeOutfit(null, presetId));
@@ -616,7 +613,6 @@
       btn.addEventListener('click', () => selectCharacter(c.worldId));
       picker.appendChild(btn);
     }
-    ensureBuddyRow();
   }
 
   function paintHumanCardPreview(previewEl, outfit) {
@@ -645,7 +641,6 @@
     pendingOutfit = null;
     highlightPickedCard(worldId);
     try { localStorage.setItem('world_character', worldId); } catch { /* ignore */ }
-    syncBuddyRow();
     updateJoinButton();
   }
 
@@ -664,60 +659,12 @@
     }
     highlightPickedCard(`human:${presetId}`);
     try { localStorage.setItem('world_character', HUMAN_ID); } catch { /* ignore */ }
-    // 말랑 친구(게임 파트너) — 저장값 복원, 없으면 랜덤 기본(§2).
-    if (!selectedBuddyId) {
-      let savedBuddy = null;
-      try { savedBuddy = localStorage.getItem('world_game_buddy'); } catch { /* ignore */ }
-      const valid = Array.isArray(window.CHARACTERS)
-        && window.CHARACTERS.some((c) => c.worldId === savedBuddy);
-      selectBuddy(valid ? savedBuddy
-        : window.CHARACTERS[Math.floor(Math.random() * window.CHARACTERS.length)].worldId);
-    }
-    syncBuddyRow();
     updateJoinButton();
   }
 
-  // ── 말랑 친구 서브 선택 (human 전용, §2 역할 분리) ──────────────────────────
-  // buddyRowEl 선언은 피커 상태 블록 상단에 있다(TDZ 주의).
-  function ensureBuddyRow() {
-    if (buddyRowEl || !picker.parentElement) return;
-    const row = document.createElement('div');
-    row.id = 'buddy-select';
-    row.className = 'buddy-select hidden';
-    row.innerHTML = `
-      <span class="buddy-label">🎮 게임에 데려갈 말랑 친구</span>
-      <div class="buddy-cards"></div>
-    `;
-    const cards = row.querySelector('.buddy-cards');
-    for (const c of (window.CHARACTERS || [])) {
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.className = 'buddy-card';
-      b.dataset.worldId = c.worldId;
-      b.title = c.label;
-      b.innerHTML = c.portrait
-        ? `<img src="${c.portrait}" alt="${escapeHtml(c.label)}" />`
-        : characterEmoji(c.worldId);
-      b.addEventListener('click', () => selectBuddy(c.worldId));
-      cards.appendChild(b);
-    }
-    picker.parentElement.appendChild(row);
-    buddyRowEl = row;
-  }
-
-  function selectBuddy(worldId) {
-    selectedBuddyId = worldId;
-    try { localStorage.setItem('world_game_buddy', worldId); } catch { /* ignore */ }
-    if (buddyRowEl) {
-      for (const b of buddyRowEl.querySelectorAll('.buddy-card')) {
-        b.classList.toggle('selected', b.dataset.worldId === worldId);
-      }
-    }
-  }
-
-  function syncBuddyRow() {
-    if (buddyRowEl) buddyRowEl.classList.toggle('hidden', selectedCharacterId !== HUMAN_ID);
-  }
+  // 말랑 친구(게임 파트너) 사전 선택 UI 는 뒀다가 제거했다(2026-08-17 실측):
+  // 어떤 게임도 발사 URL 의 characterId 를 읽지 않고 자체 선택 화면/서버 배정을
+  // 쓴다. 서버 gameBuddyId 는 wire 기본값(랜덤 동물)으로만 남는다.
 
   function updateJoinButton() {
     const okName = nameInput.value.trim().length > 0;
@@ -764,12 +711,12 @@
     }
     joinParams = { name, characterId: selectedCharacterId, entryFrom };
     if (selectedCharacterId === HUMAN_ID) {
-      // 사람 아바타(§11): 착장 + 말랑 친구 + 카탈로그 버전. pendingOutfit 은
-      // 피커에서 항상 채워지지만, 방어적으로 저장값→프리셋 기본 순서로 폴백.
+      // 사람 아바타(§11): 착장 + 카탈로그 버전. pendingOutfit 은 피커에서 항상
+      // 채워지지만, 방어적으로 저장값→프리셋 기본 순서로 폴백. gameBuddyId 는
+      // 보내지 않는다 — 서버가 랜덤 동물로 기본 채움(게임은 어차피 자체 선택).
       const saved = loadSavedOutfit();
       const preset = selectedPreset || (saved ? saved.preset : 'girl');
       joinParams.outfit = pendingOutfit || window.WARDROBE.sanitizeOutfit(saved, preset);
-      joinParams.gameBuddyId = selectedBuddyId;
       joinParams.catalogVersion = window.WARDROBE.catalogVersion;
       myOutfitRev = Math.max(myOutfitRev, saved ? saved.rev : 0);
     }
