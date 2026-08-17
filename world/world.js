@@ -78,13 +78,99 @@
     const img = sprite?.img;
     const fallbackWidth = Math.max(1, Number(SPRITE_FRAME.width) || 32);
     const fallbackHeight = Math.max(1, Number(SPRITE_FRAME.height) || 32);
-    if (!img || !img.naturalWidth || !img.naturalHeight) {
+    // 사람 아바타 합성 시트는 canvas 라 naturalWidth 가 없다 — width 로 폴백.
+    const iw = img ? (img.naturalWidth || img.width) : 0;
+    const ih = img ? (img.naturalHeight || img.height) : 0;
+    if (!iw || !ih) {
       return { width: fallbackWidth, height: fallbackHeight };
     }
     return {
-      width: Math.floor(img.naturalWidth / cols) || fallbackWidth,
-      height: Math.floor(img.naturalHeight / rows) || fallbackHeight,
+      width: Math.floor(iw / cols) || fallbackWidth,
+      height: Math.floor(ih / rows) || fallbackHeight,
     };
+  }
+
+  // ── Human avatar composite (AVATAR_DESIGN.md §5) ─────────────────────────
+  // characterId 'human' 은 고정 시트가 아니라 착장(outfit) 기반 오프스크린 합성
+  // 시트를 쓴다. 착장이 바뀔 때 한 번만 합성하고 프레임마다는 시트 1장을 그린다.
+  // z-order: hair_back → 코디(바디 포함) → hair_front → 얼굴 소품 → 모자.
+  const HUMAN_ID = 'human';
+  // 걸음 재생(§5-6): 정지 프레임을 통과 자세로 재사용한 4박자 A→정지→B→정지.
+  // §1 사람검증(wardrobe-preview.html 토글 판정) 결과에 따라 2박자 [1,2] 로
+  // 되돌리거나 MS 를 90~200 사이로 조정한다.
+  const HUMAN_WALK_MS = 130;
+  const HUMAN_WALK_PATTERN = [1, 0, 2, 0];
+  const HUMAN_SHEET_SIZE = 384;        // 배포 정규화 규격(셀 128px, §5-7)
+  const HUMAN_SHEET_CACHE_MAX = 24;    // LRU 상한(§5-8)
+
+  const layerImageCache = new Map();   // url -> Promise<HTMLImageElement> (실패 시 reject)
+  function loadLayerImage(url) {
+    let p = layerImageCache.get(url);
+    if (p) return p;
+    p = new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error('layer load failed: ' + url));
+      img.src = url;
+    });
+    layerImageCache.set(url, p);
+    return p;
+  }
+
+  // outfitKey -> { img: canvas|null, ready, promise } — Map 삽입 순서를 LRU 로 사용.
+  const humanSheetCache = new Map();
+  function ensureHumanSheet(outfit) {
+    const W = window.WARDROBE;
+    const key = W.outfitKey(outfit);
+    let entry = humanSheetCache.get(key);
+    if (entry) {
+      // LRU touch — 최근 사용을 맨 뒤로.
+      humanSheetCache.delete(key);
+      humanSheetCache.set(key, entry);
+      return entry;
+    }
+    entry = { img: null, ready: false, promise: null };
+    entry.promise = Promise.all(W.layerUrls(outfit).map(loadLayerImage))
+      .then((imgs) => {
+        const canvas = document.createElement('canvas');
+        canvas.width = canvas.height = HUMAN_SHEET_SIZE;
+        const c = canvas.getContext('2d');
+        for (const img of imgs) c.drawImage(img, 0, 0, HUMAN_SHEET_SIZE, HUMAN_SHEET_SIZE);
+        entry.img = canvas;
+        entry.ready = true;
+        return entry;
+      })
+      .catch(() => {
+        // 레이어 하나라도 실패하면 합성 전체를 불합격 처리 — 민머리(마네킹)
+        // 부분 노출 대신 emoji 폴백을 유지한다(§3 비노출 원칙).
+        entry.ready = false;
+        return entry;
+      });
+    humanSheetCache.set(key, entry);
+    if (humanSheetCache.size > HUMAN_SHEET_CACHE_MAX) {
+      const oldest = humanSheetCache.keys().next().value;
+      humanSheetCache.delete(oldest);
+    }
+    return entry;
+  }
+
+  /* 플레이어의 현재 착장 시트를 돌려준다. 합성이 끝나기 전에는 그 플레이어가
+   * 마지막으로 완성했던 시트를 유지(원자 교체, §5-9) — 없으면 not-ready 를
+   * 돌려줘 emoji 폴백을 태운다. sanitize 결과는 raw 참조가 바뀔 때만 재계산.
+   */
+  function getHumanSprite(p) {
+    if (p._outfitRaw !== p.outfit || !p._outfitSan) {
+      p._outfitRaw = p.outfit;
+      p._outfitSan = window.WARDROBE.sanitizeOutfit(p.outfit);
+      // _lastSheet 은 남겨둔다 — 갈아입기 합성이 끝날 때까지 이전 착장을
+      // 그대로 보여주다가 완료 시 한 번에 교체(깜빡임 방지, §5-9).
+    }
+    const entry = ensureHumanSheet(p._outfitSan);
+    if (entry.ready) {
+      p._lastSheet = entry;
+      return entry;
+    }
+    return p._lastSheet || entry;
   }
 
   // ── World background ──────────────────────────────────────────────────────
@@ -2030,13 +2116,17 @@
     // 마다 달라서 어떤 y로 두어도 한쪽에서는 발과 분리돼 떠 보였다. 본인 표시는
     // 아래쪽 이름표 스타일로 처리한다.
 
-    const sprite = getSprite(p.characterId);
+    const isHuman = p.characterId === HUMAN_ID;
+    const sprite = isHuman ? getHumanSprite(p) : getSprite(p.characterId);
     let nameTagY = -r - 8;
 
     if (sprite.ready) {
       const dir = p.dir || 'down';
       const row = dir === 'down' ? 0 : dir === 'up' ? 2 : 1; // left/right -> side
-      const col = p.moving ? (Math.floor(performance.now() / WALK_FRAME_MS) % 2) + 1 : 0;
+      // 사람 아바타는 4박자(A→정지→B→정지, §5-6), 동물은 기존 2박자 유지.
+      const col = !p.moving ? 0
+        : isHuman ? HUMAN_WALK_PATTERN[Math.floor(performance.now() / HUMAN_WALK_MS) % HUMAN_WALK_PATTERN.length]
+        : (Math.floor(performance.now() / WALK_FRAME_MS) % 2) + 1;
       const { width: fw, height: fh } = getSpriteSourceFrame(sprite);
       const drawW = 100, drawH = 100;
       const destX = -drawW / 2;
@@ -2127,6 +2217,7 @@
 
   function characterEmoji(worldId) {
     switch (worldId) {
+      case 'human': return '🧒';
       case 'latte_puppy': return '🐶';
       case 'mochi_rabbit': return '🐰';
       case 'pudding_hamster': return '🐹';
