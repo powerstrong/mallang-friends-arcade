@@ -47,11 +47,16 @@ window.WARDROBE = {
    */
   items: [
     { id: 'outfit_dress_peach', slot: 'outfit', label: '복숭아 원피스', free: true, fit: 'girl', sheet: 'outfit_dress_peach.png' },
+    { id: 'outfit_dress_dot',   slot: 'outfit', label: '도트 원피스',   free: true, fit: 'girl', sheet: 'outfit_dress_dot.png' },
     { id: 'outfit_tee_sky',     slot: 'outfit', label: '하늘 세트',     free: true, fit: 'all',  sheet: 'outfit_tee_sky.png' },
+    { id: 'outfit_hoodie_dino', slot: 'outfit', label: '공룡 후드 세트', free: true, fit: 'boy', sheet: 'outfit_hoodie_dino.png' },
     { id: 'top_tee_berry',     slot: 'top',    label: '딸기 티셔츠', free: true, fit: 'all', sheet: 'top_tee_berry.png' },
     { id: 'top_tee_lavender',  slot: 'top',    label: '라벤더 긴팔', free: true, fit: 'all', sheet: 'top_tee_lavender.png' },
+    { id: 'top_shirt_check',   slot: 'top',    label: '체크 남방',   free: true, fit: 'boy', sheet: 'top_shirt_check.png' },
+    { id: 'top_sweat_navy',    slot: 'top',    label: '로켓 맨투맨', free: true, fit: 'boy', sheet: 'top_sweat_navy.png' },
     { id: 'bottom_jeans_blue',   slot: 'bottom', label: '청바지',     free: true, fit: 'all',  sheet: 'bottom_jeans_blue.png' },
     { id: 'bottom_skirt_lemon',  slot: 'bottom', label: '레몬 치마',  free: true, fit: 'girl', sheet: 'bottom_skirt_lemon.png' },
+    { id: 'bottom_cargo_sand',   slot: 'bottom', label: '카고 반바지', free: true, fit: 'boy',  sheet: 'bottom_cargo_sand.png' },
     { id: 'hair_long',  slot: 'hair', label: '긴 생머리', free: true, fit: 'all', parts: { front: true, back: true } },
     { id: 'hair_short', slot: 'hair', label: '짧은 머리', free: true, fit: 'all', parts: { front: true, back: false } },
     { id: 'hat_beret',      slot: 'hat',     label: '베레모',       free: true, fit: 'all', sheet: 'hat_beret.png' },

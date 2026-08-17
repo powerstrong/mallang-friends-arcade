@@ -20,11 +20,16 @@ export const WARDROBE = Object.freeze({
    * (관대 유지, B단계 옵션) 카탈로그 패리티 테스트가 양쪽 동기를 강제한다. */
   items: Object.freeze([
     Object.freeze({ id: 'outfit_dress_peach', slot: 'outfit', fit: 'girl' }),
+    Object.freeze({ id: 'outfit_dress_dot',   slot: 'outfit', fit: 'girl' }),
     Object.freeze({ id: 'outfit_tee_sky',     slot: 'outfit', fit: 'all' }),
+    Object.freeze({ id: 'outfit_hoodie_dino', slot: 'outfit', fit: 'boy' }),
     Object.freeze({ id: 'top_tee_berry',      slot: 'top',    fit: 'all' }),
     Object.freeze({ id: 'top_tee_lavender',   slot: 'top',    fit: 'all' }),
+    Object.freeze({ id: 'top_shirt_check',    slot: 'top',    fit: 'boy' }),
+    Object.freeze({ id: 'top_sweat_navy',     slot: 'top',    fit: 'boy' }),
     Object.freeze({ id: 'bottom_jeans_blue',  slot: 'bottom', fit: 'all' }),
     Object.freeze({ id: 'bottom_skirt_lemon', slot: 'bottom', fit: 'girl' }),
+    Object.freeze({ id: 'bottom_cargo_sand',  slot: 'bottom', fit: 'boy' }),
     Object.freeze({ id: 'hair_long',  slot: 'hair', fit: 'all' }),
     Object.freeze({ id: 'hair_short', slot: 'hair', fit: 'all' }),
     Object.freeze({ id: 'hat_beret',     slot: 'hat',     fit: 'all' }),
