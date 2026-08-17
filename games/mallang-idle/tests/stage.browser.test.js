@@ -552,6 +552,91 @@ async function main(pg) {
     ' H.state.bossT=B.bossTimeLimit*0.8; H.Stage.update(0.1,0,H.state);' +  // 임박 → 분노 진입
     ' return { phase:H.state.phase, mode:H.Stage.view.mode, log:fx.sfxLog() };})()')));
   ok(rageSfx.phase === 'boss' && rageSfx.log.indexOf('rage') >= 0, '분노 진입에 긴장 스팅이 같은 순간 물린다', rageSfx);
+
+  // ═══ 던전 리플레이 — 도전의 의식 (사용자 판정: "누르자마자 클리어!는 재미가 없다") ═══
+  /* 계약: ① 필드가 시련의 무대로 바뀐다 ② 3·2·1·START! 가 흐른다 ③ 보스 러시가
+   * 엔진 log 그대로 재생된다(못 잡는 보스는 격파 없이) ④ 끝나면 본편으로 복원되고
+   * onDone(결과 팝업)이 정확히 한 번 온다 ⑤ 탭 스킵 ⑥ 보상·횟수는 입장 즉시(진실원).
+   * 가짜 result 를 직접 넣어 결정론으로 검증한다 — 재생은 엔진과 무관한 표현이다. */
+  var dg1 = JSON.parse(await pg.eval(J(
+    '(function(){var H=window.__mallangIdle; var S=H.Stage;' +
+    ' window.__dgDoneN=0;' +
+    ' var res={ kills:2, shards:10, gold:100, baseStage:5,' +
+    '   log:[{hp:100,time:1},{hp:130,time:2},{hp:170,time:null}] };' +
+    ' var ok1=S.dungeonRun(res, function(){ window.__dgDoneN++; });' +
+    ' var re=S.dungeonRun(res, function(){});' +
+    ' S.update(0.3,0,H.state); S.update(0.3,0,H.state); S.update(0.3,0,H.state);' +
+    ' return { ok:ok1, re:re,' +
+    '   field:document.getElementById("bgLayer").style.backgroundImage,' +
+    '   mode:document.getElementById("arena").className.indexOf("dungeon-mode")>=0,' +
+    '   phase:S.fx.dgPhase(), active:S.dungeonActive() };})()')));
+  ok(dg1.ok === true && dg1.re === false, '던전 리플레이가 열리고 재진입은 차단된다', dg1);
+  ok(/bg-dungeon-star/.test(dg1.field) && dg1.mode, '입장하면 필드가 시련의 무대로 바뀐다', dg1);
+  ok(dg1.phase === 'count' && dg1.active, '전환 베일이 걷히면 카운트다운 국면이다', dg1);
+
+  var dg2 = JSON.parse(await pg.eval(J(
+    '(function(){var H=window.__mallangIdle; var S=H.Stage;' +
+    ' var seen={}; var cnt=document.getElementById("dgCount");' +
+    ' for (var i=0;i<40 && S.fx.dgPhase()==="count";i++){ S.update(0.11,0,H.state);' +
+    '   if (!cnt.hidden) seen[cnt.textContent]=1; }' +
+    ' return { seen:Object.keys(seen).sort(), phase:S.fx.dgPhase() };})()')));
+  ok(dg2.seen.indexOf('3') >= 0 && dg2.seen.indexOf('2') >= 0 && dg2.seen.indexOf('1') >= 0
+     && dg2.seen.indexOf('START!') >= 0, '3·2·1·START! 카운트다운이 흐른다', dg2);
+  ok(dg2.phase === 'spawn' || dg2.phase === 'fight', '카운트다운이 끝나면 보스 러시가 시작된다', dg2);
+
+  var dg3 = JSON.parse(await pg.eval(J(
+    '(function(){var H=window.__mallangIdle; var S=H.Stage;' +
+    ' var maxWave="", sawEnemy=false, sawTaunt=false;' +
+    ' for (var i=0;i<400 && S.dungeonActive();i++){ S.update(0.1,0,H.state);' +
+    '   var w=document.getElementById("dgWave"); if (!w.hidden && w.textContent) maxWave=w.textContent;' +
+    '   if (!document.getElementById("enemy").hidden) sawEnemy=true;' +
+    '   if (document.getElementById("enemyArt").className.indexOf("dg-taunt")>=0) sawTaunt=true; }' +
+    ' return { maxWave:maxWave, sawEnemy:sawEnemy, sawTaunt:sawTaunt,' +
+    '   active:S.dungeonActive(), doneN:window.__dgDoneN,' +
+    '   mode:document.getElementById("arena").className.indexOf("dungeon-mode")>=0,' +
+    '   field:document.getElementById("bgLayer").style.backgroundImage,' +
+    '   veil:document.getElementById("dgVeil").hidden,' +
+    '   banner:document.getElementById("dgBanner").hidden };})()')));
+  ok(dg3.sawEnemy && dg3.maxWave === '2연승', '보스 러시가 재생되고 연승 칩이 오른다', dg3);
+  ok(dg3.sawTaunt, '못 잡는 보스는 격파 없이 위협으로 끝난다 (엔진 log 의 정직한 재생)', dg3);
+  ok(!dg3.active && dg3.doneN === 1, '리플레이가 끝나면 onDone 이 정확히 한 번 온다', dg3);
+  ok(!dg3.mode && !/bg-dungeon-star/.test(dg3.field) && dg3.veil && dg3.banner,
+    '끝나면 필드·베일·배너가 본편으로 복원된다', dg3);
+
+  var dg4 = JSON.parse(await pg.eval(J(
+    '(function(){var H=window.__mallangIdle; var S=H.Stage;' +
+    ' window.__dgSkipDone=0;' +
+    ' var res={ kills:1, shards:3, gold:5, baseStage:5, log:[{hp:50,time:0.5}] };' +
+    ' S.dungeonRun(res, function(){ window.__dgSkipDone++; });' +
+    ' S.update(0.05,0,H.state);' +
+    ' S.dungeonSkip();' +
+    ' var phase=S.fx.dgPhase();' +
+    ' var banner=document.getElementById("dgBanner").hidden;' +
+    ' for (var i=0;i<80 && S.dungeonActive();i++) S.update(0.1,0,H.state);' +
+    ' return { phase:phase, bannerShown:banner===false, active:S.dungeonActive(),' +
+    '   doneN:window.__dgSkipDone };})()')));
+  ok(dg4.phase === 'clear' && dg4.bannerShown, '탭 스킵은 즉시 결과 배너로 접는다', dg4);
+  ok(!dg4.active && dg4.doneN === 1, '스킵해도 종료·onDone 은 정확히 한 번이다', dg4);
+
+  // ── 통합 — 입장 버튼: 보상은 즉시, 팝업은 리플레이 뒤 (이탈해도 유실·복제 없음) ──
+  var dg5 = JSON.parse(await pg.eval(J(
+    '(function(){var H=window.__mallangIdle; var S=H.Stage; var B2=H.Balance.BALANCE;' +
+    ' if (H.state.stage < B2.dungeonUnlockStage) {' +      // 해금 보장 — 잠긴 버튼은 무음이다
+    '   H.state.stage = B2.dungeonUnlockStage; H.state.safeStage = B2.dungeonUnlockStage - 1; }' +
+    ' var go=document.getElementById("dungeonGo"); go.disabled=false;' +
+    ' var before={ runs:H.state.dungeon.runs };' +
+    ' go.click();' +
+    ' var during={ active:S.dungeonActive(),' +
+    '   modalHidden:document.getElementById("dungeonModal").hidden,' +
+    '   runsUp:H.state.dungeon.runs === before.runs + 1 };' +
+    ' S.dungeonSkip();' +
+    ' for (var i=0;i<80 && S.dungeonActive();i++) S.update(0.1,0,H.state);' +
+    ' var after={ modalHidden:document.getElementById("dungeonModal").hidden };' +
+    ' document.getElementById("dungeonOk").click();' +
+    ' return { during:during, after:after };})()')));
+  ok(dg5.during.active && dg5.during.modalHidden && dg5.during.runsUp,
+    '입장 버튼: 횟수·보상은 즉시(진실원), 결과 팝업은 리플레이 뒤로 미뤄진다', dg5);
+  ok(dg5.after.modalHidden === false, '리플레이가 끝난 뒤에야 결과 팝업이 뜬다', dg5);
 }
 
 /* 감속 모드 — 움직임은 줄되 정보는 남아야 한다. */

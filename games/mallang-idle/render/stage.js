@@ -508,7 +508,10 @@
     ];
     var scrollX = 0;
 
-    function setChapter(ch) {
+    var currentCh = null;   // 마지막 챕터 — 던전 리플레이가 끝나면 이걸로 필드를 복원한다
+    /* 실제 필드 적용 — setChapter(가드 있음)와 던전 복원(가드를 지나쳐야 함)이 공유한다.
+     * 던전 리플레이의 복원이 setChapter 를 부르면 자기 가드에 막힌다(회귀로 실측). */
+    function applyChapterField(ch) {
       el.bgLayer.style.backgroundImage = "url('" + ch.bg + "')";
       el.fgLayer.style.backgroundImage = ch.fg ? "url('" + ch.fg + "')" : 'none';
       if (el.farLayer) {
@@ -527,6 +530,13 @@
           el.cloudLayer.style.backgroundSize = skyArt ? 'auto 100%' : '';
         }
       }
+    }
+    function setChapter(ch) {
+      currentCh = ch;
+      /* 리플레이 중 챕터가 넘어가면(엔진은 계속 돈다) 시련 필드를 덮어쓰지 않고
+       * 캐시만 갱신한다 — 복원 시점(dgSetField(false))에 최신 챕터가 적용된다. */
+      if (dungeon) return;
+      applyChapterField(ch);
     }
 
     /* 걷기 90px/s, 달리기(큐 따라잡기 구간)는 1.7배 — 발걸음과 세계가 같이 빨라진다 */
@@ -870,6 +880,264 @@
       if (key !== view.enemyKey || !view.alive) showEnemy(art, isBoss);
     }
 
+    // ── 던전 리플레이 (별빛 시련 — 도전의 의식) ─────────────────────
+    /* 사용자 판정: "누르자마자 클리어!는 재미가 없다 — 필드가 바뀌고 3 2 1 START!
+     * 하는 성의가 필요하다." 여기는 엔진이 이미 계산·지급한 결과(Dungeon.simulate 의
+     * log)를 무대에서 **재생**하는 표현 계층이다 — 수치를 만들지 않는다(결정 8 과
+     * 같은 원칙: HP·격파 수·보상 전부 엔진 log 가 진실원). 재생 동안 본편 연출 큐
+     * 소비는 멈추고, 끝나면 큐 가속·몰아보기가 밀림을 흡수한다(엔진은 계속 돈다). */
+    var dungeon = null;
+    var DG = {
+      VEIL: 0.42,             // 장면 전환 베일 반쪽(초) — 어두워졌다 걷힌다
+      COUNT: 0.62,            // 카운트 한 칸 (3·2·1)
+      START: 0.55,            // START! 표시
+      SPAWN: 0.4,             // 보스 등장 간
+      GAP: 0.16,              // 격파 후 다음 보스까지
+      FAIL: 1.15,             // 못 잡는 보스 앞 좌절 구간
+      CLEAR: 1.45,            // 결과 배너 노출
+      FIGHT_MIN: 0.7, FIGHT_MAX: 1.9,
+    };
+
+    function dgBossArt(i) {
+      var list = Chapters.CHAPTERS;
+      return list[i % list.length].boss;
+    }
+
+    function dgSetField(on) {
+      if (on) {
+        el.bgLayer.style.backgroundImage = "url('assets/bg-dungeon-star.jpg')";
+        el.fgLayer.style.backgroundImage = "url('assets/fg-starsea.png')";
+        if (el.farLayer) {
+          el.farLayer.style.backgroundImage = "url('assets/far-starsea.png')";
+          el.farLayer.style.backgroundSize = 'auto 100%';
+          el.farLayer.style.setProperty('--pl-far', FAR_TINT.starsea);
+        }
+        if (el.cloudLayer) {
+          el.cloudLayer.style.backgroundImage = "url('assets/sky-star.png')";
+          el.cloudLayer.style.backgroundSize = 'auto 100%';
+          el.cloudLayer.style.opacity = '';
+        }
+      } else if (currentCh) {
+        applyChapterField(currentCh);   // 리플레이 중 챕터가 넘어갔어도 최신 진실로 복원
+      }
+    }
+
+    function dgShowCount(n) {
+      el.dgCount.hidden = false;
+      el.dgCount.textContent = n === 0 ? 'START!' : String(n);
+      el.dgCount.classList.toggle('go', n === 0);
+      el.dgCount.classList.remove('pop');
+      void el.dgCount.offsetWidth;
+      el.dgCount.classList.add('pop');
+      sfx(n === 0 ? 'go' : 'count');
+    }
+
+    function dgSpawnBoss(i) {
+      var art = dgBossArt(i);
+      view.alive = true; view.isBoss = true; view.enemyKey = 'DG' + i;
+      el.enemyArt.src = art.art;
+      el.enemyName.textContent = art.name;
+      el.enemy.classList.add('is-boss');
+      el.enemy.hidden = false;
+      el.bossRing.hidden = true;      // 시련은 러시 — 본편 보스 타이머 링 없음
+      el.enemyHpFill.style.width = '100%';
+      el.enemyArt.classList.remove('spawn-in', 'boss-in', 'dg-taunt');
+      void el.enemyArt.offsetWidth;
+      el.enemyArt.classList.add(i === 0 ? 'boss-in' : 'spawn-in');
+      if (i === 0) { camera.frame(1.16, -12, -2); sfx('bossIn'); }
+      else camera.punch(0.05, 0.2);
+    }
+
+    /* 별조각 플로트 — 골드 플로트와 같은 정보 계층(FX_CAP 공유), 별 변형 */
+    function dgFloat(text) {
+      if (fxCount >= FX_CAP) return;
+      fxCount++;
+      var n = document.createElement('div');
+      n.className = 'gold-float star';
+      n.textContent = text;
+      el.field.appendChild(n);
+      setTimeout(function () { n.remove(); fxCount--; }, 900);
+    }
+
+    function dgKill(i) {
+      if (view.alive) {
+        var p = enemyPoint();
+        killBurst(p.x, p.y, true);
+      }
+      sfx('kill');
+      camera.punch(0.07, 0.24);
+      el.enemy.hidden = true; view.alive = false;
+      el.dgWave.textContent = (i + 1) + '연승';
+      el.dgWave.classList.remove('pop'); void el.dgWave.offsetWidth; el.dgWave.classList.add('pop');
+      /* 격파당 조각 표시 = 엔진 총합의 균등분 — 표현이 새 수치를 만들지 않는다 */
+      var per = dungeon.result.kills > 0 ? Math.floor(dungeon.result.shards / dungeon.result.kills) : 0;
+      if (per > 0) dgFloat('⭐ +' + fmt(per));
+    }
+
+    function dgShowBanner() {
+      var r = dungeon.result;
+      el.dgBanner.innerHTML = '';
+      var sub = document.createElement('span');
+      sub.textContent = r.kills >= (B.dungeonMaxBosses || 999) ? '완전 제패!' : '별빛 시련 결과';
+      var big = document.createElement('b');
+      big.textContent = r.kills + '연승!';
+      el.dgBanner.appendChild(sub); el.dgBanner.appendChild(big);
+      el.dgBanner.hidden = false;
+      el.dgBanner.classList.remove('pop'); void el.dgBanner.offsetWidth; el.dgBanner.classList.add('pop');
+      if (r.kills > 0) confettiBurst();
+      camera.punch(0.1, 0.3);
+      sfx('dungeon');   // 입장 대신 결과 순간에 — 팡파르는 성과와 같은 순간에 울린다
+    }
+
+    function dungeonRun(result, onDone) {
+      if (dungeon) return false;
+      hideEnemy();
+      flushPending();
+      restoreWalkPose();
+      setGait(false);
+      setLocomotion(false, false);    // 준비 자세(교전 대형) — 전진 아님
+      view.mode = 'dungeon';
+      dungeon = {
+        phase: 'in', t: 0, i: 0, result: result, onDone: onDone || null,
+        swapped: false, restored: false, counted: -1,
+        fights: (result.log || []).map(function (e) {
+          return {
+            hp: e.hp, fail: e.time === null, struck: 0,
+            dur: e.time === null ? DG.FAIL
+              : Math.max(DG.FIGHT_MIN, Math.min(DG.FIGHT_MAX, 0.55 + e.time * 0.12)),
+          };
+        }),
+      };
+      el.arena.classList.add('dungeon-mode');
+      el.dgVeil.hidden = false;
+      el.dgVeil.style.opacity = '0';
+      el.dgWave.hidden = false;
+      el.dgWave.textContent = '별빛 시련';
+      return true;
+    }
+
+    /* 탭 스킵 — 의식은 남기되 반복 피로는 스킵으로 푼다(의식을 없애는 방향이 아니라).
+     * 보상은 이미 지급돼 있어 표현만 접는다. */
+    function dungeonSkip() {
+      if (!dungeon || dungeon.phase === 'clear' || dungeon.phase === 'out') return;
+      el.enemy.hidden = true; view.alive = false;
+      el.enemyArt.classList.remove('dg-taunt');
+      el.arena.classList.remove('boss-rage');
+      el.dgCount.hidden = true;
+      el.dgVeil.hidden = true; el.dgVeil.style.opacity = '0';
+      if (!dungeon.swapped) dgSetField(true);   // 베일 전에 스킵해도 시련 필드는 거친다
+      dungeon.swapped = true;
+      el.dgWave.textContent = dungeon.result.kills + '연승';
+      dungeon.phase = 'clear'; dungeon.t = 0;
+      dgShowBanner();
+    }
+
+    function dungeonUpdate(dt) {
+      var d = dungeon;
+      d.t += dt;
+      switch (d.phase) {
+        case 'in':
+          if (!d.swapped) {
+            el.dgVeil.style.opacity = String(Math.min(1, d.t / DG.VEIL));
+            if (d.t >= DG.VEIL) { d.swapped = true; dgSetField(true); }
+          } else {
+            el.dgVeil.style.opacity = String(Math.max(0, 1 - (d.t - DG.VEIL) / DG.VEIL));
+            if (d.t >= DG.VEIL * 2) {
+              el.dgVeil.hidden = true;
+              d.phase = 'count'; d.t = 0; d.counted = -1;
+            }
+          }
+          break;
+        case 'count': {
+          var idx = Math.min(2, Math.floor(d.t / DG.COUNT));
+          if (d.t < DG.COUNT * 3) {
+            if (idx !== d.counted) { d.counted = idx; dgShowCount(3 - idx); }
+          } else {
+            if (d.counted !== 3) { d.counted = 3; dgShowCount(0); }
+            if (d.t >= DG.COUNT * 3 + DG.START) {
+              el.dgCount.hidden = true;
+              if (d.fights.length) { d.phase = 'spawn'; d.t = 0; dgSpawnBoss(0); }
+              else { d.phase = 'clear'; d.t = 0; dgShowBanner(); }
+            }
+          }
+          break;
+        }
+        case 'spawn':
+          if (d.t >= (d.i === 0 ? DG.SPAWN + 0.25 : DG.SPAWN)) { d.phase = 'fight'; d.t = 0; }
+          break;
+        case 'fight': {
+          var f = d.fights[d.i];
+          var k = Math.min(1, d.t / f.dur);
+          /* HP 바는 이 구간에서 표현 소유 — 총량(f.hp)은 엔진 log 진실이고 비율만 흐른다.
+           * 실패 보스는 깎이는 척만 하고(8% 상한) 끝내 안 죽는 게 그림의 정직함이다. */
+          el.enemyHpFill.style.width = (f.fail ? Math.max(86, 100 - k * 14) : (1 - k) * 100) + '%';
+          var want = f.fail ? Math.floor(k * 2.4) : Math.floor(k * 3);
+          if (f.struck < want) {
+            f.struck++;
+            heroStrike(f.fail ? f.hp * 0.02 : f.hp / 3, f.hp);
+          }
+          if (k >= 1) {
+            if (f.fail) {
+              d.phase = 'fail'; d.t = 0;
+              sfx('fail');
+              el.arena.classList.add('boss-rage');
+              el.enemyArt.classList.add('dg-taunt');
+            } else {
+              dgKill(d.i);
+              d.i++;
+              if (d.i < d.fights.length) { d.phase = 'gap'; d.t = 0; }
+              else { d.phase = 'clear'; d.t = 0; dgShowBanner(); }
+            }
+          }
+          break;
+        }
+        case 'gap':
+          if (d.t >= DG.GAP) { d.phase = 'spawn'; d.t = 0; dgSpawnBoss(d.i); }
+          break;
+        case 'fail':
+          if (d.t >= 0.9) {
+            el.arena.classList.remove('boss-rage');
+            el.enemyArt.classList.remove('dg-taunt');
+            el.enemy.hidden = true; view.alive = false;
+            d.phase = 'clear'; d.t = 0; dgShowBanner();
+          }
+          break;
+        case 'clear':
+          if (d.t >= DG.CLEAR) {
+            d.phase = 'out'; d.t = 0;
+            el.dgVeil.hidden = false;
+            el.dgVeil.style.opacity = '0';
+          }
+          break;
+        case 'out':
+          if (!d.restored) {
+            el.dgVeil.style.opacity = String(Math.min(1, d.t / DG.VEIL));
+            if (d.t >= DG.VEIL) {
+              d.restored = true;
+              el.dgBanner.hidden = true;
+              el.dgWave.hidden = true;
+              el.arena.classList.remove('dungeon-mode');
+              el.enemy.classList.remove('is-boss');
+              dgSetField(false);
+              hideEnemy();
+            }
+          } else {
+            el.dgVeil.style.opacity = String(Math.max(0, 1 - (d.t - DG.VEIL) / DG.VEIL));
+            if (d.t >= DG.VEIL * 2) {
+              el.dgVeil.hidden = true;
+              var done = d.onDone;
+              dungeon = null;
+              view.mode = 'advance';
+              camera.reset();
+              if (done) done();
+            }
+          }
+          break;
+        default:
+          break;
+      }
+    }
+
     // ── 타격 연출 ─────────────────────────────────────────────
     /* 엔진은 연속 DPS 로 계산하지만 화면은 "때리는 순간"이 보여야 산다.
      * 공격 속도에 맞춰 돌진-타격을 틱으로 재생하고, 틱 사이에 깎인 HP 를 숫자로 뭉친다.
@@ -1087,6 +1355,12 @@
      * 연출은 dt 로 돌고, "얼마나 아팠나"만 simDt 를 따른다. */
     function update(dt, simDt, state) {
       syncParty(state);
+      if (dungeon) {
+        /* 던전 리플레이 — 본편 큐 소비·게이트·시차·전투 틱을 전부 멈추고 의식만
+         * 재생한다. 엔진은 계속 돌고 있으므로(사건은 큐에 쌓인다) 끝나면 큐
+         * 가속·몰아보기가 밀림을 흡수한다. */
+        dungeonUpdate(dt);
+      } else {
       queue.update(dt);
       if (queue.idle()) syncTo(state);
 
@@ -1127,6 +1401,7 @@
       } else if (camera.targetScale !== 1 || camera.targetPanX !== 0 || camera.targetPanY !== 0) {
         camera.reset();                                  // 전진·잡몹 — 카메라를 1.0 으로 되돌린다
       }
+      }
 
       camera.update(dt);
 
@@ -1166,6 +1441,11 @@
       setChapter: setChapter,
       syncParty: syncParty,
       heartBurst: heartBurst,
+      /* 던전 리플레이(도전 의식) — game.js 가 입장 시 엔진 결과를 넘기고,
+       * 리플레이가 끝나면 onDone(결과 모달)을 받는다. 탭 = 스킵. */
+      dungeonRun: dungeonRun,
+      dungeonSkip: dungeonSkip,
+      dungeonActive: function () { return !!dungeon; },
       resize: resize,
       queue: queue,
       camera: camera,
@@ -1196,6 +1476,7 @@
         caps: function () { return { particle: PARTICLE_CAP, reserve: INFO_RESERVE, dom: FX_CAP, domCount: fxCount }; },
         // 단계 3 회귀용 — 캐릭터별 모션·리듬 변주·적 반응을 밖에서 검증한다
         restorePose: restoreWalkPose,   // 에셋 시트 회귀 — 타이머와 무관하게 동기 복원
+        dgPhase: function () { return dungeon ? dungeon.phase : null; },   // 던전 리플레이 회귀
         styleFor: function (id) { return styleFor(Chars.byId(id)).cls; },
         lastStrike: function () { return lastStrikeInfo; },
         lastReact: function () { return lastReactClass; },

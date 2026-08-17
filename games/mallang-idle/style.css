@@ -540,6 +540,81 @@ body {
   pointer-events: none;
   animation: goldFloat .9s ease-out forwards;
 }
+/* 별조각 플로트 (던전 리플레이) — 같은 정보 계층, 별빛 색 */
+.gold-float.star { color: #7a5bd6; text-shadow: 0 1px 0 #fff, 0 0 8px rgba(255, 230, 140, .9); }
+
+/* ── 던전 리플레이 의식 (별빛 시련) — 카메라 밖 UI 층 ──────────
+ * 베일(장면 전환)·카운트다운·연승 칩·결과 배너. 전부 pointer-events 없음 —
+ * 아레나 탭(스킵)을 가로채지 않는다. */
+.dg-veil {
+  position: absolute;
+  inset: 0;
+  z-index: 7;
+  pointer-events: none;
+  background: radial-gradient(ellipse at 50% 42%, rgba(34, 26, 66, .96), rgba(12, 10, 28, .995));
+  opacity: 0;
+}
+.dg-count {
+  position: absolute;
+  left: 50%; top: 34%;
+  transform: translate(-50%, -50%);
+  z-index: 8;
+  font-size: 64px;
+  font-weight: 900;
+  color: #fff;
+  letter-spacing: .02em;
+  text-shadow: 0 4px 18px rgba(80, 60, 160, .55), 0 0 22px rgba(255, 230, 140, .4);
+  pointer-events: none;
+}
+.dg-count.go { font-size: 42px; color: #ffe08a; }
+.dg-count.pop { animation: dgPop .5s cubic-bezier(.2, 1.4, .4, 1); }
+@keyframes dgPop {
+  from { transform: translate(-50%, -50%) scale(1.9); opacity: 0; }
+  to   { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+}
+.dg-wave {
+  position: absolute;
+  top: 46px; left: 12px;
+  z-index: 6;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: rgba(30, 24, 58, .74);
+  color: #ffe9a8;
+  font-size: 13px;
+  font-weight: 800;
+  pointer-events: none;
+}
+.dg-wave.pop { animation: dgChip .3s cubic-bezier(.2, 1.4, .4, 1); }
+@keyframes dgChip { from { transform: scale(1.35); } to { transform: scale(1); } }
+.dg-banner {
+  position: absolute;
+  left: 50%; top: 40%;
+  transform: translate(-50%, -50%);
+  z-index: 8;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 14px 28px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, .95);
+  box-shadow: 0 8px 30px rgba(60, 40, 110, .35);
+  pointer-events: none;
+}
+.dg-banner span { font-size: 12.5px; color: var(--ink-soft); font-weight: 700; }
+.dg-banner b { font-size: 30px; color: var(--accent-deep); letter-spacing: -.02em; }
+.dg-banner.pop { animation: dgPop .55s cubic-bezier(.2, 1.4, .4, 1); }
+/* 못 잡는 보스의 위협 — 시련의 끝을 몸으로 말한다 */
+.enemy img.dg-taunt { animation: dgTaunt .8s ease-in-out; }
+@keyframes dgTaunt {
+  0%, 100% { transform: scale(1); }
+  30% { transform: scale(1.14) rotate(-3deg); }
+  60% { transform: scale(1.08) rotate(2deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  /* 의식(카운트·배너)은 정보라 남기되 움직임만 끈다 — 베일 페이드는 JS 소유라 여기 없음 */
+  .dg-count.pop, .dg-wave.pop, .dg-banner.pop, .enemy img.dg-taunt { animation: none !important; }
+}
 @keyframes goldFloat {
   0%   { opacity: 0; transform: translateY(6px) scale(.9); }
   25%  { opacity: 1; transform: translateY(0) scale(1.05); }

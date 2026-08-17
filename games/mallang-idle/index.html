@@ -54,6 +54,13 @@
 
     <img class="speedlines" id="speedLines" src="assets/fx-lines.jpg" alt="" hidden />
 
+    <!-- 던전 리플레이 의식(별빛 시련) — 카메라(.stage-cam) 밖 = 줌·셰이크에도 안 흔들리는 UI.
+         베일(장면 전환)·카운트다운·연승 칩·결과 배너. render/stage.js 가 소유한다. -->
+    <div class="dg-veil" id="dgVeil" hidden></div>
+    <div class="dg-wave" id="dgWave" hidden></div>
+    <div class="dg-count" id="dgCount" hidden></div>
+    <div class="dg-banner" id="dgBanner" hidden></div>
+
     <div class="stage-progress" id="stageProgress">
       <span id="progressText">0 / 10</span>
       <div class="pips" id="progressPips"></div>

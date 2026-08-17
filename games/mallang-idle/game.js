@@ -73,6 +73,7 @@
     panelBattle: $('panelBattle'), battleDot: $('battleDot'), questList: $('questList'),
     dungeonRuns: $('dungeonRuns'), dungeonBest: $('dungeonBest'), dungeonGo: $('dungeonGo'),
     dungeonPreview: $('dungeonPreview'),
+    dgVeil: $('dgVeil'), dgCount: $('dgCount'), dgWave: $('dgWave'), dgBanner: $('dgBanner'),
     dungeonModal: $('dungeonModal'), dungeonSub: $('dungeonSub'), dungeonKills: $('dungeonKills'),
     dungeonShards: $('dungeonShards'), dungeonGold: $('dungeonGold'), dungeonOk: $('dungeonOk'),
     exitBtn4: $('exitBtn4'),
@@ -458,10 +459,14 @@
     if (claimable > 0 && el.panelBattle.hidden) el.battleDot.hidden = false;
   }
 
-  /* 던전 — 결과는 즉시 결정론으로 계산하고, 화면은 결과 팝업으로 보여준다.
-   * (조작이 없는 자동 전투이므로 "달리는 척"은 시간 낭비다 — 장르 표준.) */
+  /* 던전 — 결과·보상은 입장 즉시 엔진이 결정·지급하고(진실원 유지 + 이탈해도
+   * 유실·복제 없음), 무대는 그 log 를 의식으로 재생한다: 필드 전환 → 3·2·1·START!
+   * → 보스 러시 → 결과 배너 → 결과 팝업. 탭하면 스킵.
+   * (구버전 "누르자마자 결과 팝업"은 사용자 판정으로 폐기 — "콘텐츠를 하는 느낌"이
+   * 없다. 성의 3요소: 진입 전환·시작 신호·과정 가시화.) */
   function runDungeon() {
     if (!el.dungeonModal.hidden) return;   // 결과 확인 전 재진입 방지
+    if (Stage.dungeonActive && Stage.dungeonActive()) return;   // 리플레이 중 재진입 방지
     syncDaily();
     if (state.stage < B.dungeonUnlockStage) return;   // 해금 전 — 초반 경제 우회 차단
     if (state.dungeon.runs >= B.dungeonRunsPerDay) return;
@@ -469,13 +474,16 @@
     var result = Dungeon.simulate(state);
     Dungeon.applyReward(state, result);
     if (result.kills > state.dungeon.best) state.dungeon.best = result.kills;
-    sfx('dungeon');
-    el.dungeonSub.textContent = result.baseStage + '층 기준 연속 격파';
-    el.dungeonKills.textContent = result.kills + '연승!';
-    el.dungeonShards.textContent = fmt(result.shards);
-    el.dungeonGold.textContent = fmt(result.gold);
-    el.dungeonModal.hidden = false;
     renderBattle(); renderRelics(); renderPanel(); persist();
+    var showResult = function () {
+      el.dungeonSub.textContent = result.baseStage + '층 기준 연속 격파';
+      el.dungeonKills.textContent = result.kills + '연승!';
+      el.dungeonShards.textContent = fmt(result.shards);
+      el.dungeonGold.textContent = fmt(result.gold);
+      el.dungeonModal.hidden = false;
+    };
+    // 무대가 없거나(비정상) 리플레이를 못 열면 결과 팝업으로 직행 — 보상은 이미 지급됨
+    if (!Stage.dungeonRun || !Stage.dungeonRun(result, showResult)) showResult();
   }
 
   // ── 도감 (P4) ────────────────────────────────────────────────
@@ -721,6 +729,13 @@
   var lastPhase = '', lastMobIndex = -1, lastPipCount = 0;
 
   function renderHudOverlays() {
+    /* 던전 리플레이 중에는 본편 전투 HUD(보스 타이머·모드 클래스)를 덮지 않는다 —
+     * 엔진은 계속 돌지만 화면은 시련의 것이다. 복귀 프레임에 강제 재평가(센티널). */
+    if (Stage.dungeonActive && Stage.dungeonActive()) {
+      el.bossTimer.hidden = true;
+      lastPhase = '__dungeon';
+      return;
+    }
     var phase = state.phase;
     var phaseChanged = phase !== lastPhase;
     lastPhase = phase;
@@ -994,6 +1009,10 @@
 
   el.dungeonGo.addEventListener('click', runDungeon);
   el.dungeonOk.addEventListener('click', function () { el.dungeonModal.hidden = true; });
+  // 던전 리플레이 중 무대 탭 = 스킵 (의식은 남기되 반복 피로는 스킵으로 푼다)
+  el.arena.addEventListener('click', function () {
+    if (Stage.dungeonSkip) Stage.dungeonSkip();
+  });
   el.exitBtn4.addEventListener('click', function () { persist(); window.GameBoot ? window.GameBoot.exit() : (location.href = '/'); });
   el.exitBtn5.addEventListener('click', function () { persist(); window.GameBoot ? window.GameBoot.exit() : (location.href = '/'); });
 

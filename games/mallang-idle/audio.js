@@ -114,6 +114,9 @@
     fail:     function () { tone(330, 0.18, { type: 'sawtooth', vol: 0.07, slide: 208 }); tone(208, 0.28, { type: 'sawtooth', vol: 0.07, slide: 147, delay: 0.16 }); },
     unlock:   function () { [784, 988, 1175].forEach(function (f, i) { tone(f, 0.14, { vol: 0.09, delay: i * 0.07 }); }); },
     dungeon:  function () { [392, 523, 659, 784, 1047].forEach(function (f, i) { tone(f, 0.13, { type: 'triangle', vol: 0.09, delay: i * 0.07 }); }); },
+    /* 던전 카운트다운 (도전 의식) — 3·2·1 틱과 START! 상승음. stage.js 리플레이가 물린다. */
+    count:    function () { tone(880, 0.07, { type: 'triangle', vol: 0.09 }); },
+    go:       function () { tone(659, 0.09, { type: 'triangle', vol: 0.1 }); tone(1319, 0.16, { type: 'triangle', vol: 0.1, delay: 0.07 }); },
     tap:      function () { tone(880, 0.04, { type: 'square', vol: 0.03 }); },
   };
 
