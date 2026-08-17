@@ -175,7 +175,12 @@
       p.color = o.color || '205, 185, 160';
       p.alpha = o.alpha != null ? o.alpha : 0.9;
       p.info = info;
-      if (reducedMotion) { p.vx = 0; p.vy = 0; p.grow = 1; }
+      p.sheet = o.sheet || null;               // SHEETS 키 — 플립북/이미지 파티클
+      p.rot = o.rot || 0; p.rotVel = o.rotVel || 0;
+      p.blend = o.blend || null;               // 'lighter' = 가산 발광 (D기둥)
+      p.grav = o.grav || 0;
+      p.stretch = o.stretch || 0;              // >0 이면 속도 방향으로 길쭉한 스파크
+      if (reducedMotion) { p.vx = 0; p.vy = 0; p.grow = 1; p.rotVel = 0; p.grav = 0; }
       lastEmit = { kind: kind, x: x, y: y, info: info };
       return p;
     }
@@ -191,24 +196,85 @@
           pcount--; i--;
           continue;
         }
+        if (p.grav) p.vy += p.grav * dt;
         p.x += p.vx * dt; p.y += p.vy * dt;
       }
     }
 
+    var TAU = Math.PI * 2;
     function particlesDraw() {
       if (!ctx) return;
       ctx.clearRect(0, 0, cssW, cssH);
+      var mode = 'source-over';
       for (var i = 0; i < pcount; i++) {
         var p = pool[i];
         var k = p.age / p.life;                 // 0 → 1
+        var want = p.blend || 'source-over';
+        if (want !== mode) { ctx.globalCompositeOperation = want; mode = want; }
         var sz = p.size * (1 + (p.grow - 1) * k);
+
+        if (p.sheet) {
+          var sh = sheetImgs[p.sheet];
+          if (sh && sh.ready && sh.img.width) {
+            var fw = sh.img.width / sh.frames;
+            var fi = Math.min(sh.frames - 1, Math.floor(k * sh.frames));
+            var szH = sz * (sh.img.height / fw);
+            ctx.globalAlpha = p.alpha * (1 - k * k);   // 즉시 최대 → 끝에서 빠지는 곡선
+            ctx.save();
+            ctx.translate(p.x, p.y);
+            ctx.rotate(p.rot + p.rotVel * p.age);
+            ctx.drawImage(sh.img, fi * fw, 0, fw, sh.img.height, -sz / 2, -szH / 2, sz, szH);
+            ctx.restore();
+            continue;
+          }
+          /* decode 전 폴백 — 절차적 링. 첫 임팩트가 "그냥 사라지는" 일이 없게 한다 */
+          ctx.globalAlpha = p.alpha * (1 - k);
+          ctx.strokeStyle = 'rgba(255, 220, 140, 1)';
+          ctx.lineWidth = 4;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, (sz / 2) * (0.5 + k), 0, TAU);
+          ctx.stroke();
+          continue;
+        }
+
         ctx.globalAlpha = p.alpha * (1 - k);
         ctx.fillStyle = 'rgba(' + p.color + ',1)';
-        ctx.beginPath();
-        ctx.ellipse(p.x, p.y, sz, sz * 0.55, 0, 0, Math.PI * 2);
-        ctx.fill();
+        if (p.stretch) {
+          // 스파크 — 진행 방향으로 길쭉하게 (잔상 느낌)
+          ctx.save();
+          ctx.translate(p.x, p.y);
+          ctx.rotate(Math.atan2(p.vy, p.vx));
+          ctx.beginPath();
+          ctx.ellipse(0, 0, sz * p.stretch, sz * 0.4, 0, 0, TAU);
+          ctx.fill();
+          ctx.restore();
+        } else {
+          ctx.beginPath();
+          ctx.ellipse(p.x, p.y, sz, sz * 0.55, 0, 0, TAU);
+          ctx.fill();
+        }
       }
       ctx.globalAlpha = 1;
+      if (mode !== 'source-over') ctx.globalCompositeOperation = 'source-over';
+    }
+
+    /* 타격 임팩트 — 플립북 + 스파크 + 섬광이 접점에서 **함께** 터진다 (체크리스트 2번).
+     * 전부 장식이다 — 정보(숫자)는 DOM 이 나른다. */
+    function impactBurst(x, y, accent) {
+      emit('impact', x, y, { sheet: 'impact', life: 0.32, size: accent ? 118 : 84,
+        grow: 1.15, rot: (Math.random() * 70 - 35) * Math.PI / 180, alpha: 1 });
+      emit('slash', x - 6, y - 4, { sheet: 'slash', life: 0.24, size: 110, grow: 1.55,
+        rot: (Math.random() * 50 - 25) * Math.PI / 180, rotVel: 2.4, alpha: 0.95 });
+      var n = accent ? 10 : 6;
+      for (var i = 0; i < n; i++) {
+        var a = Math.random() * TAU, sp = 130 + Math.random() * 170;
+        emit('spark', x, y, { vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 40,
+          life: 0.26 + Math.random() * 0.18, size: 3.5 + Math.random() * 2.5, grow: 0.6,
+          color: accent ? '255, 208, 112' : '255, 236, 170', alpha: 0.95,
+          blend: 'lighter', grav: 520, stretch: 2.6 });
+      }
+      emit('flash', x, y, { life: 0.14, size: accent ? 46 : 30, grow: 2.2,
+        color: '255, 245, 210', alpha: 0.85, blend: 'lighter' });
     }
 
     /* 발밑 먼지 — 돌진 시작·보스 착지. CSS .fx-dust 를 대체한다(캔버스 파이프라인 증명). */
@@ -523,10 +589,32 @@
     // ── 타격 연출 ─────────────────────────────────────────────
     /* 엔진은 연속 DPS 로 계산하지만 화면은 "때리는 순간"이 보여야 산다.
      * 공격 속도에 맞춰 돌진-타격을 틱으로 재생하고, 틱 사이에 깎인 HP 를 숫자로 뭉친다.
-     * 단계 3 에서 캐릭터별 다중 프레임 공격·스킬로 교체된다. */
-    var strikeAccum = 0, strikeGap = 0, dmgSince = 0;
+     * 단계 3 에서 캐릭터별 다중 프레임 공격·스킬로 교체된다.
+     *
+     * 숫자의 진실원은 **관측된 적 HP 델타**다 (결정 8) — 표현 계층이 DPS 공식을
+     * 재계산하지 않는다. 같은 적이 살아 있는 동안의 감소분을 누적하고, 처치 순간의
+     * 잔여 HP 는 그 프레임의 mob_kill/boss_clear 사건으로 확인해 더한다. 한 프레임에
+     * 여러 마리가 죽으면 중간 개체 분은 관측 불가라 **덜** 세어진다 — 과장은 없다.
+     * 보스 실패는 HP 가 리셋될 뿐 잔여가 깎인 게 아니므로 더하지 않는다. */
+    var strikeAccum = 0, strikeGap = 0;
+    var obsKey = '', obsHp = 0, dmgObserved = 0, frameKill = false;
     var strikeCount = 0, restoreTimer = 0, poseSwapped = false;
     var followerTimers = [0, 0];
+
+    function observeDamage(state) {
+      var fightingPhase = state.phase !== Combat.PHASE_ADVANCE;
+      var key = fightingPhase ? (state.phase + ':' + state.stage + ':' + state.mobIndex) : '';
+      var hp = state.enemyHp;
+      if (key && key === obsKey) {
+        if (hp < obsHp) dmgObserved += obsHp - hp;
+        /* hp 가 늘었다 = 보스 재도전 리셋 — 새 기준점만 잡는다 (깎인 게 아니다) */
+      } else if (obsKey && frameKill) {
+        dmgObserved += obsHp;   // 직전 개체의 잔여 HP — 실제로 깎여 죽었음이 사건으로 확인됨
+      }
+      obsKey = key;
+      obsHp = key ? hp : 0;
+      frameKill = false;
+    }
 
     function swapToAttackPose() {
       var c = Chars.byId(party[0]);
@@ -557,9 +645,11 @@
       el.hero.style.setProperty('--lunge', reach + 'px');
     }
 
-    function heroStrike(dmg) {
+    function heroStrike(dmg, maxHp) {
       strikeCount++;
-      var crit = strikeCount % 5 === 0;          // 표현 전용 — 5타마다 강조 연출
+      /* 표현 전용 리듬 강조 — 크리티컬이 **아니다** (결정 8: crit→accent 개명).
+       * 추가 피해도, 확률도 없다. 5타마다 연출만 커진다. */
+      var accent = strikeCount % 5 === 0;
       el.hero.classList.remove('strike');
       void el.hero.offsetWidth;
       el.hero.classList.add('strike');
@@ -574,14 +664,15 @@
       setTimeout(function () {
         var jx = (Math.random() - 0.5) * 26, jy = (Math.random() - 0.5) * 20;
 
-        var slash = spawnFx('fx-slash', p.x + jx - 6, p.y + jy - 4, 240);
-        if (slash) slash.style.setProperty('--rot', Math.floor(Math.random() * 50 - 25) + 'deg');
+        // 임팩트·궤적·스파크·섬광 — 전부 캔버스 (단계 1 슬라이스 1)
+        impactBurst(p.x + jx, p.y + jy, accent);
 
-        var imp = spawnFx('fx-impact' + (crit ? ' crit' : ''), p.x + jx, p.y + jy, 340);
-        if (imp) imp.style.setProperty('--rot', Math.floor(Math.random() * 70 - 35) + 'deg');
-
-        /* 숫자는 언제나 실제 누적 피해다 — 5타 강조는 리듬 연출이지 추가 피해가 아니다. */
-        spawnFx('fx-dmg' + (crit ? ' crit' : ''), p.x + jx, p.y + jy - 28, 640, fmt(dmg));
+        /* 숫자는 관측된 실제 피해이고 DOM 잔류다 (결정 3·8). 크기·색은 타격 크기
+         * (적 최대 HP 대비 이번 몫)에 반응한다 — 체크리스트 3번. */
+        var ratio = maxHp > 0 ? dmg / maxHp : 0;
+        var cls = 'fx-dmg' + (accent ? ' accent' : '')
+                + (ratio >= 0.9 ? ' huge' : ratio >= 0.35 ? ' big' : '');
+        spawnFx(cls, p.x + jx, p.y + jy - 28, 640, fmt(dmg));
 
         el.enemy.classList.remove('squash');
         void el.enemy.offsetWidth;
@@ -590,8 +681,8 @@
         /* 히트스톱 — 접촉 순간 모두가 잠깐 멈춘다 (타격감의 절반).
          * setTimeout 해제가 아니라 stage FX 시계가 건다/푼다 — 캔버스 파티클과
          * DOM(animation-play-state)이 같은 순간에 얼고 같은 순간에 풀린다. */
-        hitstop(crit ? 0.09 : 0.055);
-        if (crit) camera.shake(2, 0.16);
+        hitstop(accent ? 0.09 : 0.055);
+        if (accent) camera.shake(2, 0.16);
       }, 120);
 
       /* 연타 시 이전 복원 타이머가 다음 타격의 공격 포즈를 중간에 되돌리는 경합 방지 */
@@ -626,19 +717,23 @@
     function combatFxUpdate(dt, simDt, state) {
       if (floatCooldown > 0) floatCooldown -= dt;
 
-      /* 데미지 숫자는 실제 깎이는 HP 와 같아야 한다 — 보스전은 bossDps(라떼·나침반 포함). */
-      var fighting = view.mode !== 'advance' && view.alive;
-      dmgSince += (state.phase === Combat.PHASE_BOSS ? Combat.bossDps(state) : Combat.dps(state)) * simDt;
-      if (!fighting) { dmgSince = 0; return; }
+      /* 숫자의 진실원은 관측 HP 델타 — DPS 공식을 표현 계층에서 재계산하지 않는다 (결정 8) */
+      observeDamage(state);
 
-      // 타격 틱: 공속을 따르되 눈이 따라갈 상한(초당 4회)을 둔다
+      var fighting = view.mode !== 'advance' && view.alive;
+      if (!fighting) return;
+
+      /* 타격 틱: 공속 리듬을 따르되 눈이 따라갈 상한(초당 4회)을 둔다.
+       * effAspd 는 **리듬 전용** 엔진 getter 읽기다 — 수치(피해량)에는 관여하지 않는다.
+       * (HUD 의 "내 DPS" 표기가 Combat.dps 를 읽는 것과 같은 급의 읽기 — 공속 강화의
+       * 시각 피드백을 지키기 위해 결정 8 에서 이 읽기만 남겼다.) */
       var rate = Math.min(4, Combat.effAspd(state));
       strikeGap += dt;
       strikeAccum += dt * rate;
-      if (strikeAccum >= 1 && strikeGap >= 0.22) {
+      if (strikeAccum >= 1 && strikeGap >= 0.22 && dmgObserved >= 1) {
         strikeAccum = 0; strikeGap = 0;
-        heroStrike(dmgSince);
-        dmgSince = 0;
+        heroStrike(dmgObserved, state.enemyMaxHp);
+        dmgObserved = 0;
       }
 
       // 동료 지원 사격 — 서로 어긋난 주기로
@@ -696,7 +791,17 @@
     }
 
     return {
-      push: function (events) { queue.push(events); },
+      push: function (events) {
+        /* 처치 확인은 엔진과 동기인 이 지점에서 본다 — 큐 지연과 무관하게
+         * observeDamage 가 "이번 프레임에 정말 죽었나"를 알 수 있다 (결정 8). */
+        if (events) {
+          for (var i = 0; i < events.length; i++) {
+            var t = events[i] && events[i].type;
+            if (t === 'mob_kill' || t === 'boss_clear') frameKill = true;
+          }
+        }
+        queue.push(events);
+      },
       update: update,
       setChapter: setChapter,
       syncParty: syncParty,

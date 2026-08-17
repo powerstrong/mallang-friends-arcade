@@ -199,6 +199,21 @@ async function main(pg) {
   ok(perf.n === perf.cap, '측정 전제 — PARTICLE_CAP 포화 상태다', perf);
   ok(perf.avg <= 8, 'CI 성능 게이트 — 최대 부하 절사 평균 프레임타임 ≤ 8ms', perf);
   ok(perf.p95 <= 16, 'CI 성능 게이트 — p95 ≤ 16ms', perf);
+
+  // ── 슬라이스 1 — 타격 = 캔버스 버스트 + DOM 숫자(관측값) ──
+  await pg.eval('(function(){var fx=window.__mallangIdle.Stage.fx; fx.stepDraw(1300);' +
+    ' document.querySelectorAll(".fx-dmg").forEach(function(n){n.remove();});' +
+    ' fx.strike(999, 1000); return 1;})()');
+  await pg.sleep(260);   // 접촉 프레임(120ms) 이후
+  var s1r = JSON.parse(await pg.eval(J(
+    '(function(){var fx=window.__mallangIdle.Stage.fx;' +
+    ' var hit=null; document.querySelectorAll(".fx-layer .fx-dmg").forEach(function(n){ if(n.textContent==="999") hit=n; });' +
+    ' return { particles: fx.particleCount(), sheets: fx.sheetReady("impact") && fx.sheetReady("slash"),' +
+    '   found: !!hit, cls: hit ? hit.className : null };})()')));
+  ok(s1r.found, '데미지 숫자는 DOM 잔류 — 전달된 관측값 그대로 표시된다', s1r);
+  ok(/huge/.test(s1r.cls || ''), '숫자 크기가 타격 크기(최대 HP 대비 몫)에 반응한다', s1r);
+  ok(s1r.particles >= 8, '타격 접점에서 임팩트·궤적·스파크·섬광이 캔버스에 함께 터진다', s1r);
+  ok(s1r.sheets, '플립북 시트가 decode 되어 캔버스 재생 준비가 되어 있다', s1r);
 }
 
 /* 감속 모드 — 움직임은 줄되 정보는 남아야 한다. */

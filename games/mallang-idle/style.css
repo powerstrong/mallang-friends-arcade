@@ -743,18 +743,7 @@ body {
 @keyframes impactFlip { to { background-position: -400% 0; } }
 @keyframes impactFade { 0% { opacity: 0; } 12% { opacity: 1; } 85% { opacity: 1; } 100% { opacity: 0; } }
 
-/* 검격 궤적 — 휘두른 방향으로 늘어났다 사라진다 */
-.fx-slash {
-  width: 110px; height: 110px;
-  background: url('assets/fx-slash.png') center / contain no-repeat;
-  animation: slashSweep .24s ease-out forwards;
-  rotate: var(--rot, 0deg);
-}
-@keyframes slashSweep {
-  0%   { transform: translate(-50%, -50%) scale(.5) rotate(-18deg); opacity: 0; }
-  30%  { transform: translate(-50%, -50%) scale(1.05) rotate(0); opacity: 1; }
-  100% { transform: translate(-50%, -50%) scale(1.2) rotate(14deg); opacity: 0; }
-}
+/* 검격 궤적은 캔버스로 이관 (단계 1 슬라이스 1 — stage.js impactBurst) */
 
 /* 처치 펑 — 4프레임 플립북 */
 .fx-poof {
@@ -784,8 +773,14 @@ body {
   animation: dmgPop .6s cubic-bezier(.2, .9, .4, 1) forwards;
   white-space: nowrap;
 }
-.fx-dmg.crit {
-  font-size: 24px;
+/* 크기·색은 타격 크기에 반응한다 — big/huge 는 적 최대 HP 대비 이번 몫 (단계 1) */
+.fx-dmg.big { font-size: 21px; }
+.fx-dmg.huge {
+  font-size: 27px;
+  -webkit-text-stroke: 4px #c9436f;
+}
+/* accent = 5타 리듬 강조 (표현 전용 — 크리티컬이 아니다) */
+.fx-dmg.accent {
   color: #ffe9a8;
   -webkit-text-stroke: 4px #c47a12;
   text-shadow: 0 2px 8px rgba(200, 130, 20, .5);
@@ -829,12 +824,15 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .confetti, .hero.strike, .hero.fighting,
   .follower.fighting, .follower.cast, .enemy.squash img, .enemy img.spawn-in,
-  .enemy img.boss-in, .enemy.is-boss::before, .fx-impact, .fx-poof, .fx-slash,
+  .enemy img.boss-in, .enemy.is-boss::before, .fx-impact, .fx-poof,
   .ambient-pt, .speedlines.flash, .hero.hop, .follower.hop, .fx-heartp,
   .hero.walking, .follower.walking,
   .story-card.pop, .boss-bubble.pop, .chapter-banner.show, .story-more { animation: none; }
-  .confetti, .fx-impact, .fx-poof, .fx-proj, .fx-slash, .ambient-pt, .speedlines,
+  .confetti, .fx-impact, .fx-poof, .fx-proj, .ambient-pt, .speedlines,
   .fx-heartp { display: none; }
+  /* 정보 FX(숫자·골드)는 **남되 정적**이다 — 사라져도, 날아다녀도 실패 (단계 1).
+   * animation 을 끄면 제자리에 떠 있다가 TTL 로 정리된다. */
+  .fx-dmg, .gold-float { animation: none; }
 }
 
 /* 구출 하트 — CSS 로 그린 하트가 떠오른다 (에셋 불요) */
