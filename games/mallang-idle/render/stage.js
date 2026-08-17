@@ -121,8 +121,19 @@
     var Chapters = opts.Chapters, Chars = opts.Chars, Combat = opts.Combat;
     var B = opts.balance;
     var Queue = opts.Queue;
-    var sfx = opts.sfx || function () {};
     var fmt = opts.fmt || String;
+
+    /* 효과음은 연출 계층이 낸다 — 안무·비트와 같은 순간에 울려야 "타이밍이 맞는다"
+     * (단계 5, G기둥). game.js 는 로직 사운드(강화·해금)만 즉시 낸다. 마지막 호출을
+     * 기록해 회귀에서 "어떤 사건에 어떤 스팅이 붙었는가"를 검증한다. */
+    var sfxRaw = opts.sfx || function () {};
+    var lastSfx = null, sfxLog = [];
+    function sfx(name) {
+      lastSfx = name;
+      sfxLog.push(name);
+      if (sfxLog.length > 32) sfxLog.shift();   // 회귀 검증용 최근 창 — 무한 성장 방지
+      sfxRaw(name);
+    }
 
     var reducedMotion = !!(root.matchMedia && root.matchMedia('(prefers-reduced-motion: reduce)').matches);
 
@@ -717,10 +728,13 @@
       el.enemyArt.classList.add(isBoss ? 'boss-in' : 'spawn-in');
       if (isBoss) {
         /* 보스 컷인 (체크리스트 1) — 무대를 확 당겨 잡는다. 강한 초기 줌을 홀드
-         * 타이머 동안 유지하고, update 가 이후 전투 프레이밍으로 부드럽게 내린다. */
+         * 타이머 동안 유지하고, update 가 이후 전투 프레이밍으로 부드럽게 내린다.
+         * 포효는 컷인 시작과 같은 순간에 — 엔진 사건 시점(consumeEvents)이 아니라
+         * 무대가 보스를 세우는 이 순간에 울려야 화면과 소리가 맞는다(단계 5). */
         el.arena.classList.add('boss-mode');
         bossFrameT = 0.55;
         camera.frame(CAM_MAX_SCALE, -16, -4);
+        sfx('bossIn');
         setTimeout(function () {
           if (!view.alive) return;
           var bp = footPoint(el.enemyArt);
@@ -778,6 +792,7 @@
             if (view.alive) { var bp = enemyPoint(); killBurst(bp.x, bp.y, true); }
             if (fxReady()) { camera.shake(4.5, 0.34); camera.punch(0.13, 0.36); confettiBurst(); }  // 막타·돌파 줌 펀치 (체크리스트 2)
             speedLineFlash();
+            sfx('clear');   // 돌파 스팅 — 세트피스와 같은 순간(단계 5)
           }
           hideEnemy();
           view.mode = 'advance';
@@ -785,6 +800,7 @@
           break;
 
         case 'boss_fail':
+          if (!collapsed) sfx('fail');   // 시간 초과 — 무대가 물러나는 이 순간(단계 5)
           hideEnemy();
           view.mode = 'advance';
           setLocomotion(true, false);
@@ -906,7 +922,7 @@
 
       swapToAttackPose();
       syncLunge(useJab ? 0.9 : style.lungeK);
-      sfx(isSkill ? 'kill' : 'hit');   // 스킬 발동은 좀 더 묵직한 소리(기존 sfx 재사용)
+      sfx(isSkill ? 'skill' : 'hit');   // 스킬 발동 = 전용 스팅(단계 5), 기본타 = hit
       var p = enemyPoint();     // 좌표 고정 — 접촉까지 적이 바뀌어도 빈 곳에 안 찍힌다
       var fp = footPoint(el.hero);
       dustPuff(fp.x, fp.y, big);
@@ -1046,7 +1062,11 @@
         var raging = rageRatio >= 0.62;
         if (bossFrameT > 0) bossFrameT -= dt;            // 컷인 홀드 — 강한 초기 줌 유지
         else camera.frame(raging ? 1.18 : 1.08, -10, 0); // 정착: 전투 프레이밍 → 분노 줌 크립
-        if (raging !== lastRage) { lastRage = raging; el.arena.classList.toggle('boss-rage', raging); }
+        if (raging !== lastRage) {
+          lastRage = raging;
+          el.arena.classList.toggle('boss-rage', raging);
+          if (raging) sfx('rage');   // 분노 진입 스팅 — 틴트가 켜지는 순간(단계 5)
+        }
       } else if (camera.targetScale !== 1 || camera.targetPanX !== 0 || camera.targetPanY !== 0) {
         camera.reset();                                  // 전진·잡몹 — 카메라를 1.0 으로 되돌린다
       }
@@ -1123,6 +1143,9 @@
         lastReact: function () { return lastReactClass; },
         reactClass: reactClass,
         skillFx: function (id) { var p = enemyPoint(); heroSkillFx(Chars.byId(id), p.x, p.y); },
+        lastSfx: function () { return lastSfx; },   // 단계 5 — 사건별 스팅 배선 검증
+        sfxLog: function () { return sfxLog.slice(); },
+        resetSfxLog: function () { sfxLog.length = 0; },
       },
     };
   }

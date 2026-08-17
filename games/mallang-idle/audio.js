@@ -101,6 +101,11 @@
       lastKill = now;
       tone(660, 0.09, { type: 'square', vol: 0.05, slide: 990 });
     },
+    /* 스킬 발동 스팅 (단계 5) — 기본타(hit)·처치(kill)와 구분되는 밝은 상승음.
+     * stage.js 가 매 9타 스킬 세트피스 접점에 물린다(안무와 동기). */
+    skill:    function () { tone(523, 0.1, { type: 'triangle', vol: 0.09, slide: 784 }); tone(1047, 0.13, { type: 'triangle', vol: 0.07, delay: 0.05 }); },
+    /* 분노 페이즈 진입 (단계 5) — 낮게 깔리는 긴장 스팅. 제한시간 임박 순간에 한 번. */
+    rage:     function () { tone(147, 0.34, { type: 'sawtooth', vol: 0.09, slide: 110 }); tone(220, 0.3, { type: 'sawtooth', vol: 0.06, slide: 175, delay: 0.02 }); },
     coin:     function () { tone(988, 0.07, { type: 'triangle', vol: 0.07 }); tone(1319, 0.09, { type: 'triangle', vol: 0.07, delay: 0.06 }); },
     upgrade:  function () { tone(523, 0.08, { type: 'triangle', vol: 0.1 }); tone(784, 0.12, { type: 'triangle', vol: 0.1, delay: 0.07 }); },
     relic:    function () { tone(880, 0.1, { vol: 0.09 }); tone(1109, 0.12, { vol: 0.09, delay: 0.08 }); tone(1319, 0.16, { vol: 0.09, delay: 0.16 }); },

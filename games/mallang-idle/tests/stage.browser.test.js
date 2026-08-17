@@ -433,6 +433,46 @@ async function main(pg) {
     '줌·팬 목표가 상한으로 클램프된다 (과입력 방지)', caps);
   ok(caps.sh === caps.maxShake && caps.pu <= 0.14,
     '흔들림·펀치 진폭이 상한으로 클램프된다 (멀미 방지)', caps);
+
+  // ═══ 단계 5 — 오디오 싱크 (G기둥) ═══════════════════════════════
+  /* 새 안무 사건에 스팅이 "같은 순간" 물렸는지 — 무대가 낸 마지막 사운드(fx.lastSfx)로
+   * 판정한다. game.js 는 로직 사운드(강화·해금)만 즉시 내고, 안무 사운드(타격·스킬·
+   * 포효·돌파)는 무대의 접점/비트가 낸다. 엔진 사건 시점이 아니라 화면과 같은 순간. */
+  /* 기본타/스킬은 fx.strike 가 동기로 낸다(update 밖) → lastSfx 로 판정.
+   * 보스 포효·돌파·분노는 update() 안 비트/프레이밍이 내는데, 같은 프레임의
+   * combatFxUpdate 가 뒤이어 타격음을 낼 수 있어 lastSfx 가 덮인다 → 최근 창(sfxLog)
+   * 멤버십으로 "그 사건에 그 스팅이 붙었나"를 본다. 상태는 실제 H.state(엔진 getter
+   * 정합)를 써야 effAspd 등이 안전하다. */
+  var audio = JSON.parse(await pg.eval(J(
+    '(function(){var H=window.__mallangIdle; var fx=H.Stage.fx; var out={}; var g;' +
+    ' g=0; do { fx.strike(200,1000); } while (fx.lastStrike().tier==="skill" && g++<20);' +
+    ' out.basic=fx.lastSfx();' +
+    ' g=0; do { fx.strike(200,1000); } while (fx.lastStrike().tier!=="skill" && g++<20);' +
+    ' out.skill=fx.lastSfx();' +
+    ' for (var d=0;d<200 && !H.Stage.queue.idle();d++) H.Stage.update(0.05,0,H.state);' +  // 큐 비우기
+    ' fx.resetSfxLog();' +
+    ' H.Stage.push([{type:"boss_start", stage:H.state.stage}]); H.Stage.update(0.02,0,H.state);' +
+    ' out.bossInLog=fx.sfxLog();' +
+    ' for (var k=0;k<40 && !H.Stage.queue.idle();k++) H.Stage.update(0.05,0,H.state);' +
+    ' fx.resetSfxLog();' +
+    ' H.Stage.push([{type:"boss_clear", stage:H.state.stage, shards:1}]); H.Stage.update(0.02,0,H.state);' +
+    ' out.clearLog=fx.sfxLog();' +
+    ' return out;})()')));
+  ok(audio.basic === 'hit', '기본타에 hit 스팅이 물린다', audio);
+  ok(audio.skill === 'skill', '스킬 세트피스에 전용 skill 스팅이 물린다 (kill 재사용 폐지)', audio);
+  ok(audio.bossInLog.indexOf('bossIn') >= 0, '보스 컷인에 포효가 같은 순간 물린다 (엔진 사건 시점이 아니라 무대)', audio);
+  ok(audio.clearLog.indexOf('clear') >= 0, '돌파에 clear 스팅이 세트피스와 같은 순간 물린다', audio);
+
+  // ── 분노 진입 스팅 (제한시간 임박) ──
+  var rageSfx = JSON.parse(await pg.eval(J(
+    '(function(){var H=window.__mallangIdle; var fx=H.Stage.fx; var B=H.Balance.BALANCE;' +
+    ' if (H.state.phase!=="boss"){ for (var i=0;i<400 && H.state.phase!=="boss";i++) H.advance(1); }' +
+    ' for (var d=0;d<200 && !H.Stage.queue.idle();d++) H.Stage.update(0.05,0,H.state);' +  // 잔여 비트 소진→무대가 엔진 보스로 스냅
+    ' H.state.bossT=0; H.Stage.update(0.05,0,H.state);' +          // 분노 해제 보장(토글 초기화)
+    ' fx.resetSfxLog();' +
+    ' H.state.bossT=B.bossTimeLimit*0.8; H.Stage.update(0.1,0,H.state);' +  // 임박 → 분노 진입
+    ' return { phase:H.state.phase, mode:H.Stage.view.mode, log:fx.sfxLog() };})()')));
+  ok(rageSfx.phase === 'boss' && rageSfx.log.indexOf('rage') >= 0, '분노 진입에 긴장 스팅이 같은 순간 물린다', rageSfx);
 }
 
 /* 감속 모드 — 움직임은 줄되 정보는 남아야 한다. */
@@ -490,6 +530,33 @@ async function reduced(pg) {
     '   transform: document.getElementById("stageCam").style.transform };})()')));
   ok(camR.render === 1 && camR.target === 1, '감속 모드 — 카메라 줌·팬이 걸리지 않는다', camR);
   ok(!camR.transform, '감속 모드 — stage-cam transform 이 비어 있다 (멀미·움직임 0)', camR);
+
+  // ── 단계 5 — 감속 모드에서도 **정보는 남는다** (F기둥, "그냥 애니메이션 끔" 아님) ──
+  /* 데미지 숫자는 남되 정적(움직임만 제거). 타격 접점(setTimeout) 뒤에 확인한다. */
+  await pg.eval('(function(){var fx=window.__mallangIdle.Stage.fx;' +
+    ' document.querySelectorAll(".fx-dmg").forEach(function(n){n.remove();});' +
+    ' fx.strike(777, 1000); return 1;})()');
+  await pg.sleep(240);
+  var dmgR = JSON.parse(await pg.eval(J(
+    '(function(){var n=null; document.querySelectorAll(".fx-dmg").forEach(function(e){ if(e.textContent==="777") n=e; });' +
+    ' return { found:!!n, anim: n ? getComputedStyle(n).animationName : null };})()')));
+  ok(dmgR.found, '감속 모드 — 데미지 숫자(정보)는 그대로 뜬다', dmgR);
+  ok(dmgR.anim === 'none', '감속 모드 — 데미지 숫자는 정적이다 (움직임만 제거)', dmgR);
+
+  /* 분노 페이즈 — 긴장 틴트는 남되 맥동(움직임)만 꺼진다. "긴장 정보"가 사라지면 실패. */
+  var rageR = JSON.parse(await pg.eval(J(
+    '(function(){var H=window.__mallangIdle;' +
+    ' if (H.state.phase!=="boss"){ for (var i=0;i<400 && H.state.phase!=="boss";i++) H.advance(1); }' +
+    ' H.state.bossT = H.Balance.BALANCE.bossTimeLimit*0.85;' +
+    ' for (var j=0;j<4;j++) H.Stage.update(0.1, 0, H.state);' +
+    ' var a=document.getElementById("arena");' +
+    ' var cs=getComputedStyle(a, "::after");' +
+    ' return { phase:H.state.phase, raging:a.className.indexOf("boss-rage")>=0,' +
+    '   anim:cs.animationName, shadow: cs.boxShadow && cs.boxShadow!=="none",' +
+    '   hpW: document.getElementById("enemyHpFill").style.width };})()')));
+  ok(rageR.raging, '감속 모드 — 분노 페이즈 긴장 틴트가 남는다 (정보 유지)', rageR);
+  ok(rageR.anim === 'none' && rageR.shadow, '감속 모드 — 틴트는 정적이고(맥동 없음) 그래도 보인다', rageR);
+  ok(/%/.test(rageR.hpW), '감속 모드 — 보스전 HP 정보가 갱신된다', rageR);
 }
 
 /* DPR 2 — 백킹 해상도만 배가되고 좌표 수학(CSS px)은 그대로여야 한다. */

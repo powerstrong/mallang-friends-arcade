@@ -788,7 +788,8 @@
       }
       else if (ev.type === 'boss_clear') {
         toast('스테이지 ' + ev.stage + ' 돌파!', 'win');
-        sfx('clear');
+        /* 돌파 스팅(clear)은 무대의 boss_clear 비트가 낸다 — 세트피스와 같은 순간에
+         * 울려야 화면·소리가 맞는다(단계 5). 여기 로직(토스트·해금·BGM)만 즉시. */
         needPanel = true;
         var beforeSlots = Chars.slotsFor(ev.stage);
         if (Chars.slotsFor(state.stage) > beforeSlots) {
@@ -806,9 +807,9 @@
           queueStory('rescue', endedCh.id);   // 하트는 컷신이 끝나는 순간(endStory) 터진다
         }
       }
-      else if (ev.type === 'boss_fail') { toast('아깝다! ⭐+' + ev.shards, 'fail'); sfx('fail'); renderRelics(); renderBattle(); syncBgm(); }
+      else if (ev.type === 'boss_fail') { toast('아깝다! ⭐+' + ev.shards, 'fail'); renderRelics(); renderBattle(); syncBgm(); }  // fail 스팅은 무대 비트가 낸다(단계 5)
       else if (ev.type === 'boss_start') {
-        toast('보스 등장!'); sfx('bossIn');
+        toast('보스 등장!');   // 포효(bossIn)는 무대의 컷인이 낸다 — 화면과 동기(단계 5)
         bossTaunt(Chapters.chapterFor(state.stage).id);
         syncBgm();
       }
