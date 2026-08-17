@@ -1107,7 +1107,13 @@
   /* 꾸미기 패널 저장(§7): 낙관 적용 + localStorage + joinParams 갱신(재접속 시
    * 구버전 착장으로 되돌아가는 버그 방지) + 서버 송신. outfit 은 호출 전에
    * sanitize 되어 있어야 한다.
+   *
+   * 서버는 1초 스로틀로 저장을 조용히 버린다(연타 보호) — 클라가 스로틀 창을
+   * 피해서 마지막 저장을 지연 재전송해 유실 0 을 보장한다(P2-3). 지연 발사는
+   * 그 시점의 최신 착장(me.outfit/myOutfitRev)을 실어 중간 저장을 자연 병합.
    */
+  let lastOutfitSentAt = 0;
+  let outfitSendTimer = null;
   function sendOutfitChange(outfit, preset) {
     if (!me || me.characterId !== HUMAN_ID) return;
     myOutfitRev += 1;
@@ -1117,7 +1123,18 @@
     if (joinParams) joinParams = { ...joinParams, outfit };
     pendingOutfit = outfit;
     selectedPreset = preset;
-    send({ t: 'outfit_change', d: { outfit, revision: myOutfitRev } });
+    clearTimeout(outfitSendTimer);
+    const wait = Math.max(0, 1050 - (Date.now() - lastOutfitSentAt));
+    if (wait === 0) {
+      lastOutfitSentAt = Date.now();
+      send({ t: 'outfit_change', d: { outfit, revision: myOutfitRev } });
+    } else {
+      outfitSendTimer = setTimeout(() => {
+        if (!me || me.characterId !== HUMAN_ID) return;
+        lastOutfitSentAt = Date.now();
+        send({ t: 'outfit_change', d: { outfit: me.outfit, revision: myOutfitRev } });
+      }, wait);
+    }
     pushSpawnEffect(me.x, me.y);
   }
 
