@@ -438,10 +438,33 @@
   let onlinePollTimer = null;
 
   // ── Picker state ────────────────────────────────────────────────────────────
-  let selectedCharacterId = null;
+  let selectedCharacterId = null; // 동물 worldId 또는 'human'
+  let selectedPreset = null;      // human 일 때 'girl'|'boy' (카드 하이라이트 용)
+  let selectedBuddyId = null;     // human 일 때 게임에 데려갈 말랑 친구
+  let pendingOutfit = null;       // human 일 때 입장에 쓸 착장(항상 sanitize 완료)
   buildPicker();
   restoreSavedName();
   startOnlinePoll();
+
+  // ── 착장 로컬 저장 (A단계: localStorage, 서버 저장은 B단계 §10) ─────────────
+  // world_outfit = { preset, rev, outfit, hair, hairColor, hat, faceAcc }
+  function loadSavedOutfit() {
+    try {
+      const raw = JSON.parse(localStorage.getItem('world_outfit'));
+      if (!raw || typeof raw !== 'object') return null;
+      const preset = window.WARDROBE.presets[raw.preset] ? raw.preset : 'girl';
+      return {
+        preset,
+        rev: Number.isFinite(raw.rev) ? raw.rev : 0,
+        ...window.WARDROBE.sanitizeOutfit(raw, preset),
+      };
+    } catch { return null; }
+  }
+  function saveOutfitLocal(preset, outfit, rev) {
+    try {
+      localStorage.setItem('world_outfit', JSON.stringify({ preset, rev, ...outfit }));
+    } catch { /* ignore */ }
+  }
 
   nameInput.addEventListener('input', updateJoinButton);
   joinBtn.addEventListener('click', tryJoin);
@@ -542,6 +565,8 @@
   let matchStartingAt = 0;    // performance.now() when 'match_starting' arrived; 0 = not in transition
 
   // ── Picker UI ───────────────────────────────────────────────────────────────
+  // 카드 식별은 pickId — 동물은 worldId, 사람 프리셋은 'human:girl'/'human:boy'.
+  // (worldId 만으로 비교하면 human 카드 2장이 동시에 하이라이트된다.)
   function buildPicker() {
     if (!Array.isArray(window.CHARACTERS)) {
       joinStatus.textContent = '캐릭터 카탈로그를 불러올 수 없습니다.';
@@ -549,11 +574,32 @@
       return;
     }
     picker.innerHTML = '';
+    // 사람 프리셋 2카드를 맨 앞에 — 꾸미기가 주인공(§3). 선택 결과는
+    // characterId:'human' + 프리셋 기본(또는 마지막 저장) 착장.
+    const W = window.WARDROBE;
+    if (W && W.presets) {
+      for (const presetId of Object.keys(W.presets)) {
+        const preset = W.presets[presetId];
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'character-card human-card';
+        btn.dataset.pickId = `human:${presetId}`;
+        btn.innerHTML = `
+          <div class="preview" aria-hidden="true">${preset.emoji || '🧒'}</div>
+          <span class="label">${escapeHtml(preset.label)}</span>
+          <span class="sub-label">꾸미기 가능</span>
+        `;
+        // 프리뷰: 프리셋 기본 착장의 정면 셀을 합성해 카드에 그린다(완성 전엔 emoji).
+        paintHumanCardPreview(btn.querySelector('.preview'), W.sanitizeOutfit(null, presetId));
+        btn.addEventListener('click', () => selectHumanPreset(presetId));
+        picker.appendChild(btn);
+      }
+    }
     for (const c of window.CHARACTERS) {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'character-card';
-      btn.dataset.worldId = c.worldId;
+      btn.dataset.pickId = c.worldId;
       const preview = c.portrait
         ? `<img class="preview-img" src="${c.portrait}" alt="" />`
         : characterEmoji(c.worldId);
@@ -564,15 +610,107 @@
       btn.addEventListener('click', () => selectCharacter(c.worldId));
       picker.appendChild(btn);
     }
+    ensureBuddyRow();
+  }
+
+  function paintHumanCardPreview(previewEl, outfit) {
+    if (!previewEl) return;
+    ensureHumanSheet(outfit).promise.then((e) => {
+      if (!e.ready || !previewEl.isConnected) return;
+      const canvas = document.createElement('canvas');
+      canvas.width = canvas.height = 96;
+      const c = canvas.getContext('2d');
+      const cell = HUMAN_SHEET_SIZE / 3;
+      c.drawImage(e.img, 0, 0, cell, cell, 0, 0, 96, 96);
+      canvas.className = 'preview-img';
+      previewEl.replaceChildren(canvas);
+    });
+  }
+
+  function highlightPickedCard(pickId) {
+    for (const card of picker.querySelectorAll('.character-card')) {
+      card.classList.toggle('selected', card.dataset.pickId === pickId);
+    }
   }
 
   function selectCharacter(worldId) {
     selectedCharacterId = worldId;
-    for (const card of picker.querySelectorAll('.character-card')) {
-      card.classList.toggle('selected', card.dataset.worldId === worldId);
-    }
+    selectedPreset = null;
+    pendingOutfit = null;
+    highlightPickedCard(worldId);
     try { localStorage.setItem('world_character', worldId); } catch { /* ignore */ }
+    syncBuddyRow();
     updateJoinButton();
+  }
+
+  /* 사람 프리셋 카드 선택(§3): 마지막 저장 착장이 같은 프리셋이면 그대로 복원,
+   * 다른 프리셋 카드를 눌렀으면 그 프리셋의 기본 헤어+기본 코디를 적용(프리셋 전환).
+   */
+  function selectHumanPreset(presetId) {
+    selectedCharacterId = HUMAN_ID;
+    selectedPreset = presetId;
+    const saved = loadSavedOutfit();
+    if (saved && saved.preset === presetId) {
+      pendingOutfit = window.WARDROBE.sanitizeOutfit(saved, presetId);
+    } else {
+      pendingOutfit = window.WARDROBE.sanitizeOutfit(null, presetId);
+      saveOutfitLocal(presetId, pendingOutfit, saved ? saved.rev : 0);
+    }
+    highlightPickedCard(`human:${presetId}`);
+    try { localStorage.setItem('world_character', HUMAN_ID); } catch { /* ignore */ }
+    // 말랑 친구(게임 파트너) — 저장값 복원, 없으면 랜덤 기본(§2).
+    if (!selectedBuddyId) {
+      let savedBuddy = null;
+      try { savedBuddy = localStorage.getItem('world_game_buddy'); } catch { /* ignore */ }
+      const valid = Array.isArray(window.CHARACTERS)
+        && window.CHARACTERS.some((c) => c.worldId === savedBuddy);
+      selectBuddy(valid ? savedBuddy
+        : window.CHARACTERS[Math.floor(Math.random() * window.CHARACTERS.length)].worldId);
+    }
+    syncBuddyRow();
+    updateJoinButton();
+  }
+
+  // ── 말랑 친구 서브 선택 (human 전용, §2 역할 분리) ──────────────────────────
+  let buddyRowEl = null;
+  function ensureBuddyRow() {
+    if (buddyRowEl || !picker.parentElement) return;
+    const row = document.createElement('div');
+    row.id = 'buddy-select';
+    row.className = 'buddy-select hidden';
+    row.innerHTML = `
+      <span class="buddy-label">🎮 게임에 데려갈 말랑 친구</span>
+      <div class="buddy-cards"></div>
+    `;
+    const cards = row.querySelector('.buddy-cards');
+    for (const c of (window.CHARACTERS || [])) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'buddy-card';
+      b.dataset.worldId = c.worldId;
+      b.title = c.label;
+      b.innerHTML = c.portrait
+        ? `<img src="${c.portrait}" alt="${escapeHtml(c.label)}" />`
+        : characterEmoji(c.worldId);
+      b.addEventListener('click', () => selectBuddy(c.worldId));
+      cards.appendChild(b);
+    }
+    picker.parentElement.appendChild(row);
+    buddyRowEl = row;
+  }
+
+  function selectBuddy(worldId) {
+    selectedBuddyId = worldId;
+    try { localStorage.setItem('world_game_buddy', worldId); } catch { /* ignore */ }
+    if (buddyRowEl) {
+      for (const b of buddyRowEl.querySelectorAll('.buddy-card')) {
+        b.classList.toggle('selected', b.dataset.worldId === worldId);
+      }
+    }
+  }
+
+  function syncBuddyRow() {
+    if (buddyRowEl) buddyRowEl.classList.toggle('hidden', selectedCharacterId !== HUMAN_ID);
   }
 
   function updateJoinButton() {
@@ -586,7 +724,14 @@
       const saved = localStorage.getItem('world_name');
       if (saved) nameInput.value = saved;
       const savedChar = localStorage.getItem('world_character');
-      if (savedChar) selectCharacter(savedChar);
+      if (savedChar === HUMAN_ID) {
+        // 완전 첫 접속이 아닌 경우에만 복원 — 저장 착장의 프리셋 카드로.
+        const savedOutfit = loadSavedOutfit();
+        selectHumanPreset(savedOutfit ? savedOutfit.preset : 'girl');
+      } else if (savedChar) {
+        selectCharacter(savedChar);
+      }
+      // 완전 첫 접속(저장 없음)은 무선택 — 남/녀를 반드시 직접 고른다(§3 확정지시).
     } catch { /* ignore */ }
     updateJoinButton();
   }
