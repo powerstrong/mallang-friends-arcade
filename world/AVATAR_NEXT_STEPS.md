@@ -1,50 +1,30 @@
-# 아바타 꾸미기 — 다음 세션 할일 (0단계 완료 시점 핸드오프)
+# 아바타 꾸미기 — 다음 세션 할일 (A단계 구현 완료 시점 핸드오프)
 
-> 작성: 2026-08-17. 설계 근거는 전부 [AVATAR_DESIGN.md](./AVATAR_DESIGN.md) — 이 파일은 "무엇을 어떤 순서로"만 담는다.
-> 상태: 설계 확정(codex 3라운드 Go) + **0단계(움직임 시제품) 통과, main 푸시됨(b7da42b)**.
+> 작성: 2026-08-17 (A단계 코드 완료로 갱신). 설계 근거는 전부 [AVATAR_DESIGN.md](./AVATAR_DESIGN.md).
+> 상태: **A단계(전부 무료 옷장) 구현 완료** — 합성 렌더·피커·프로토콜·꾸미기 패널·거울 오브젝트, 워커 테스트 62 pass + wrangler dev 2클라 WS 스모크 통과.
 
-## 0. 현재 상태 요약
+## 0. A단계에서 들어간 것 (커밋 A1~A4)
 
-- **에셋 15파일** `world/assets/avatar/` 반입 완료: `_mannequin.png`(비노출 정본), 코디 2(`outfit_dress_peach`, `outfit_tee_sky`), 긴머리 front/back × 4색, 숏컷 front × 4색, `hat_beret`, `glasses_round`. 전부 384²(셀 128px), 행정렬 베이크 완료.
-- **파이프라인 확정**(§12.3 실측): 부유 레이어 생성 금지. 새 아이템 = ①정본 착용 편집 생성 → ②차분 추출 → ③(헤어만) 턱선 front/back 분리 → ④(헤어만) 팔레트 치환. 레시피는 아래 §4.
-- **QA 도구**: `world/wardrobe-preview.html` (정적 서버로 열기: launch.json `static` = 8090 포트).
-- **카탈로그**: `shared/wardrobe_catalog.js` (v0 — 서버 미러는 아직 없음).
+- **클라 합성 렌더** `world/world.js`: `characterId:'human'` → 착장 기반 오프스크린 384² 시트(z-order §5), LRU 24, 갈아입기 중 이전 시트 유지 후 원자 교체, 레이어 1장 실패 시 합성 전체 불합격→emoji 폴백(마네킹 부분 노출 차단). 사람만 **4박자 걸음**(`HUMAN_WALK_PATTERN=[1,0,2,0]`, 130ms) — §1 사람검증 후 이 상수만 조정.
+- **피커** : 남/녀 프리셋 2카드(합성 프리뷰 캔버스) + 동물 5카드, 말랑 친구 서브 선택(기본 랜덤). 완전 첫 접속은 무선택(확정지시). `world_outfit`(JSON: preset·rev·착장)·`world_game_buddy` localStorage.
+- **프로토콜** `worker/src/world.js` + `worker/src/wardrobe.js`(카탈로그 서버 미러): join payload `{characterId:'human', gameBuddyId, outfit, catalogVersion}`, 서버 sanitize(무효→프리셋 치환), wire 엔 characterId/outfit만·buddy 비노출, `outfit_change`(단조 revision, 1s 스로틀, 권위 echo), 발사 경로 `_gameAvatarId`가 URL+world-launch 시드 양쪽에서 human→말랑 친구 치환. `isValidCharacterId` 는 동물 전용으로 유지(의도적 — 게임 폴백 경로 보호).
+- **꾸미기 패널 + 진입점 2**: 헤더 👕 버튼(사람만 노출) + 전신거울 오브젝트 `MIRROR_BOOTH(600,690,110,120)` — 랜덤 스폰 영역(x80~460·y450~850)·모바일 크롭(x≈213~748)·LAB_BOOTH 회피 좌표. 패널: 걷기 미리보기(탭=회전)·탭 4·색 스와치·랜덤 코디·되돌리기·프리셋 기본·저장 시 일괄 반영+반짝임. 아이템 썸네일 = 그 아이템만 바꿔 입은 내 모습(시트 캐시 키 공유).
+- **테스트**: `worker/tests/wardrobe-outfit.test.mjs`(7종) + 스크래치패드 2클라 WS 스모크(wrangler dev, `--assets` 없이 워커만 띄우면 reload 루프 없음).
+- sw.js CACHE v40 + wardrobe_catalog.js PRECACHE 추가, 버전 뱃지 v40 재동기.
 
-## 1. 최우선 — 사람 검증 (사용자 게이트, 코드 작업 아님)
+## 1. 최우선 — 사람 검증 (사용자 게이트)
 
-- [ ] `wardrobe-preview.html`에서 딸들과 **걸음 토글 판정**: 4박자(A→정지→B→정지) vs 2박자(현행) 어느 쪽이 자연스러운지 + 속도(90~200ms) 취향. → 결과를 A단계 `drawAvatar` 걸음 시퀀스에 반영.
-- [ ] 코디·헤어·색 조합을 돌려보며 어색한 셀 확인(특히 옆모습 긴머리). 문제 셀은 §4 레시피로 해당 시트만 재생성.
+- [ ] **실기기 광장 입장**: 여자아이/남자아이로 입장 → 걷기 4박자 감성 판정(뻣뻣하면 `HUMAN_WALK_PATTERN=[1,2]` 2박자 복귀 or `HUMAN_WALK_MS` 조정. 비교 도구는 `wardrobe-preview.html` 걸음 토글).
+- [ ] **2클라 착장 실시간 반영**: 폰+PC 동시 입장 → 서로의 코디가 보이는지, 갈아입기 저장 시 상대 화면에 반짝임과 함께 바뀌는지.
+- [ ] 꾸미기 패널 조작감(아이 손 기준): 탭·스와치·랜덤·저장 흐름, 거울 오브젝트 위치.
+- [ ] 어색한 셀(특히 옆모습 긴머리) 확인 — 문제 시트는 §3 레시피로 재생성.
+- [ ] 게임 발사 확인: 사람 아바타로 부스 매칭 → 게임엔 말랑 친구로 입장하는지.
 
-## 2. A단계 — 전부 무료 옷장 (광장 통합, 다음 세션 본작업)
+## 2. B단계 — 가족 선물 (다음 본작업, 설계서 §8~10)
 
-구현 순서 제안(각 항목이 커밋 단위):
+D1 프로필·옷장·선물함(마이그레이션 0005 안=§10), 부모 PIN 메뉴(서버 측 잠금·ADMIN_KEY 비노출), 쿠폰+종이 코드(원자성·멱등성), 특별 코디 추가(무료율 70% 규칙), 코디 저장 3칸, 주간 무료 옷(영구 추가형). 카탈로그 클라/서버 CI 해시 비교도 이때.
 
-1. **클라 합성 렌더** — `world/world.js`
-   - `characterId==='human'`이면 `getSprite()`가 outfit 기반 **오프스크린 합성 시트**를 반환: z-order `hair_back → outfit → hair_front → faceAcc → hat`(§5). LRU 16~32, 합성 완료 전 기존/기본 시트 유지 후 원자 교체(§5-8·9).
-   - **마네킹 비노출 강제**(§3): outfit 무효/누락 → 프리셋 기본값 적용, 그것도 실패 → 말랑 친구 폴백. `_mannequin.png` 단독 렌더 경로가 없어야 함.
-   - 사람 시트는 표준 3×3이므로 `drawAvatar()` 자체는 거의 무변경(미러·FOOT_FRACTION 그대로). 걸음 시퀀스는 §1 판정 결과 반영.
-2. **피커 확장** — `world/world.js` + `shared/wardrobe_catalog.js`
-   - 동물 5카드 + **남자아이/여자아이 2카드**(WARDROBE.presets). 완전 첫 접속(저장 없음)이면 무선택 기본값 없음(§3 확정지시).
-   - 사람 선택 시: 마지막 저장 착장 자동 적용 + **말랑 친구(게임 파트너) 서브 선택**(동물 5 중 1, 기본 랜덤).
-   - localStorage: `world_outfit`(JSON), `world_game_buddy`. 기존 `world_character`와 호환 유지.
-3. **프로토콜** — `world/world.js` + `worker/src/world.js` (+ 서버 미러 신설 `worker/src/wardrobe.js`)
-   - join payload `{characterId:'human', gameBuddyId, outfit, catalogVersion}` (§11). 서버: outfit을 카탈로그로 검증(무효 → 프리셋 기본으로 치환), attachment에 둘 다 저장, **광장 브로드캐스트엔 characterId/outfit만, 게임 발사 변환엔 gameBuddyId만**.
-   - `characters.js`의 `isValidCharacterId`에 'human' 허용 추가하되 게임 변환(`toGameCharacterId`)에는 human이 절대 들어가지 않게 — 발사 경로 전수 확인(`_launchProposal`, lab_queue, relay 합류).
-   - `outfit_change` 메시지(저장 시에만, 단조 `revision`, 서버 검증 후 브로드캐스트, 수신 피어 재합성). `joinParams`도 저장 직후 갱신(§11).
-   - 서버 미러는 characters.js처럼 assert 동기화 함수 포함(§11 CI 해시 비교는 B단계로 미뤄도 됨).
-4. **꾸미기 패널 + 진입점 2개** — `world/index.html` + `world/world.js`
-   - 헤더 `👕 꾸미기` 버튼 + 광장 **전신거울 오브젝트**(LAB_BOOTH 패턴 클라 전용 rect, 부스 배치와 겹침 주의 — platform-architecture-facts의 boothRect 좌표 참조).
-   - 패널(§7): 큰 걷기 미리보기(탭=방향 회전) / 슬롯 탭 4개 / 색 스와치 / **오늘의 랜덤 코디** / 되돌리기 / 저장 시 일괄 반영+반짝임. A단계는 전 아이템 무료(잠금 UI 없음). 편집 중 WS 유지, 닫기·오류 시 기존 착장 보존(§7).
-5. **검증**: 2클라에서 서로의 착장·갈아입기 실시간 반영 확인(사람 검증은 사용자에게 — Node 하니스로 WS 스모크만, [[platform-wrangler-dev-reload-loop]] 참고: wrangler dev 시각검증 불가).
-
-### A단계에서 하지 않는 것
-프로필/D1/쿠폰/선물함/부모 메뉴(전부 B단계, §8~10), 상하의 분리·등소품·피부/얼굴 variant(v2, §4), 계절 아이템.
-
-## 3. B단계 이후 (요약 — 상세는 설계서)
-
-D1 프로필·옷장·선물함(마이그레이션 0005 안 = §10), 부모 PIN 메뉴+쿠폰/종이 코드(§9), 특별 코디 추가(무료율 70% 규칙 §8), 코디 저장 3칸, 주간 무료 옷(영구 추가형). → C단계: 패션 스튜디오(반응 좋을 때만).
-
-## 4. 새 아이템 추가 레시피 (확정 파이프라인)
+## 3. 새 아이템 추가 레시피 (확정 파이프라인)
 
 ```bash
 # ① 프롬프트: scripts/avatar/p*v2_*.md 중 유형 맞는 것 복사 — "착용 편집" 형식 유지
@@ -59,14 +39,18 @@ sed "s|__BODY__|$BODY|" pNEW_item.md | codex exec -s workspace-write --skip-git-
 #           → hair_palette.py 로 4색 → OUT/<id>_<pal>_<part>.png 리네임 (build_assets.sh 참조)
 #    모자/안경: process.py RAW OUT.png --extract-worn ... --align ... (분리 없음)
 
-# ③ shared/wardrobe_catalog.js 에 아이템 등록 → ④ wardrobe-preview.html 육안+수치 검수 통과 후 커밋
+# ③ 카탈로그 등록: shared/wardrobe_catalog.js + worker/src/wardrobe.js **양쪽**(미러!)
+# ④ wardrobe-preview.html 육안+수치 검수 통과 후 커밋. hairPalettes 추가 시 swatch 색도.
 ```
 
-## 5. 함정 목록 (이번 세션 실측)
+## 4. 함정 목록 (실측 누적)
 
-- **부유 레이어 생성 금지** — 반드시 착용 편집. 프롬프트에 "Image 1을 편집, 의복/해당 아이템만 변경, 불변 조건 나열" 형식 유지.
-- **align.json(row_dy=[0,4,10])은 마네킹 세대 고유값** — 마네킹을 재생성하면 전 시트 재가공 필요. 마네킹은 바꾸지 말 것.
-- 차분 추출 시 **아이템 색이 마네킹 표면색(살구 피부·흰 탱크톱·회색 반바지·근백색 하이라이트)과 비슷하면 구멍** — 프롬프트에서 흰색/살구색 단독 아이템 지양, 하이라이트는 "거의 흰색" 대신 연회색 지시가 안전.
-- 크로마키는 그린 #00FF00 + "방송용 그린스크린" 앵커 문구가 성공 패턴. 초록 계열 아이템은 마젠타 키로 전환 필요(§12.5, 아직 미구현).
-- `*.log`는 gitignore — 커밋 안 됨(프롬프트 .md와 raw PNG만 커밋).
-- 광장 통합 시 `_mannequin.png`이 실수로 그려지는 폴백 경로를 만들지 말 것(확정지시).
+- **부유 레이어 생성 금지** — 반드시 착용 편집. 프롬프트에 "Image 1을 편집, 해당 아이템만 변경, 불변 조건 나열" 형식 유지.
+- **align.json(row_dy=[0,4,10])은 마네킹 세대 고유값** — 마네킹 재생성 시 전 시트 재가공. 마네킹은 바꾸지 말 것.
+- 차분 추출 시 아이템 색이 마네킹 표면색(살구·흰 탱크톱·회색 반바지·근백색 하이라이트)과 비슷하면 구멍 — 흰/살구 단독 아이템 지양, 하이라이트는 연회색 지시.
+- 크로마키 그린 #00FF00 + "방송용 그린스크린" 앵커 문구. 초록 계열 아이템은 마젠타 키 전환 필요(§12.5, 미구현).
+- `*.log` 는 gitignore — 프롬프트 .md 와 raw PNG 만 커밋.
+- `_mannequin.png` 단독 렌더 경로 금지(확정지시) — 클라는 sanitize+합성 실패 시 emoji 폴백으로 처리 중. 새 렌더 경로를 추가할 때 이 원칙 유지.
+- **world.js 는 IIFE 본문에서 buildPicker() 가 즉시 실행** — 피커가 만지는 `let` 상태는 선언을 그 위에 둘 것(TDZ. joinParams·buddyRowEl 전례).
+- 카탈로그는 **클라/서버 2벌**(shared/wardrobe_catalog.js ↔ worker/src/wardrobe.js) — 한쪽만 고치면 서버가 새 아이템을 프리셋 기본으로 치환해버린다(증상: 저장했는데 남에게 기본 코디로 보임).
+- wrangler dev 는 `--assets` 없이 워커만 띄우면 reload 루프 없이 WS 검증 가능(스모크 스크립트는 저장소 밖에 둘 것).

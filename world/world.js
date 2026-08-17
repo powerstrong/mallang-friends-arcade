@@ -443,6 +443,10 @@
   let selectedPreset = null;      // human 일 때 'girl'|'boy' (카드 하이라이트 용)
   let selectedBuddyId = null;     // human 일 때 게임에 데려갈 말랑 친구
   let pendingOutfit = null;       // human 일 때 입장에 쓸 착장(항상 sanitize 완료)
+  // buildPicker() 가 이 IIFE 본문 실행 중에 곧장 돌기 때문에, 피커가 만지는
+  // let 상태는 전부 이 지점 위에서 선언돼야 한다(아래 joinParams TDZ 주석과
+  // 같은 함정 — 실제로 buddyRowEl 을 아래 두었다가 TDZ ReferenceError 발생).
+  let buddyRowEl = null;
   buildPicker();
   restoreSavedName();
   startOnlinePoll();
@@ -674,7 +678,7 @@
   }
 
   // ── 말랑 친구 서브 선택 (human 전용, §2 역할 분리) ──────────────────────────
-  let buddyRowEl = null;
+  // buddyRowEl 선언은 피커 상태 블록 상단에 있다(TDZ 주의).
   function ensureBuddyRow() {
     if (buddyRowEl || !picker.parentElement) return;
     const row = document.createElement('div');

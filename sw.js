@@ -1,4 +1,4 @@
-const CACHE = 'tenten-v39';
+const CACHE = 'tenten-v40';
 
 const PRECACHE = [
   '/',
@@ -14,6 +14,7 @@ const PRECACHE = [
   '/shared/input.js',
   '/shared/config.js',
   '/shared/character_sprites.js',
+  '/shared/wardrobe_catalog.js',
 ];
 
 self.addEventListener('install', e => {
