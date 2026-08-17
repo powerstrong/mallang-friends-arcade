@@ -239,6 +239,20 @@ async function main(pg) {
     ' return { gold: g ? g.textContent : null, idle: H.Stage.queue.idle() };})()')));
   ok(s2b.idle, '몰아본 배치가 즉시 소진된다', s2b);
   ok(s2b.gold === '+300', 'collapsed 로 끝난 배치의 합산 골드가 플러시된다 (60×5)', s2b);
+
+  // ── 슬라이스 3 — 별 투사체가 캔버스 탄도로 날고, 착탄이 장식으로 터진다 ──
+  var s3 = JSON.parse(await pg.eval(J(
+    '(function(){var fx=window.__mallangIdle.Stage.fx;' +
+    ' fx.stepDraw(1300);' +
+    ' fx.shot(document.getElementById("hero"));' +
+    ' var first=fx.lastEmit() ? fx.lastEmit().kind : null, n0=fx.particleCount(), maxN=0;' +
+    ' for (var s=0;s<10;s++){ fx.stepDraw(0.1); var c=fx.particleCount(); if (c>maxN) maxN=c; }' +
+    ' return { first:first, n0:n0, maxN:maxN, end:fx.particleCount(),' +
+    '          domProj: document.querySelectorAll(".fx-proj").length };})()')));
+  ok(s3.first === 'proj' && s3.n0 === 1, '투사체가 캔버스 파티클로 발사된다 (WAAPI DOM 폐지)', s3);
+  ok(s3.domProj === 0, 'DOM 투사체 노드가 더는 생기지 않는다', s3);
+  ok(s3.maxN >= 4, '착탄 순간 섬광+스파크가 터진다 (수명 종료 = 착탄)', s3);
+  ok(s3.end === 0, '착탄 잔여물까지 수명이 다하면 풀이 완전히 복귀한다', s3);
 }
 
 /* 감속 모드 — 움직임은 줄되 정보는 남아야 한다. */

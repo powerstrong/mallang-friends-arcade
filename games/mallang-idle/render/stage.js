@@ -180,6 +180,7 @@
       p.blend = o.blend || null;               // 'lighter' = 가산 발광 (D기둥)
       p.grav = o.grav || 0;
       p.stretch = o.stretch || 0;              // >0 이면 속도 방향으로 길쭉한 스파크
+      p.fadeless = !!o.fadeless;               // 투사체 — 비행 중 흐려지지 않는다
       if (reducedMotion) { p.vx = 0; p.vy = 0; p.grow = 1; p.rotVel = 0; p.grav = 0; }
       lastEmit = { kind: kind, x: x, y: y, info: info };
       return p;
@@ -194,10 +195,25 @@
           var last = pool[pcount - 1];
           pool[pcount - 1] = p; pool[i] = last;
           pcount--; i--;
+          /* 투사체는 수명 종료 = 착탄이다. 제거 후에 터뜨려야 인덱스가 안 꼬인다
+           * (emit 이 방금 비운 풀 슬롯을 재사용한다 — 좌표는 인자로 이미 확보). */
+          if (p.kind === 'proj') projLand(p.x, p.y);
           continue;
         }
         if (p.grav) p.vy += p.grav * dt;
         p.x += p.vx * dt; p.y += p.vy * dt;
+      }
+    }
+
+    /* 별 착탄 — 작은 섬광 + 스파크. 도착이 판정에 관여하지 않는 순수 장식 (결정 5). */
+    function projLand(x, y) {
+      emit('flash', x, y, { life: 0.12, size: 22, grow: 1.8,
+        color: '255, 240, 190', alpha: 0.8, blend: 'lighter' });
+      for (var i = 0; i < 3; i++) {
+        var a = Math.random() * TAU, sp = 60 + Math.random() * 80;
+        emit('spark', x, y, { vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 20,
+          life: 0.2 + Math.random() * 0.1, size: 3, grow: 0.6,
+          color: '255, 236, 170', alpha: 0.9, blend: 'lighter', grav: 480, stretch: 2.2 });
       }
     }
 
@@ -219,7 +235,7 @@
             var fw = sh.img.width / sh.frames;
             var fi = Math.min(sh.frames - 1, Math.floor(k * sh.frames));
             var szH = sz * (sh.img.height / fw);
-            ctx.globalAlpha = p.alpha * (1 - k * k);   // 즉시 최대 → 끝에서 빠지는 곡선
+            ctx.globalAlpha = p.alpha * (p.fadeless ? 1 : (1 - k * k));   // 즉시 최대 → 끝에서 빠지는 곡선
             ctx.save();
             ctx.translate(p.x, p.y);
             ctx.rotate(p.rot + p.rotVel * p.age);
@@ -726,27 +742,26 @@
     }
 
     /* 지원 사격 — 2·3번 동료가 자기 주기로 별을 던진다. 데미지는 이미 편성 보너스로
-     * DPS 에 녹아 있으므로 숫자는 띄우지 않는다(두 배로 세 보이면 거짓말이다). */
+     * DPS 에 녹아 있으므로 숫자는 띄우지 않는다(두 배로 세 보이면 거짓말이다).
+     * WAAPI(onfinish 정리) → 캔버스 탄도로 이관 (결정 5): 시계·수명 관리가 파티클로
+     * 일원화되고 FX_CAP(DOM)을 먹지 않는다. 착탄은 projLand — 순수 장식. */
     function followerShot(node) {
+      if (node.hidden) return;
       var cr = el.fxCanvas.getBoundingClientRect();
       var nr = node.getBoundingClientRect();
       var sc = camera.scale || 1;
       var from = { x: (nr.left + nr.width * 0.6 - cr.left) / sc, y: (nr.top + nr.height * 0.35 - cr.top) / sc };
       var to = enemyPoint();
-      var star = spawnFx('fx-proj', from.x, from.y, 520);
-      if (!star) return;
       node.classList.remove('cast');
       void node.offsetWidth;
       node.classList.add('cast');
-      var dx = to.x - from.x, dy = to.y - from.y;
-      star.animate([
-        { transform: 'translate(0,0) rotate(0deg)' },
-        { transform: 'translate(' + (dx * 0.5) + 'px,' + (dy * 0.5 - 34) + 'px) rotate(180deg)' },
-        { transform: 'translate(' + dx + 'px,' + dy + 'px) rotate(360deg)' },
-      ], { duration: 430, easing: 'linear' }).onfinish = function () {
-        star.__dispose();
-        spawnFx('fx-impact small', to.x, to.y, 280);
-      };
+      /* 포물선: y(T)=목표 를 만족하는 초기 vy 에 중력을 더해 정점이 ~1/8·g·T² 뜬다 */
+      var T = 0.43, g = 1470;
+      emit('proj', from.x, from.y, { sheet: 'star', life: T, size: 40, grow: 1,
+        fadeless: true, rotVel: 9, alpha: 1,
+        vx: (to.x - from.x) / T,
+        vy: (to.y - from.y) / T - 0.5 * g * T,
+        grav: g });
     }
 
     function combatFxUpdate(dt, simDt, state) {

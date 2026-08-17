@@ -733,28 +733,9 @@ body {
 }
 .fx-layer > * { position: absolute; transform: translate(-50%, -50%); }
 
-/* 임팩트 — 4프레임 플립북(fx-impact-sheet)을 steps 로 재생. 프레임 크기는 JS 주입 없이
- * 시트를 배경으로 깔고 background-position 을 넘긴다. */
-.fx-impact {
-  width: 84px; height: 84px;
-  background: url('assets/fx-impact-sheet.png') 0 0 / 400% 100% no-repeat;
-  animation: impactFlip .32s steps(4) forwards, impactFade .32s linear forwards;
-  rotate: var(--rot, 0deg);
-}
-.fx-impact.small { width: 50px; height: 50px; }
-.fx-impact.crit { width: 118px; height: 118px; }
-@keyframes impactFlip { to { background-position: -400% 0; } }
-@keyframes impactFade { 0% { opacity: 0; } 12% { opacity: 1; } 85% { opacity: 1; } 100% { opacity: 0; } }
-
-/* 검격 궤적은 캔버스로 이관 (단계 1 슬라이스 1 — stage.js impactBurst) */
-
-/* 처치 펑은 캔버스로 이관 (단계 1 슬라이스 2 — stage.js killBurst: 펑+파편+골드+섬광) */
-
-.fx-proj {
-  width: 40px; height: 40px;
-  background: url('assets/fx-star.png') center / contain no-repeat;
-  filter: drop-shadow(0 0 5px rgba(255, 214, 120, .8));
-}
+/* 임팩트·검격 궤적·처치 펑·별 투사체는 전부 캔버스로 이관 (단계 1 — stage.js
+ * impactBurst/killBurst/followerShot). DOM 에 남는 전투 FX 는 정보뿐이다:
+ * 데미지 숫자(.fx-dmg)와 골드 플로트(.gold-float). */
 
 /* 발밑 먼지는 캔버스 파티클로 옮겼다(render/stage.js dustPuff) — 단계 1 이 나머지
  * 이펙트도 같은 길로 흡수한다. DOM 노드 26개 상한에 먼지가 자리를 차지하지 않는다. */
@@ -821,11 +802,11 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .confetti, .hero.strike, .hero.fighting,
   .follower.fighting, .follower.cast, .enemy.squash img, .enemy img.spawn-in,
-  .enemy img.boss-in, .enemy.is-boss::before, .fx-impact,
+  .enemy img.boss-in, .enemy.is-boss::before,
   .ambient-pt, .speedlines.flash, .hero.hop, .follower.hop, .fx-heartp,
   .hero.walking, .follower.walking,
   .story-card.pop, .boss-bubble.pop, .chapter-banner.show, .story-more { animation: none; }
-  .confetti, .fx-impact, .fx-proj, .ambient-pt, .speedlines,
+  .confetti, .ambient-pt, .speedlines,
   .fx-heartp { display: none; }
   /* 정보 FX(숫자·골드)는 **남되 정적**이다 — 사라져도, 날아다녀도 실패 (단계 1).
    * animation 을 끄면 제자리에 떠 있다가 TTL 로 정리된다. */

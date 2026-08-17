@@ -80,6 +80,26 @@ test('전투 이펙트에는 노드 상한이 있다', function () {
   assert.ok(/fxCount\s*>=\s*FX_CAP/.test(stageJs), '상한 초과 시 스폰을 건너뛰어야 한다');
   assert.ok(/PARTICLE_CAP\s*=\s*\d+/.test(stageJs), '캔버스 파티클에도 상한이 있어야 한다');
   assert.ok(/pcount\s*>=\s*PARTICLE_CAP/.test(stageJs), '파티클 상한 초과 시 스폰을 건너뛰어야 한다');
+  /* 단계 1 확장 — 상한은 완화가 아니라 이관·강화됐다 (COMBAT_STAGE_OVERHAUL 결정 7) */
+  assert.ok(/INFO_RESERVE\s*=\s*\d+/.test(stageJs), '정보 예산 예약(INFO_RESERVE)이 있어야 한다');
+  assert.ok(/pcount\s*>=\s*PARTICLE_CAP\s*-\s*INFO_RESERVE/.test(stageJs),
+    '포화 시 장식부터 거절해야 한다 (정보 예산 침범 금지)');
+});
+
+/* 단계 1 계약 — 전투 FX 는 캔버스가 소유한다. 장식 DOM 스폰이 되살아나면
+ * 좌표계·히트스톱·상한 정책이 다시 두 갈래가 된다 (동작 검증은 stage.browser 가 한다). */
+test('단계 1 — 장식 FX 는 캔버스 소유, 정보 DOM 은 캔버스 위', function () {
+  assert.ok(!/spawnFx\('fx-(impact|slash|poof|proj)/.test(stageJs),
+    '임팩트·궤적·펑·투사체는 캔버스로 이관됐다 — DOM 스폰이 되살아나면 안 된다');
+  assert.ok(/hitstopT/.test(stageJs) && /\.arena\.hitstop/.test(css),
+    '히트스톱은 stage FX 시계가 캔버스·DOM 을 함께 세운다');
+  var fxLayerZ = (css.match(/\.fx-layer\s*\{[^}]*z-index:\s*(\d+)/) || [])[1];
+  var canvasZ = (css.match(/\.fx-canvas\s*\{[^}]*z-index:\s*(\d+)/) || [])[1];
+  assert.ok(fxLayerZ && canvasZ && Number(fxLayerZ) > Number(canvasZ),
+    '정보 DOM 레이어(z ' + fxLayerZ + ')는 장식 캔버스(z ' + canvasZ + ')보다 위여야 한다');
+  assert.ok(/\.gold-float\s*\{[^}]*z-index/.test(css), '골드 플로트에도 명시적 z-index 가 있어야 한다');
+  assert.ok(/onIdle/.test(queueJs) && /onIdle:\s*flushPending/.test(stageJs),
+    'collapsed 합산 골드는 queue idle 플러시로 반드시 표시된다');
 });
 
 /* 단계 0 의 핵심 계약 — 전투 화면이 엔진 사건을 **연출 큐를 통해** 소비하는가.
