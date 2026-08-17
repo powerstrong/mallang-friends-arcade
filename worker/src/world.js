@@ -11,6 +11,7 @@ import { GAME_ZONES, getZone, findZoneAt, isLabZoneId, getLabZoneForGame } from 
 import { CHARACTERS, isValidCharacterId, randomCharacterId } from './characters.js';
 import { applyZonePresence, compareReadyForSeat, PLAYER_STATUS } from './matcher.js';
 import { toGameCharacterId } from './characters.js';
+import { HUMAN_CHARACTER_ID, sanitizeOutfit } from './wardrobe.js';
 
 // Mirrors GAME_PATHS in worker/src/room.js — keep these aligned so a new
 // game added to the registry needs no world-side change unless we want a zone.
@@ -232,6 +233,8 @@ export class WorldChannel {
           return await this._handleMatchLeave(ws, attach, d);
         case 'lab_queue':
           return await this._handleLabQueue(ws, attach, d);
+        case 'outfit_change':
+          return this._handleOutfitChange(ws, attach, d);
         case 'pong':
           ws.serializeAttachment({ ...attach, lastHeartbeat: Date.now() });
           return;
@@ -323,7 +326,17 @@ export class WorldChannel {
     const name = safeName(d.name);
     if (!name) return this._sendError(ws, 'BAD_NAME', '닉네임이 필요합니다.');
 
-    const characterId = isValidCharacterId(d.characterId) ? d.characterId : randomCharacterId();
+    // 사람 아바타(§11): characterId 'human' + outfit(카탈로그 검증, 무효 → 프리셋
+    // 기본 치환) + gameBuddyId(게임 발사 변환 전용 말랑 친구, 무효 → 랜덤).
+    // isValidCharacterId 는 동물 로스터 전용으로 남긴다 — 'human' 을 넣으면
+    // gameBuddyId 검증·게임 발사 폴백 경로까지 사람이 새어 들어간다.
+    const isHuman = d.characterId === HUMAN_CHARACTER_ID;
+    const characterId = isHuman ? HUMAN_CHARACTER_ID
+      : (isValidCharacterId(d.characterId) ? d.characterId : randomCharacterId());
+    const outfit = isHuman ? sanitizeOutfit(d.outfit) : null;
+    const gameBuddyId = isHuman
+      ? (isValidCharacterId(d.gameBuddyId) ? d.gameBuddyId : randomCharacterId())
+      : null;
     const sessionId = newSessionId();
 
     // 게임에서 돌아왔으면 광장 가운데 빈 영역에 랜덤 스폰. 첫 입장 등 그 외
@@ -334,6 +347,7 @@ export class WorldChannel {
       id: sessionId,
       name,
       characterId,
+      ...(outfit ? { outfit } : {}), // 광장 브로드캐스트엔 outfit만, gameBuddyId 비노출(§11)
       x: spawn.x,
       y: spawn.y,
       dir: 'down',
@@ -346,6 +360,7 @@ export class WorldChannel {
     ws.serializeAttachment({
       ...attach,
       sessionId, name, characterId,
+      gameBuddyId, outfit, outfitRevision: 0,
       x: me.x, y: me.y, dir: me.dir, moving: me.moving,
       status: me.status, currentZoneId: me.currentZoneId,
       candidateSince: me.candidateSince,
@@ -874,7 +889,9 @@ export class WorldChannel {
         launchPlayers.push({
           id: a.sessionId,
           name: a.name,
-          characterId: a.characterId, // world id; room.js translates via pickGameCharacter
+          // world id; room.js translates via pickGameCharacter. 사람 아바타는
+          // 여기서 말랑 친구로 치환된다 — human 은 게임 경로에 절대 안 들어간다(§11).
+          characterId: this._gameAvatarId(a),
         });
       }
 
@@ -919,8 +936,9 @@ export class WorldChannel {
         currentZoneId: null,
         candidateSince: null,
       });
+      const avatarForGame = this._gameAvatarId(attach);
       const gameCharacterId =
-        toGameCharacterId(attach.characterId, proposal.gameId) || attach.characterId;
+        toGameCharacterId(avatarForGame, proposal.gameId) || avatarForGame;
       const params = new URLSearchParams({
         code: proposal.matchId,
         playerId: attach.sessionId,
@@ -1041,6 +1059,27 @@ export class WorldChannel {
     return this._chatHistory.filter((m) => m.ts >= cutoff);
   }
 
+  /* 꾸미기 저장(§11): 저장 시에만 발신되는 착장 교체. 단조 증가 revision 으로
+   * 역순 도착을 무시하고, 서버가 카탈로그로 검증(무효 → 프리셋 기본 치환)한
+   * 결과를 전원에게 브로드캐스트(발신자 포함 — 치환됐다면 발신자도 채택).
+   */
+  _handleOutfitChange(ws, attach, d) {
+    if (!attach.sessionId) return;
+    if (attach.characterId !== HUMAN_CHARACTER_ID) {
+      return this._sendError(ws, 'NOT_HUMAN', '사람 아바타만 꾸밀 수 있습니다.');
+    }
+    const now = Date.now();
+    if (now - (attach.lastOutfitAt || 0) < 1000) return; // 저장 버튼 연타/봇 보호
+    const revision = Number(d?.revision);
+    if (!Number.isInteger(revision) || revision <= (attach.outfitRevision || 0)
+        || revision > 1_000_000_000) {
+      return; // 역순/재전송 — 조용히 무시
+    }
+    const outfit = sanitizeOutfit(d?.outfit);
+    ws.serializeAttachment({ ...attach, outfit, outfitRevision: revision, lastOutfitAt: now });
+    this._broadcast({ t: 'outfit_change', d: { id: attach.sessionId, outfit, revision } });
+  }
+
   async _handleReaction(ws, attach, d) {
     if (!attach.sessionId) return;
 
@@ -1060,6 +1099,16 @@ export class WorldChannel {
 
   // ── Helpers ─────────────────────────────────────────────────────────────────
 
+  /* 게임 발사 변환에 쓸 아바타 id(§11): 사람이면 말랑 친구, 동물이면 그대로.
+   * gameBuddyId 는 join 에서 이미 검증됐지만 방어적으로 한 번 더 확인 — 무효면
+   * pickGameCharacter 의 기존 폴백 관례와 같은 mochi_rabbit(결정적, 랜덤 아님:
+   * URL 과 world-launch 시드가 서로 다른 동물이 되는 사고 방지).
+   */
+  _gameAvatarId(attach) {
+    if (attach.characterId !== HUMAN_CHARACTER_ID) return attach.characterId;
+    return isValidCharacterId(attach.gameBuddyId) ? attach.gameBuddyId : 'mochi_rabbit';
+  }
+
   _collectPlayers() {
     const out = [];
     for (const ws of this.state.getWebSockets()) {
@@ -1069,6 +1118,8 @@ export class WorldChannel {
         id: a.sessionId,
         name: a.name,
         characterId: a.characterId,
+        // 동물이면 outfit 없음(하위 호환, §11). gameBuddyId 는 wire 에 싣지 않는다.
+        ...(a.characterId === HUMAN_CHARACTER_ID && a.outfit ? { outfit: a.outfit } : {}),
         x: a.x ?? SPAWN_POINT.x,
         y: a.y ?? SPAWN_POINT.y,
         dir: a.dir ?? 'down',

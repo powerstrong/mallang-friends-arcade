@@ -757,6 +757,16 @@
       } catch { /* ignore */ }
     }
     joinParams = { name, characterId: selectedCharacterId, entryFrom };
+    if (selectedCharacterId === HUMAN_ID) {
+      // 사람 아바타(§11): 착장 + 말랑 친구 + 카탈로그 버전. pendingOutfit 은
+      // 피커에서 항상 채워지지만, 방어적으로 저장값→프리셋 기본 순서로 폴백.
+      const saved = loadSavedOutfit();
+      const preset = selectedPreset || (saved ? saved.preset : 'girl');
+      joinParams.outfit = pendingOutfit || window.WARDROBE.sanitizeOutfit(saved, preset);
+      joinParams.gameBuddyId = selectedBuddyId;
+      joinParams.catalogVersion = window.WARDROBE.catalogVersion;
+      myOutfitRev = Math.max(myOutfitRev, saved ? saved.rev : 0);
+    }
     openSocket();
   }
 
@@ -911,6 +921,7 @@
       case 'tick': return handleTick(env.d);
       case 'chat': return handleChat(env.d);
       case 'reaction': return handleReaction(env.d);
+      case 'outfit_change': return handleOutfitChange(env.d);
       case 'zone_state': return handleZoneState(env.d);
       case 'zone_progress': return handleZoneProgress(env.d);
       case 'match_proposal': return handleMatchProposal(env.d);
@@ -1114,6 +1125,40 @@
   function handleReaction(d) {
     if (!d?.id || !REACTION_GLYPHS[d.emoji]) return;
     reactions.set(d.id, { glyph: REACTION_GLYPHS[d.emoji], until: performance.now() + REACTION_MS });
+  }
+
+  // ── 착장 교체 프로토콜 (§11) ─────────────────────────────────────────────
+  let myOutfitRev = 0; // 단조 증가 — 서버가 역순 도착을 걸러낼 수 있게 한다.
+
+  /* 서버 검증을 거친 착장 브로드캐스트. 본인 echo 는 revision 으로 dedupe 되고
+   * (낙관 적용 시 같은 값을 미리 설정), 갈아입은 피어 위엔 반짝임 이펙트.
+   */
+  function handleOutfitChange(d) {
+    if (!d?.id || !d.outfit) return;
+    const p = (me && d.id === me.id) ? me : peers.get(d.id);
+    if (!p) return;
+    const rev = numOr(d.revision, 0);
+    if (rev <= (p._outfitRev || 0)) return;
+    p._outfitRev = rev;
+    p.outfit = d.outfit; // 참조 교체 — getHumanSprite 가 감지해 재합성(§5-9)
+    pushSpawnEffect(p.x, p.y);
+  }
+
+  /* 꾸미기 패널 저장(§7): 낙관 적용 + localStorage + joinParams 갱신(재접속 시
+   * 구버전 착장으로 되돌아가는 버그 방지) + 서버 송신. outfit 은 호출 전에
+   * sanitize 되어 있어야 한다.
+   */
+  function sendOutfitChange(outfit, preset) {
+    if (!me || me.characterId !== HUMAN_ID) return;
+    myOutfitRev += 1;
+    me.outfit = outfit;
+    me._outfitRev = myOutfitRev;
+    saveOutfitLocal(preset, outfit, myOutfitRev);
+    if (joinParams) joinParams = { ...joinParams, outfit };
+    pendingOutfit = outfit;
+    selectedPreset = preset;
+    send({ t: 'outfit_change', d: { outfit, revision: myOutfitRev } });
+    pushSpawnEffect(me.x, me.y);
   }
 
   function handleZoneState(d) {
