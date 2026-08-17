@@ -64,7 +64,8 @@ def _morph(mask: np.ndarray, op: str, iters: int = 1) -> np.ndarray:
 
 
 def extract_worn(worn: Image.Image, ref: Image.Image,
-                 thresh_weak: int = 26, thresh_strong: int = 80) -> Image.Image:
+                 thresh_weak: int = 26, thresh_strong: int = 80,
+                 fine: bool = False) -> Image.Image:
     """착용 시트(정본 편집 결과)에서 정본과 달라진 픽셀만 추출 → 아이템 레이어.
 
     부유 레이어 생성(위치 실패)을 대체하는 0단계 확정 파이프라인:
@@ -83,13 +84,26 @@ def extract_worn(worn: Image.Image, ref: Image.Image,
     new_px = visible & (r[..., 3] <= 16)          # 정본에 없던 픽셀(실루엣 확장)은 무조건 강함
     weak = visible & (new_px | (dist > thresh_weak))
     strong = visible & (new_px | (dist > thresh_strong))
-    strong = _morph(_morph(strong, 'erode'), 'dilate')  # 강한 시드의 스펙클 제거
-    # 형태 판별: 고스트 잔상은 "얇은 선"(전신 재음영 윤곽), 진짜 아이템은 "넓은 면".
-    # 2회 침식을 견디는 두꺼운 약영역만 인정하고, 얇은 선은 강한 시드가 없는 한 버린다.
-    thick_weak = _morph(_morph(weak, 'erode', 2), 'dilate', 2) & weak
-    changed = strong | thick_weak
-    changed = _morph(changed, 'dilate') & weak            # 가장자리 안티앨리어스 1px 회수
-    changed = _morph(_morph(changed, 'dilate'), 'erode')  # close: 핀홀 메움
+    if fine:
+        # 액세서리(모자·안경) 모드 — P0-1 실측 반영: ① 침식 스펙클 제거가 2px
+        # 안경테를 통째로 지움 → 침식 금지. ② 두꺼운 약영역 인정(thick_weak)이
+        # 강한 시드 없는 몸 재음영 고스트(셀당 200~400px)를 통과시킴 → 정식
+        # 이력 연결(측지 팽창)로 "강한 시드에 붙은 약영역"만 인정.
+        changed = strong
+        for _ in range(12):
+            grown = _morph(changed, 'dilate') & weak
+            if grown.sum() == changed.sum():
+                break
+            changed = grown
+        changed = _morph(_morph(changed, 'dilate'), 'erode')  # close: 핀홀 메움
+    else:
+        strong = _morph(_morph(strong, 'erode'), 'dilate')  # 강한 시드의 스펙클 제거
+        # 형태 판별: 고스트 잔상은 "얇은 선"(전신 재음영 윤곽), 진짜 아이템은 "넓은 면".
+        # 2회 침식을 견디는 두꺼운 약영역만 인정하고, 얇은 선은 강한 시드가 없는 한 버린다.
+        thick_weak = _morph(_morph(weak, 'erode', 2), 'dilate', 2) & weak
+        changed = strong | thick_weak
+        changed = _morph(changed, 'dilate') & weak            # 가장자리 안티앨리어스 1px 회수
+        changed = _morph(_morph(changed, 'dilate'), 'erode')  # close: 핀홀 메움
     out = w.copy()
     out[..., 3] = np.where(changed, w[..., 3], 0)
     return Image.fromarray(out.astype(np.uint8), 'RGBA')
@@ -122,6 +136,92 @@ def split_hair(img: Image.Image, ref_img: Image.Image, frac: float = 0.5):
     return Image.fromarray(front, 'RGBA'), Image.fromarray(back, 'RGBA')
 
 
+def fit_head(acc: Image.Image, ref: Image.Image, anchor: str = 'row'):
+    """액세서리(모자·안경) 레이어를 정본 두상에 셀 단위로 재고정 (P0-1).
+
+    실측: 착용 생성이 '정지 셀과 동일' 지시를 캔버스 고정으로 해석해 액세서리가
+    머리의 셀별 미세 이동·방향별 높이를 따라가지 않는다(베레모 갭 앞2/옆3/뒤12px,
+    안경 옆모습 걷기 셀 5px 점프). 셀 콘텐츠를 평행이동해 "머리 top·head_cx 대비
+    오프셋"을 기준 셀과 동일하게 맞춘다. 런타임 보정 금지(§5-4)와 무관한 빌드 보정.
+
+    anchor='global': r0c0(정면 idle)이 전 시트의 기준 — 모자(방향 간 갭도 통일).
+    anchor='row':    각 행의 c0(idle)이 그 행의 기준 — 방향별 높이는 존중하고
+                     걷기 셀 점프만 제거 — 안경.
+    """
+    acc_cells = cell_metrics(acc, block='first')
+    ref_cells = cell_metrics(ref)
+    w, h = acc.size
+    cw, ch = w // 3, h // 3
+
+    def offset(i):
+        a, r = acc_cells[i], ref_cells[i]
+        if not a or not r:
+            return None
+        return (a['top'] - r['top'], a['cx'] - r['head_cx'])
+
+    def anchor_index(indices):
+        for i in indices:
+            if offset(i) is not None:
+                return i
+        return None
+
+    lines = [f'== fit-head (anchor={anchor}) ==']
+    out = Image.new('RGBA', acc.size, (0, 0, 0, 0))
+    groups = [list(range(9))] if anchor == 'global' else [list(range(r * 3, r * 3 + 3)) for r in range(3)]
+    for grp in groups:
+        ai = anchor_index(grp)
+        if ai is None:
+            continue
+        tgt_dy, tgt_dx = offset(ai)
+        for i in grp:
+            row, col = divmod(i, 3)
+            box = (col * cw, row * ch, (col + 1) * cw, (row + 1) * ch)
+            cell = acc.crop(box)
+            off = offset(i)
+            if off is None:
+                out.paste(cell, box[:2], cell)
+                continue
+            dy, dx = tgt_dy - off[0], int(round(tgt_dx - off[1]))
+            blank = Image.new('RGBA', (cw, ch), (0, 0, 0, 0))
+            blank.paste(cell, (dx, dy), cell)  # 셀 경계에서 자동 클립
+            out.paste(blank, box[:2])
+            if dy or dx:
+                lines.append(f'  r{row}c{col}: 머리갭 {off[0]:+d}→{tgt_dy:+d} (dy{dy:+d}), cx편차 {off[1]:+.1f}→{tgt_dx:+.1f} (dx{dx:+d})')
+
+    # 마무리: 액세서리 밴드(first-block top 기준 keep_h 행)만 보존. 위쪽 스펙과
+    # 아래쪽 몸 고스트(신발 헤일로 등 실루엣 밖 잔재)가 셀 이동으로 어긋나 보이는
+    # 것을 함께 제거 — 액세서리는 셀 최상단 요소라는 전제(모자·안경 공통).
+    keep_h = max(16, round(48 * (cw / 128.0)))
+    arr = np.asarray(out).copy()
+    post = cell_metrics(out, block='first')
+    for i, c in enumerate(post):
+        if not c:
+            continue
+        row, col = divmod(i, 3)
+        y0, y1 = row * ch, (row + 1) * ch
+        band_top = y0 + max(0, c['top'] - 1)
+        band_bot = min(y1, y0 + c['top'] + keep_h)
+        arr[y0:band_top, col * cw:(col + 1) * cw, 3] = 0
+        arr[band_bot:y1, col * cw:(col + 1) * cw, 3] = 0
+    out = Image.fromarray(arr, 'RGBA')
+
+    # 잔차 게이트(P0-1 QA): 보정 후 앵커 그룹 내 머리 상대 오프셋 편차 ≤1px.
+    post = cell_metrics(out, block='first')
+    ok = True
+    for grp in groups:
+        gaps = [(post[i]['top'] - ref_cells[i]['top'], post[i]['cx'] - ref_cells[i]['head_cx'])
+                for i in grp if post[i] and ref_cells[i]]
+        if len(gaps) < 2:
+            continue
+        dy_dev = max(g[0] for g in gaps) - min(g[0] for g in gaps)
+        dx_dev = max(g[1] for g in gaps) - min(g[1] for g in gaps)
+        if dy_dev > 1 or dx_dev > 1.5:
+            ok = False
+            lines.append(f'  잔차 초과: cells{grp} 갭Δ{dy_dev} cxΔ{dx_dev:.1f}  << FAIL')
+    lines.append(f'  잔차 게이트(그룹 내 ≤1px): {"PASS" if ok else "FAIL"}')
+    return out, lines, ok
+
+
 def replicate_views(img: Image.Image) -> Image.Image:
     """레이어 시트: 각 행의 col0 셀을 col1/col2 에 복제 (머리 위치 고정 전제)."""
     w, h = img.size
@@ -134,8 +234,13 @@ def replicate_views(img: Image.Image) -> Image.Image:
     return out
 
 
-def cell_metrics(img: Image.Image):
-    """셀별 QA 수치. 알파 임계 24, 인접 셀 유입 방지를 위해 최대 연속 행 블록만 사용."""
+def cell_metrics(img: Image.Image, block: str = 'largest'):
+    """셀별 QA 수치. 알파 임계 24, 인접 셀 유입 방지를 위해 연속 행 블록 단위 측정.
+
+    block='largest': 최대 블록(전신 시트 기본). 'first': 최상단 유의미 블록
+    (높이 ≥2행·알파 ≥6px) — 액세서리는 항상 시트의 최상단 요소이므로 잔여
+    고스트가 커도 측정이 오염되지 않는다(P0-1 실측: largest 가 고스트를 잡음).
+    """
     arr = np.asarray(img.convert('RGBA'))
     h, w = arr.shape[:2]
     cw, ch = w // 3, h // 3
@@ -148,11 +253,16 @@ def cell_metrics(img: Image.Image):
             if not rows_any.any():
                 cells.append(None)
                 continue
-            # 최대 연속 행 블록 (경계 침범 조각 배제)
+            # 연속 행 블록 (경계 침범 조각 배제)
             idx = np.where(rows_any)[0]
             splits = np.split(idx, np.where(np.diff(idx) > 1)[0] + 1)
-            block = max(splits, key=len)
-            y0, y1 = int(block[0]), int(block[-1])
+            if block == 'first':
+                pick = next((b for b in splits
+                             if len(b) >= 2 and mask[b[0]:b[-1] + 1].sum() >= 6), None)
+                block_rows = pick if pick is not None else max(splits, key=len)
+            else:
+                block_rows = max(splits, key=len)
+            y0, y1 = int(block_rows[0]), int(block_rows[-1])
             sub = mask[y0:y1 + 1]
             cols_any = sub.any(axis=0)
             x0, x1 = int(np.argmax(cols_any)), int(len(cols_any) - 1 - np.argmax(cols_any[::-1]))
@@ -233,6 +343,11 @@ def main():
     ap.add_argument('--align', help='행 정렬 JSON 적용 (마네킹에서 산출한 공통 보정)')
     ap.add_argument('--align-out', help='이 시트에서 행 정렬 JSON 산출 (정본 전용)')
     ap.add_argument('--extract-worn', help='정본 raw 경로 — 착용 시트와의 차분으로 레이어 추출')
+    ap.add_argument('--extract-fine', action='store_true',
+                    help='액세서리용 추출: 침식 없는 정식 이력 연결 — 얇은 테 보존 + 고스트 배제')
+    ap.add_argument('--fit-head', help='정규화 완료 정본(_mannequin.png) 경로 — 액세서리를 두상 기준으로 셀별 재고정')
+    ap.add_argument('--fit-anchor', choices=['global', 'row'], default='row',
+                    help='fit-head 기준 셀: global=r0c0(모자 — 방향 간 갭 통일) / row=행별 c0(안경 — 걷기 점프만 제거)')
     ap.add_argument('--split-hair', action='store_true', help='추출 레이어를 턱선 기준 front/back 분리 (out 은 스템)')
     ap.add_argument('--chin-frac', type=float, default=0.5)
     args = ap.parse_args()
@@ -245,7 +360,7 @@ def main():
         ref_img = Image.open(args.extract_worn).convert('RGBA')
         if not has_real_alpha(ref_img):
             ref_img = unblend_chroma(ref_img)
-        img = extract_worn(img, ref_img)
+        img = extract_worn(img, ref_img, fine=args.extract_fine)
     if args.layer:
         img = replicate_views(img)
 
@@ -269,8 +384,17 @@ def main():
         img = apply_row_align(img, dys)
         print(f'행 정렬 적용: row_dy={dys}')
 
+    fit_ok = True
+    if args.fit_head:
+        fh_ref = Image.open(args.fit_head).convert('RGBA')
+        if fh_ref.size != img.size:
+            fh_ref = fh_ref.resize(img.size, Image.LANCZOS)
+        img, fit_lines, fit_ok = fit_head(img, fh_ref, args.fit_anchor)
+        print('\n'.join(fit_lines))
+
     cells = cell_metrics(img)
     lines, ok = metrics_report(cells, args.inp, args.size // 3)
+    ok = ok and fit_ok
     print('\n'.join(lines))
 
     if args.ref:

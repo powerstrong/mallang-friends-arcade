@@ -44,12 +44,21 @@ for t in "p3v2_hair_long_worn hair_long" "p4v2_hair_short_worn hair_short"; do
   echo "[$1] → $OUT/$2_{choco,rose,gold,black}_{front,back}.png"
 done
 
-echo "== 모자·안경 (착용 → 차분 추출) =="
-for t in "p5v2_hat_worn hat_beret" "p6v2_glasses_worn glasses_round"; do
-  set -- $t
-  save_raw "$1" "$2_worn" || continue
-  python "$AV/process.py" "$AV/raw/$2_worn_raw.png" --metrics-only --align "$ALIGN" --ref "$REF" | grep -E "정본|QA"
-  python "$AV/process.py" "$AV/raw/$2_worn_raw.png" "$OUT/$2.png" --extract-worn "$BODY" --align "$ALIGN" | grep -E "saved"
-done
+echo "== 모자·안경 (착용 → 차분 추출 → fit-head 두상 재고정, P0-1) =="
+# 모자: --extract-fine(이력 연결 — 몸 재음영 고스트 배제) + global 앵커(방향 간 갭 통일).
+# 안경: 기본 추출(두꺼운 뿔테 전제 — fine 은 눈 재음영 고스트를 물어옴) + row 앵커
+#       (방향별 눈높이는 존중, 걷기 셀 점프만 제거). 실측 근거는 AVATAR_NEXT_STEPS P0-1.
+if save_raw p5v2_hat_worn hat_beret_worn; then
+  python "$AV/process.py" "$AV/raw/hat_beret_worn_raw.png" --metrics-only --align "$ALIGN" --ref "$REF" | grep -E "정본|QA"
+  python "$AV/process.py" "$AV/raw/hat_beret_worn_raw.png" "$OUT/hat_beret.png" \
+    --extract-worn "$BODY" --extract-fine --align "$ALIGN" \
+    --fit-head "$REF" --fit-anchor global | grep -E "잔차|saved"
+fi
+if save_raw p6v2_glasses_worn glasses_round_worn; then
+  python "$AV/process.py" "$AV/raw/glasses_round_worn_raw.png" --metrics-only --align "$ALIGN" --ref "$REF" | grep -E "정본|QA"
+  python "$AV/process.py" "$AV/raw/glasses_round_worn_raw.png" "$OUT/glasses_round.png" \
+    --extract-worn "$BODY" --align "$ALIGN" \
+    --fit-head "$REF" --fit-anchor row | grep -E "잔차|saved"
+fi
 
 echo "== 완료. world/wardrobe-preview.html 로 검수 =="
