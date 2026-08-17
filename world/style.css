@@ -520,6 +520,10 @@ h1 {
   }
   .world-meta { gap: 6px; }
   .leave-btn { padding: 3px 8px; font-size: 0.7rem; }
+  /* 좁은 화면: 헤더 버튼은 아이콘만 — 브랜드 타이틀("말랑프렌즈 아케이드")이
+   * "말..."로 잘리던 문제. 이모지/화살표가 의미를 전달하고 title/aria-label 유지. */
+  .leave-btn .btn-label { display: none; }
+  .leave-btn { font-size: 0.85rem; padding: 3px 9px; }
 
   .chat-log {
     height: clamp(70px, 15vh, 110px);
@@ -934,11 +938,6 @@ h1 {
     linear-gradient(180deg, #2b3c63, #1d2a47);
   touch-action: manipulation;
 }
-.wardrobe-hint {
-  margin: 4px 0 0;
-  font-size: 0.72rem;
-  color: var(--text-dim);
-}
 .wardrobe-tabs {
   display: flex;
   gap: 6px;
@@ -1036,7 +1035,14 @@ h1 {
 }
 .wardrobe-presets button:hover { color: var(--text); background: var(--panel-2); }
 .wardrobe-actions { margin-bottom: 0; }
-.wardrobe-actions .wardrobe-save { flex: 1.4; }
+/* 랜덤/되돌리기는 아이콘 정사각 버튼 — 액션 줄 높이를 낮게 유지 */
+.wardrobe-actions button { padding: 9px; }
+.wardrobe-icon-btn {
+  flex: 0 0 46px;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+.wardrobe-actions .wardrobe-save { flex: 1; }
 
 .modal-countdown {
   margin: 0;

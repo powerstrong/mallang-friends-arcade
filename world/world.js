@@ -2086,7 +2086,6 @@
         </div>
         <div class="wardrobe-stage">
           <canvas class="wardrobe-stage-canvas" width="150" height="150"></canvas>
-          <p class="wardrobe-hint">캐릭터를 누르면 돌아서요</p>
         </div>
         <div class="wardrobe-tabs"></div>
         <div class="wardrobe-swatches hidden"></div>
@@ -2095,8 +2094,8 @@
           <span class="wardrobe-presets-label">처음으로:</span>
         </div>
         <div class="modal-actions wardrobe-actions">
-          <button type="button" class="btn-ghost wardrobe-random">🎲 랜덤 코디</button>
-          <button type="button" class="btn-ghost wardrobe-revert">되돌리기</button>
+          <button type="button" class="btn-ghost wardrobe-icon-btn wardrobe-random" title="랜덤 코디" aria-label="랜덤 코디">🎲</button>
+          <button type="button" class="btn-ghost wardrobe-icon-btn wardrobe-revert" title="되돌리기" aria-label="되돌리기">↩️</button>
           <button type="button" class="btn-primary wardrobe-save">저장</button>
         </div>
       </div>`;
@@ -2145,7 +2144,9 @@
     }
     const stage = modal.querySelector('.wardrobe-stage-canvas');
     stage.addEventListener('click', () => {
+      // 탭 = 방향 돌려보기(설명 문구 없이 발견형). 잠시 안무를 멈추고 수동 방향 유지.
       wardrobeDir = { down: 'right', right: 'up', up: 'left', left: 'down' }[wardrobeDir] || 'down';
+      stageManualUntil = performance.now() + 4000;
     });
     wardrobeModal = modal;
     return modal;
@@ -2242,9 +2243,43 @@
     });
   }
 
-  /* 미리보기 스테이지 — 렌더 루프에서 매 프레임 호출. draft 착장으로 제자리
-   * 걷기 재생(4박자), 탭하면 방향 회전. 합성 중엔 직전 완성 시트 유지.
+  /* 미리보기 스테이지 — 렌더 루프에서 매 프레임 호출. 광장보다 느긋한 걸음에
+   * 프리셋별 마무리 포즈가 붙은 안무 루프(9셀만으로 연출):
+   *   젤리(girl): 걷기 → 한바퀴 돌기 → 반짝임과 함께 콩콩 포즈
+   *   쿠키(boy):  걷기 → 좌우 두리번 → 기울며 폴짝폴짝 점프
+   * 캐릭터를 탭하면 4초간 수동 방향(안무 일시정지). 합성 중엔 직전 시트 유지.
    */
+  const STAGE_WALK_MS = 200; // 광장(130ms)보다 천천히 — 옷 구경용
+  let stageManualUntil = 0;
+
+  function stageChoreo(now) {
+    const girl = wardrobePreset !== 'boy';
+    const WALK = 2400;
+    const total = girl ? WALK + 960 + 1440 : WALK + 520 + 1080;
+    const t = now % total;
+    if (t < WALK) {
+      return { dir: 'down', col: HUMAN_WALK_PATTERN[Math.floor(t / STAGE_WALK_MS) % HUMAN_WALK_PATTERN.length], dy: 0, tilt: 0, sparkle: 0 };
+    }
+    if (girl) {
+      if (t < WALK + 960) { // 한바퀴 돌기 (오→뒤→왼→앞, 240ms 스텝)
+        const step = Math.floor((t - WALK) / 240);
+        return { dir: ['right', 'up', 'left', 'down'][Math.min(step, 3)], col: 0, dy: 0, tilt: 0, sparkle: 0 };
+      }
+      const p = (t - WALK - 960) / 1440; // 콩콩 두 번 + 반짝임 페이드
+      return { dir: 'down', col: 0, dy: -Math.abs(Math.sin(p * Math.PI * 2)) * 8, tilt: 0, sparkle: 1 - p };
+    }
+    if (t < WALK + 520) { // 좌우 두리번 (260ms 씩)
+      return { dir: t < WALK + 260 ? 'left' : 'right', col: 0, dy: 0, tilt: 0, sparkle: 0 };
+    }
+    const p = (t - WALK - 520) / 1080; // 폴짝폴짝 — 점프 두 번 + 장난스런 기울임
+    return {
+      dir: 'down', col: 0,
+      dy: -Math.abs(Math.sin(p * Math.PI * 2)) * 11,
+      tilt: Math.sin(p * Math.PI * 4) * 0.07,
+      sparkle: 0,
+    };
+  }
+
   function drawWardrobeStage() {
     if (!wardrobeModal || wardrobeModal.classList.contains('hidden')) return;
     const canvas = wardrobeModal.querySelector('.wardrobe-stage-canvas');
@@ -2254,17 +2289,37 @@
     const c = canvas.getContext('2d');
     c.clearRect(0, 0, canvas.width, canvas.height);
     if (!sheet) return; // 첫 합성 대기 — 다음 프레임에 뜬다
+    const now = performance.now();
+    let frame;
+    if (now < stageManualUntil) {
+      frame = { dir: wardrobeDir, col: HUMAN_WALK_PATTERN[Math.floor(now / STAGE_WALK_MS) % HUMAN_WALK_PATTERN.length], dy: 0, tilt: 0, sparkle: 0 };
+    } else {
+      frame = stageChoreo(now);
+      wardrobeDir = frame.dir; // 수동 탭이 안무의 현재 방향에서 이어지도록
+    }
     const cell = HUMAN_SHEET_SIZE / 3;
-    const row = wardrobeDir === 'down' ? 0 : wardrobeDir === 'up' ? 2 : 1;
-    const col = HUMAN_WALK_PATTERN[Math.floor(performance.now() / HUMAN_WALK_MS) % HUMAN_WALK_PATTERN.length];
+    const row = frame.dir === 'down' ? 0 : frame.dir === 'up' ? 2 : 1;
     c.save();
     c.imageSmoothingEnabled = true;
     c.imageSmoothingQuality = 'high';
-    c.translate(canvas.width / 2, canvas.height * 0.95);
-    if (wardrobeDir === 'left') c.scale(-1, 1); // side row 는 우향 — left 미러
+    c.translate(canvas.width / 2, canvas.height * 0.95 + frame.dy);
+    if (frame.tilt) c.rotate(frame.tilt);
+    if (frame.dir === 'left') c.scale(-1, 1); // side row 는 우향 — left 미러
     const drawW = 140, drawH = 140;
-    c.drawImage(sheet.img, col * cell, row * cell, cell, cell, -drawW / 2, -drawH * 0.95, drawW, drawH);
+    c.drawImage(sheet.img, frame.col * cell, row * cell, cell, cell, -drawW / 2, -drawH * 0.95, drawW, drawH);
     c.restore();
+    if (frame.sparkle > 0) {
+      c.save();
+      c.globalAlpha = Math.min(1, frame.sparkle * 1.4);
+      c.font = '14px serif';
+      c.textAlign = 'center';
+      const cx = canvas.width / 2;
+      c.fillText('✨', cx - 44, 52);
+      c.fillText('✨', cx + 44, 40);
+      c.fillText('✨', cx - 26, 22);
+      c.fillText('✨', cx + 28, 96);
+      c.restore();
+    }
   }
 
   // 부스 표시 정책 (사용자 피드백):
