@@ -288,6 +288,81 @@ body {
   100% { transform: scale(var(--sc, .40)) translateX(0); }
 }
 
+/* ── 단계 3: 캐릭터별 공격 안무 (B기둥) ─────────────────────────────────
+ * `heroStrike` 단일 반복을 폐기한다. 스킬 축(skill.key)마다 고유 모션 — stage.js
+ * STRIKE_STYLES 가 클래스·접점 타이밍을 소유한다. dur 은 여기 애니메이션 길이와
+ * 반드시 일치해야 접점(setTimeout)이 키프레임과 맞물린다.
+ * 모든 모션은 base transform(scale(var(--sc))·translateX(0))에서 시작·종료해
+ * 다른 상태(fighting·walking)와 이어져도 튀지 않는다. */
+
+/* 잽 — 교대타의 짝. 기본타 한 번 걸러 이 빠른 잽이 끼어들어 반복감을 깬다 */
+.hero.jab { animation: heroJab .26s ease-out !important; }
+@keyframes heroJab {
+  0%   { transform: scale(var(--sc, .40)) translateX(0); }
+  34%  { transform: scale(var(--sc, .40)) translateX(var(--lunge, 64px)) translateY(-6px) rotate(-4deg) scaleX(1.04); }
+  60%  { transform: scale(var(--sc, .40)) translateX(calc(var(--lunge, 64px) * .45)) translateY(0); }
+  100% { transform: scale(var(--sc, .40)) translateX(0); }
+}
+
+/* 모찌(atkMul) 강타 — 크게 치켜들었다 내리찍는다 */
+.hero.st-slam { animation: stSlam .36s cubic-bezier(.3, 1.1, .4, 1) !important; }
+@keyframes stSlam {
+  0%   { transform: scale(var(--sc, .40)) translate(0, 0) rotate(0); }
+  24%  { transform: scale(var(--sc, .40)) translate(-16px, -20px) rotate(-14deg); }
+  42%  { transform: scale(var(--sc, .40)) translate(var(--lunge, 64px), 6px) rotate(11deg) scaleY(.88); }
+  60%  { transform: scale(var(--sc, .40)) translate(calc(var(--lunge, 64px) * .7), 0) rotate(4deg) scaleY(1.1); }
+  100% { transform: scale(var(--sc, .40)) translate(0, 0) rotate(0); }
+}
+
+/* 피치(aspdMul) 연타 — 두 번 빠르게 찌른다 (JS 가 두 번째 임팩트를 뒤따르게 한다) */
+.hero.st-combo { animation: stCombo .25s ease-out !important; }
+@keyframes stCombo {
+  0%   { transform: scale(var(--sc, .40)) translateX(0); }
+  18%  { transform: scale(var(--sc, .40)) translateX(-8px) scaleX(.97); }
+  34%  { transform: scale(var(--sc, .40)) translateX(var(--lunge, 64px)) rotate(4deg); }
+  50%  { transform: scale(var(--sc, .40)) translateX(calc(var(--lunge, 64px) * .35)); }
+  72%  { transform: scale(var(--sc, .40)) translateX(calc(var(--lunge, 64px) * .95)) rotate(3deg); }
+  100% { transform: scale(var(--sc, .40)) translateX(0); }
+}
+
+/* 푸딩(goldMul) 회전 — 한 바퀴 돌며 파고든다 */
+.hero.st-spin { animation: stSpin .34s cubic-bezier(.3, 1, .5, 1) !important; }
+@keyframes stSpin {
+  0%   { transform: scale(var(--sc, .40)) translateX(0) rotate(0); }
+  20%  { transform: scale(var(--sc, .40)) translateX(-10px) rotate(-24deg); }
+  48%  { transform: scale(var(--sc, .40)) translateX(var(--lunge, 64px)) rotate(300deg); }
+  100% { transform: scale(var(--sc, .40)) translateX(0) rotate(360deg); }
+}
+
+/* 라떼(bossMul) 도약 강타 — 크게 뛰어올라 내리꽂는다 */
+.hero.st-leap { animation: stLeap .4s cubic-bezier(.25, 1.2, .4, 1) !important; }
+@keyframes stLeap {
+  0%   { transform: scale(var(--sc, .40)) translate(0, 0); }
+  30%  { transform: scale(var(--sc, .40)) translate(calc(var(--lunge, 64px) * .4), -42px) rotate(-8deg); }
+  52%  { transform: scale(var(--sc, .40)) translate(var(--lunge, 64px), 4px) rotate(13deg) scaleY(.86); }
+  70%  { transform: scale(var(--sc, .40)) translate(calc(var(--lunge, 64px) * .7), 0) scaleY(1.12); }
+  100% { transform: scale(var(--sc, .40)) translate(0, 0); }
+}
+
+/* 민트(advanceMul) 대시 — 낮게 순간 대시하며 벤다 */
+.hero.st-dash { animation: stDash .3s cubic-bezier(.2, .9, .3, 1) !important; }
+@keyframes stDash {
+  0%   { transform: scale(var(--sc, .40)) translateX(0) skewX(0); }
+  32%  { transform: scale(var(--sc, .40)) translateX(var(--lunge, 64px)) skewX(-14deg) scaleX(1.1); }
+  55%  { transform: scale(var(--sc, .40)) translateX(calc(var(--lunge, 64px) * .8)) skewX(0); }
+  100% { transform: scale(var(--sc, .40)) translateX(0); }
+}
+
+/* 별사탕(shardMul) 튕김 — 톡 튀듯 잽싸게 */
+.hero.st-flick { animation: stFlick .3s ease-out !important; }
+@keyframes stFlick {
+  0%   { transform: scale(var(--sc, .40)) translateX(0) rotate(0); }
+  16%  { transform: scale(var(--sc, .40)) translateX(-10px) rotate(-8deg) scaleY(1.06); }
+  44%  { transform: scale(var(--sc, .40)) translateX(var(--lunge, 64px)) rotate(9deg); }
+  64%  { transform: scale(var(--sc, .40)) translateX(calc(var(--lunge, 64px) * .6)) rotate(2deg); }
+  100% { transform: scale(var(--sc, .40)) translateX(0) rotate(0); }
+}
+
 /* 컷신에서 말하는 친구 — 폴짝 (hero·follower 공용) */
 .hero.hop, .follower.hop { animation: speakerHop .45s cubic-bezier(.3, 1.5, .5, 1) !important; }
 @keyframes speakerHop {
@@ -360,6 +435,34 @@ body {
   30%  { transform: scaleX(-1.18) scaleY(.82) translateX(-16px) translateY(-5px) rotate(5deg); filter: drop-shadow(0 3px 4px rgba(90,60,80,.18)) brightness(2.1); }
   62%  { transform: scaleX(-.95) scaleY(1.08) translateX(-5px) translateY(0); filter: drop-shadow(0 3px 4px rgba(90,60,80,.18)) brightness(1.25); }
   100% { transform: scaleX(-1); filter: drop-shadow(0 3px 4px rgba(90,60,80,.18)) brightness(1); }
+}
+/* ── 단계 3: 적 피격 반응 다양화 (체크리스트 4번) ─────────────────────
+ * 한 종류 찌부만 반복하지 않는다. 넉백 거리 --knock 은 stage.js 가 타격 크기에
+ * 따라 넣는다(잔타 12px · 큰 한 방 22px · 보스 6px). 반응 종류는 reactClass 가
+ * tier·교대·보스로 고른다. */
+/* 큰 한 방 — 크게 떠올랐다 밀려난다(무게) */
+.enemy.squash-heavy img { animation: enemyHeavy .28s cubic-bezier(.2, .9, .35, 1) !important; }
+@keyframes enemyHeavy {
+  0%   { transform: scaleX(-1); filter: drop-shadow(0 3px 4px rgba(90,60,80,.18)) brightness(1); }
+  26%  { transform: scaleX(-1.24) scaleY(.76) translateX(calc(var(--knock, 22px) * -1)) translateY(-12px) rotate(8deg); filter: drop-shadow(0 3px 4px rgba(90,60,80,.18)) brightness(2.4); }
+  60%  { transform: scaleX(-.92) scaleY(1.12) translateX(calc(var(--knock, 22px) * -.4)) translateY(0) rotate(-2deg); filter: drop-shadow(0 3px 4px rgba(90,60,80,.18)) brightness(1.3); }
+  100% { transform: scaleX(-1); filter: drop-shadow(0 3px 4px rgba(90,60,80,.18)) brightness(1); }
+}
+/* 잔타 변주 — 회전을 곁들여 밀린다(교대타의 짝) */
+.enemy.squash-spin img { animation: enemySpin .22s ease-out !important; }
+@keyframes enemySpin {
+  0%   { transform: scaleX(-1) rotate(0); filter: drop-shadow(0 3px 4px rgba(90,60,80,.18)) brightness(1); }
+  34%  { transform: scaleX(-1.1) scaleY(.9) translateX(calc(var(--knock, 12px) * -1)) rotate(-14deg); filter: drop-shadow(0 3px 4px rgba(90,60,80,.18)) brightness(2); }
+  66%  { transform: scaleX(-1.02) scaleY(1.04) translateX(calc(var(--knock, 12px) * -.3)) rotate(4deg); filter: drop-shadow(0 3px 4px rgba(90,60,80,.18)) brightness(1.2); }
+  100% { transform: scaleX(-1) rotate(0); filter: drop-shadow(0 3px 4px rgba(90,60,80,.18)) brightness(1); }
+}
+/* 보스 — 덩치가 있어 덜 밀리고, 대신 번쩍 + 살짝 진동한다 */
+.enemy.squash-boss img { animation: enemyBossHit .22s ease-out !important; }
+@keyframes enemyBossHit {
+  0%   { transform: scaleX(-1) translateX(0); filter: drop-shadow(0 3px 4px rgba(90,60,80,.18)) brightness(1); }
+  30%  { transform: scaleX(-1.05) scaleY(.94) translateX(calc(var(--knock, 6px) * -1)); filter: drop-shadow(0 3px 4px rgba(90,60,80,.18)) brightness(2.3); }
+  55%  { transform: scaleX(-.99) scaleY(1.03) translateX(calc(var(--knock, 6px) * .5)); filter: drop-shadow(0 3px 4px rgba(90,60,80,.18)) brightness(1.4); }
+  100% { transform: scaleX(-1) translateX(0); filter: drop-shadow(0 3px 4px rgba(90,60,80,.18)) brightness(1); }
 }
 .enemy-name { font-size: 11px; font-weight: 700; color: var(--ink); background: rgba(255,255,255,.82); padding: 1px 8px; border-radius: 8px; }
 .enemy.is-boss .enemy-name { color: var(--boss); }
@@ -843,8 +946,11 @@ body {
 /* 감속 모드 — 움직임만 줄이고 **정보는 남긴다**. 적·HP·데미지 숫자는 계속 보인다.
  * 카메라 흔들림과 캔버스 파티클은 JS 쪽에서 함께 꺼진다(stage.js reducedMotion). */
 @media (prefers-reduced-motion: reduce) {
-  .confetti, .hero.strike, .hero.fighting,
-  .follower.fighting, .follower.cast, .enemy.squash img, .enemy img.spawn-in,
+  .confetti, .hero.strike, .hero.jab, .hero.fighting,
+  .hero.st-slam, .hero.st-combo, .hero.st-spin, .hero.st-leap, .hero.st-dash, .hero.st-flick,
+  .follower.fighting, .follower.cast,
+  .enemy.squash img, .enemy.squash-heavy img, .enemy.squash-spin img, .enemy.squash-boss img,
+  .enemy img.spawn-in,
   .enemy img.boss-in, .enemy.is-boss::before,
   .ambient-pt, .speedlines.flash, .hero.hop, .follower.hop, .fx-heartp,
   .hero.walking, .follower.walking,

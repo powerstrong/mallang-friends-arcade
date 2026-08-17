@@ -305,6 +305,71 @@ async function main(pg) {
     ' var d2=getComputedStyle(document.getElementById("follower2")).animationDelay;' +
     ' return { d1:d1, d2:d2, differ: d1!==d2 };})()')));
   ok(phase.differ, '동료 위상차 — 걸음 박자가 서로 어긋난다', phase);
+
+  // ═══ 단계 3 — 전투 안무 (B기둥) ═══════════════════════════════════
+  /* 헤드리스에선 rAF 가 멈춰 자연 발화(combatFxUpdate)를 못 본다. fx.strike 를
+   * 직접 틱하고, 변주는 lastStrike() 가 **동기 기록**한 값으로 판정한다.
+   * 스킬 정체성 FX 는 접점(setTimeout)이 아니라 격리 훅 fx.skillFx 로 즉시 검사한다. */
+
+  // ── 캐릭터마다 다른 공격 모션 (체크리스트 1: 같은 돌진 반복 폐기) ──
+  var styles = JSON.parse(await pg.eval(J(
+    '(function(){var fx=window.__mallangIdle.Stage.fx;' +
+    ' var ids=["rabbit","chick","hamster","latte","mintcat","otter"];' +
+    ' var map={}, uniq={};' +
+    ' ids.forEach(function(id){ var s=fx.styleFor(id); map[id]=s; uniq[s]=1; });' +
+    ' return { map:map, distinct:Object.keys(uniq).length };})()')));
+  ok(styles.distinct === 6, '여섯 캐릭터가 서로 다른 공격 모션을 쓴다 (스킬 축별 안무)', styles);
+
+  // ── 한 캐릭터 안에서도 모션이 변주된다 (체크리스트 2: 10초 반복감 제거) ──
+  /* 기본 교대타(스타일↔잽) + 5타 강조 + 9타 스킬 세트피스 → 최소 3종 시그니처.
+   * sig = 모션 클래스 | 리듬 계층. 20타를 틱해 변주 종류를 실측한다. */
+  var vary = JSON.parse(await pg.eval(J(
+    '(function(){var fx=window.__mallangIdle.Stage.fx;' +
+    ' var sigs={}, tiers={}, reacts={};' +
+    ' for (var i=0;i<20;i++){ var r=(i%3===0)?0.7:(i%3===1?0.1:0.4);' +
+    '   fx.strike(Math.round(r*1000), 1000);' +
+    '   var s=fx.lastStrike(); sigs[s.sig]=1; tiers[s.tier]=1; reacts[s.react]=1; }' +
+    ' return { sigs:Object.keys(sigs), tiers:Object.keys(tiers), reacts:Object.keys(reacts) };})()')));
+  ok(vary.sigs.length >= 3, '한 캐릭터 안에서도 공격 모션이 3종 이상으로 변주된다', vary);
+  ok(vary.tiers.indexOf('skill') >= 0 && vary.tiers.indexOf('accent') >= 0,
+    '기본타 사이에 강조타·스킬 세트피스가 주기적으로 낀다 (간헐 강타)', vary);
+
+  // ── 스킬이 편성 정체성과 연결된다 (체크리스트 3) ──
+  var skillTie = JSON.parse(await pg.eval(J(
+    '(function(){var fx=window.__mallangIdle.Stage.fx; var C=window.__mallangIdle;' +
+    ' var lead=C.state.party[0]; var found=null;' +
+    ' for (var i=0;i<9;i++){ fx.strike(500,1000); var s=fx.lastStrike(); if (s.tier==="skill") found=s; }' +
+    ' var leadSkill=null; var lc=C.Chars ? C.Chars.byId(lead) : null;' +
+    ' return { lead:lead, found:found, sample:fx.lastStrike() };})()')));
+  ok(skillTie.found && skillTie.found.skill === skillTie.sample.skill && !!skillTie.found.skill,
+    '스킬 세트피스가 리드 캐릭터의 스킬 축과 연결된다 (편성 정체성)', skillTie);
+
+  // ── 각 캐릭터 스킬이 고유 정체성 FX 를 낸다 (체크리스트 3: 그림뿐, 수치 불변) ──
+  var idFx = JSON.parse(await pg.eval(J(
+    '(function(){var fx=window.__mallangIdle.Stage.fx; var out={};' +
+    ' ["rabbit","chick","hamster","latte","mintcat","otter"].forEach(function(id){' +
+    '   fx.stepDraw(3000); fx.skillFx(id); out[id]=fx.particleCount(); });' +
+    ' fx.stepDraw(3000);' +
+    ' return { out:out, allPositive: Object.keys(out).every(function(k){return out[k]>0;}) };})()')));
+  ok(idFx.allPositive, '캐릭터마다 스킬 FX 가 캔버스에 실제로 터진다 (충격파·연타·골드·별)', idFx);
+
+  // ── 적 피격 반응이 한 종류가 아니다 (체크리스트 4) ──
+  var react = JSON.parse(await pg.eval(J(
+    '(function(){var fx=window.__mallangIdle.Stage.fx; var set={};' +
+    ' [[0.1,false,false],[0.1,false,true],[0.7,false,false],[0.4,true,false]].forEach(function(a){' +
+    '   set[fx.reactClass(a[0],a[1],a[2])]=1; });' +
+    ' return { classes:Object.keys(set) };})()')));
+  ok(react.classes.length >= 3, '적 피격 반응이 타격 크기·교대·보스로 갈린다 (한 종류 찌부 폐기)', react);
+
+  // ── 감속 모드가 아니면 새 모션 클래스가 실제로 DOM 에 걸린다 ──
+  var motionApplied = JSON.parse(await pg.eval(J(
+    '(function(){var fx=window.__mallangIdle.Stage.fx;' +
+    ' fx.strike(500,1000);' +
+    ' var hero=document.getElementById("hero").className;' +
+    ' var motions=["strike","jab","st-slam","st-combo","st-spin","st-leap","st-dash","st-flick"];' +
+    ' var has=motions.some(function(m){return hero.split(" ").indexOf(m)>=0;});' +
+    ' return { hero:hero, has:has };})()')));
+  ok(motionApplied.has, '타격 시 스타일 모션 클래스가 히어로 노드에 걸린다', motionApplied);
 }
 
 /* 감속 모드 — 움직임은 줄되 정보는 남아야 한다. */

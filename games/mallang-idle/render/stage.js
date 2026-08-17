@@ -70,6 +70,52 @@
     starsea: 'rgba(96, 116, 178, .34)', moonfactory: 'rgba(134, 128, 158, .32)',
   };
 
+  /* ── 단계 3: 전투 안무 (B기둥) — 캐릭터별 공격 + 스킬 ────────────────────
+   * `heroStrike` 단일 돌진 반복을 폐기한다. 이 표들은 **표현 계층 소유**다 —
+   * data/characters.js 의 스킬 '수치'(atkMul 0.20 등)는 한 줄도 안 건드린다.
+   * 여기서 정하는 건 그 스킬의 '그림'(모션·궤적·타이밍·정체성 FX)뿐이다.
+   *
+   * 에셋 노트: 다중 프레임 시트(7.1절 attack_basic/attack_special)는 imagegen
+   * 위탁분이다. 그게 오기 전까지는 기존 단일 공격 포즈(atk-*.png) 위에 **모션
+   * 변주**로 시스템을 완성한다 — "에셋 대기로 정체 금지"(9절). 시트가 오면
+   * applySprite 가 상태별 프레임 스왑으로 확장된다(부채로 남긴다). */
+  var STRIKE_STYLES = {
+    /* dur = CSS 애니메이션 길이(ms, 아래 @keyframes 와 일치), contact = 접점 비율,
+     * lungeK = 돌진 거리 배수, tint = 임팩트 스파크/섬광 색(캐릭터 정체성 색). */
+    slam:  { cls: 'st-slam',  dur: 360, contact: 0.42, lungeK: 1.16, tint: '255, 206, 138' },
+    combo: { cls: 'st-combo', dur: 250, contact: 0.34, lungeK: 0.86, tint: '255, 240, 178', hits: 2 },
+    spin:  { cls: 'st-spin',  dur: 340, contact: 0.48, lungeK: 1.02, tint: '255, 214, 120' },
+    leap:  { cls: 'st-leap',  dur: 400, contact: 0.52, lungeK: 1.24, tint: '255, 178, 150' },
+    dash:  { cls: 'st-dash',  dur: 300, contact: 0.32, lungeK: 1.34, tint: '196, 240, 224' },
+    flick: { cls: 'st-flick', dur: 300, contact: 0.44, lungeK: 0.96, tint: '204, 220, 255' },
+    basic: { cls: 'strike',   dur: 300, contact: 0.40, lungeK: 1.00, tint: '255, 236, 170' },
+  };
+  /* 스킬 축(skill.key) → 안무. 편성 정체성이 모션으로 보인다 (체크리스트 3번):
+   *   모찌(atkMul) 묵직한 강타 · 피치(aspdMul) 빠른 연타 · 푸딩(goldMul) 회전 살림꾼
+   *   라떼(bossMul) 도약 강타 · 민트(advanceMul) 순간 대시 · 별사탕(shardMul) 잽싼 튕김 */
+  var STYLE_BY_SKILL = {
+    atkMul: 'slam', aspdMul: 'combo', goldMul: 'spin',
+    bossMul: 'leap', advanceMul: 'dash', shardMul: 'flick',
+  };
+  function styleFor(c) {
+    var key = c && c.skill && STYLE_BY_SKILL[c.skill.key];
+    return STRIKE_STYLES[key] || STRIKE_STYLES.basic;
+  }
+
+  /* 스킬 발동 주기(타격 수) — 순수 표현 리듬이다. characters.js 의 스킬 발동 수치가
+   * 아니라 "몇 타마다 세트피스를 보여줄까"일 뿐. 밸런스와 무관(엔진 DPS 불변). */
+  var SKILL_EVERY = 9;
+  var ACCENT_EVERY = 5;
+
+  /* 적 피격 반응 다양화 (체크리스트 4번) — 한 종류 찌부만 반복하지 않는다.
+   * 타격 크기(tier) + 교대 + 보스 여부로 반응이 갈린다. CSS 키프레임과 짝. */
+  function reactClass(ratio, isBoss, alt) {
+    if (isBoss) return 'squash-boss';          // 보스는 덜 밀리고 대신 번쩍인다(무게)
+    if (ratio >= 0.5) return 'squash-heavy';   // 큰 한 방 = 크게 날아간다
+    return alt ? 'squash-spin' : 'squash';     // 잔타는 교대로 변주(회전 vs 기본)
+  }
+  var REACT_CLASSES = ['squash', 'squash-heavy', 'squash-spin', 'squash-boss'];
+
   function create(opts) {
     var el = opts.el;
     var Chapters = opts.Chapters, Chars = opts.Chars, Combat = opts.Combat;
@@ -287,7 +333,8 @@
 
     /* 타격 임팩트 — 플립북 + 스파크 + 섬광이 접점에서 **함께** 터진다 (체크리스트 2번).
      * 전부 장식이다 — 정보(숫자)는 DOM 이 나른다. */
-    function impactBurst(x, y, accent) {
+    function impactBurst(x, y, accent, tint) {
+      var sparkCol = tint || (accent ? '255, 208, 112' : '255, 236, 170');
       emit('impact', x, y, { sheet: 'impact', life: 0.32, size: accent ? 118 : 84,
         grow: 1.15, rot: (Math.random() * 70 - 35) * Math.PI / 180, alpha: 1 });
       emit('slash', x - 6, y - 4, { sheet: 'slash', life: 0.24, size: 110, grow: 1.55,
@@ -297,11 +344,55 @@
         var a = Math.random() * TAU, sp = 130 + Math.random() * 170;
         emit('spark', x, y, { vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 40,
           life: 0.26 + Math.random() * 0.18, size: 3.5 + Math.random() * 2.5, grow: 0.6,
-          color: accent ? '255, 208, 112' : '255, 236, 170', alpha: 0.95,
+          color: sparkCol, alpha: 0.95,
           blend: 'lighter', grav: 520, stretch: 2.6 });
       }
       emit('flash', x, y, { life: 0.14, size: accent ? 46 : 30, grow: 2.2,
         color: '255, 245, 210', alpha: 0.85, blend: 'lighter' });
+    }
+
+    /* 스킬 세트피스 — 캐릭터 정체성 FX (체크리스트 3번). 전부 장식이라 감속 모드에서
+     * emit 가 자동 억제한다. 데미지·판정에 관여하지 않는다(수치는 이미 DPS 에 녹음). */
+    function heroSkillFx(c, x, y) {
+      var key = c && c.skill ? c.skill.key : '';
+      var i, a, sp;
+      switch (key) {
+        case 'atkMul':   // 모찌 강타 — 충격파 링 + 지면 파편
+          emit('flash', x, y, { life: 0.3, size: 44, grow: 4.6, color: '255, 210, 150', alpha: 0.5, blend: 'lighter' });
+          for (i = 0; i < 8; i++) { a = Math.random() * TAU; sp = 170 + Math.random() * 150;
+            emit('debris', x, y, { vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 30, life: 0.4,
+              size: 5, grow: 0.6, color: '255, 214, 150', alpha: 0.9, blend: 'lighter', grav: 500, stretch: 2.2 }); }
+          break;
+        case 'aspdMul':  // 피치 연타 — 잽싼 스파크 다발
+          for (i = 0; i < 9; i++) { a = Math.random() * TAU; sp = 120 + Math.random() * 140;
+            emit('spark', x + (Math.random() * 24 - 12), y, { vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 30,
+              life: 0.22 + Math.random() * 0.1, size: 3.5, grow: 0.6, color: '255, 240, 175', alpha: 0.95,
+              blend: 'lighter', grav: 380, stretch: 2.6 }); }
+          break;
+        case 'goldMul':  // 푸딩 — 골드 분수 (장식 동전, 수치는 DOM 정보가 나른다)
+          for (i = 0; i < 11; i++)
+            emit('coin', x, y + 6, { vx: (Math.random() - 0.5) * 220, vy: -160 - Math.random() * 140,
+              life: 0.6 + Math.random() * 0.2, size: 5, grow: 1, color: '255, 205, 90', alpha: 1, blend: 'lighter', grav: 660 });
+          break;
+        case 'bossMul':  // 라떼 도약 강타 — 큰 충격파 + 추가 셰이크
+          emit('flash', x, y, { life: 0.34, size: 50, grow: 5.2, color: '255, 172, 150', alpha: 0.55, blend: 'lighter' });
+          for (i = 0; i < 9; i++) { a = Math.random() * TAU; sp = 200 + Math.random() * 170;
+            emit('debris', x, y, { vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 40, life: 0.42,
+              size: 6, grow: 0.6, color: '255, 190, 160', alpha: 0.9, blend: 'lighter', grav: 520, stretch: 2.4 }); }
+          camera.shake(3.4, 0.28);
+          break;
+        case 'advanceMul':  // 민트 대시 — 수평 궤적 잔상
+          for (i = 0; i < 6; i++)
+            emit('spark', x - 44 + i * 20, y + (Math.random() * 30 - 15), { vx: 270, vy: 0, life: 0.22,
+              size: 6, grow: 0.5, color: '196, 240, 224', alpha: 0.9, blend: 'lighter', stretch: 4.2 });
+          break;
+        case 'shardMul':  // 별사탕 반짝 — 별가루 샤워
+          for (i = 0; i < 8; i++)
+            emit('spark', x + (Math.random() * 44 - 22), y - 34, { vx: (Math.random() - 0.5) * 90,
+              vy: 40 + Math.random() * 70, life: 0.5, size: 4, grow: 1.2, color: '204, 220, 255', alpha: 1,
+              blend: 'lighter', grav: 120, stretch: 1.8 });
+          break;
+      }
     }
 
     /* 처치 세트피스 — 펑 플립북 + 구름 파편 + 골드 분출 + 섬광 (체크리스트 4번).
@@ -684,7 +775,11 @@
     var strikeAccum = 0, strikeGap = 0;
     var obsKey = '', obsHp = 0, dmgObserved = 0, frameKill = false;
     var strikeCount = 0, restoreTimer = 0, poseSwapped = false;
+    var strikeAlt = false;                    // 교대타 — 기본타를 한 번 걸러 잽으로 바꾼다
+    var lastStrikeInfo = null;                // 연출 변주 검증용 (헤드리스에선 자연 발화를 못 봄)
+    var lastReactClass = '';
     var followerTimers = [0, 0];
+    var STRIKE_MOTIONS = ['strike', 'jab', 'st-slam', 'st-combo', 'st-spin', 'st-leap', 'st-dash', 'st-flick'];
 
     function observeDamage(state) {
       var fightingPhase = state.phase !== Combat.PHASE_ADVANCE;
@@ -718,61 +813,88 @@
 
     /* 타격 접점 통일 — 돌진 거리가 고정이면 캐릭터 폭(139~301px)에 따라 주먹이 적을
      * 뚫거나 허공에 멈춘다. 매 타격 실제 간격을 재서 살짝(12px) 파고드는 지점까지만. */
-    function syncLunge() {
+    function syncLunge(k) {
       var hr = el.hero.getBoundingClientRect();
       var er = el.enemyArt.getBoundingClientRect();
       if (!hr.width || !er.width) return;
       var sc = parseFloat(getComputedStyle(el.hero).getPropertyValue('--sc')) || 0.4;
       var gap = er.left - hr.right;
-      var reach = (gap + 12) / sc;
+      var reach = (gap + 12) / sc * (k || 1);   // 스타일별 돌진 배수 (단계 3)
       if (!isFinite(reach)) return;
-      reach = Math.max(24, Math.min(170, Math.round(reach)));
+      reach = Math.max(24, Math.min(200, Math.round(reach)));
       el.hero.style.setProperty('--lunge', reach + 'px');
     }
 
     function heroStrike(dmg, maxHp) {
       strikeCount++;
-      /* 표현 전용 리듬 강조 — 크리티컬이 **아니다** (결정 8: crit→accent 개명).
-       * 추가 피해도, 확률도 없다. 5타마다 연출만 커진다. */
-      var accent = strikeCount % 5 === 0;
-      el.hero.classList.remove('strike');
-      void el.hero.offsetWidth;
-      el.hero.classList.add('strike');
-      swapToAttackPose();
-      syncLunge();
-      sfx('hit');
-      var p = enemyPoint();     // 좌표는 지금 고정 — 접촉까지 적이 바뀌어도 빈 곳에 안 찍힌다
-      var fp = footPoint(el.hero);
-      dustPuff(fp.x, fp.y, false);
+      var c = Chars.byId(party[0]);
+      var style = styleFor(c);
+      strikeAlt = !strikeAlt;
 
-      /* 접촉은 heroStrike 키프레임 40% 지점(300ms × 0.4 = 120ms) — CSS 와 함께 움직인다 */
+      /* 리듬 계층 (결정 8: crit 이 아니다 — 추가 피해·확률 없음, 연출만 변한다):
+       *   skill  매 9타 — 캐릭터 스킬 세트피스 (편성 정체성이 눈에 보인다)
+       *   accent 매 5타 — 스타일 모션 강조
+       *   basic  그 외 — 교대타: 한 번은 스타일 모션, 한 번은 잽(변주로 반복감 제거)
+       * skill·accent 은 스타일 모션을, 기본 잽 차례만 'jab' 을 쓴다. */
+      var isSkill = strikeCount % SKILL_EVERY === 0;
+      var accent = !isSkill && strikeCount % ACCENT_EVERY === 0;
+      var useJab = !isSkill && !accent && !strikeAlt;
+      var motion = useJab ? 'jab' : style.cls;
+      var big = isSkill || accent;
+
+      // 모션 클래스 — 이전 것들을 싹 지우고 이번 것만 (교대·강조·스킬 마커 포함)
+      el.hero.classList.remove('alt', 'accent', 'skill');
+      for (var m = 0; m < STRIKE_MOTIONS.length; m++) el.hero.classList.remove(STRIKE_MOTIONS[m]);
+      void el.hero.offsetWidth;
+      el.hero.classList.add(motion);
+      if (strikeAlt) el.hero.classList.add('alt');
+      if (isSkill) el.hero.classList.add('skill');
+      else if (accent) el.hero.classList.add('accent');
+
+      swapToAttackPose();
+      syncLunge(useJab ? 0.9 : style.lungeK);
+      sfx(isSkill ? 'kill' : 'hit');   // 스킬 발동은 좀 더 묵직한 소리(기존 sfx 재사용)
+      var p = enemyPoint();     // 좌표 고정 — 접촉까지 적이 바뀌어도 빈 곳에 안 찍힌다
+      var fp = footPoint(el.hero);
+      dustPuff(fp.x, fp.y, big);
+
+      /* 접점 통일 — 접촉 타이밍은 스타일 키프레임과 함께 움직인다(dur × contact). */
+      var contactMs = Math.round(style.dur * style.contact);
+      var ratio = maxHp > 0 ? dmg / maxHp : 0;
+      var rc = reactClass(ratio, view.isBoss, strikeAlt);
+      lastReactClass = rc;
+      lastStrikeInfo = { motion: motion, style: style.cls, tier: isSkill ? 'skill' : accent ? 'accent' : (strikeAlt ? 'a' : 'b'),
+        alt: strikeAlt, react: rc, skill: c && c.skill ? c.skill.key : '', sig: motion + '|' + (isSkill ? 'skill' : accent ? 'accent' : 'basic') };
+
       setTimeout(function () {
         var jx = (Math.random() - 0.5) * 26, jy = (Math.random() - 0.5) * 20;
 
-        // 임팩트·궤적·스파크·섬광 — 전부 캔버스 (단계 1 슬라이스 1)
-        impactBurst(p.x + jx, p.y + jy, accent);
+        // 임팩트·궤적·스파크·섬광 — 캐릭터 정체성 색(style.tint)으로 (단계 1·3)
+        impactBurst(p.x + jx, p.y + jy, big, style.tint);
+        if (isSkill) heroSkillFx(c, p.x + jx, p.y + jy);
+        // 연타형(combo)은 두 번째 잔타가 살짝 늦게 뒤따른다 (피치 정체성)
+        if (style.hits > 1) setTimeout(function () {
+          impactBurst(p.x - jx * 0.5, p.y + 10, false, style.tint);
+        }, 90);
 
-        /* 숫자는 관측된 실제 피해이고 DOM 잔류다 (결정 3·8). 크기·색은 타격 크기
-         * (적 최대 HP 대비 이번 몫)에 반응한다 — 체크리스트 3번. */
-        var ratio = maxHp > 0 ? dmg / maxHp : 0;
-        var cls = 'fx-dmg' + (accent ? ' accent' : '')
+        /* 숫자는 관측된 실제 피해이고 DOM 잔류다 (결정 3·8). 크기·색은 타격 크기에 반응. */
+        var cls = 'fx-dmg' + (big ? ' accent' : '')
                 + (ratio >= 0.9 ? ' huge' : ratio >= 0.35 ? ' big' : '');
         spawnFx(cls, p.x + jx, p.y + jy - 28, 640, fmt(dmg));
 
-        el.enemy.classList.remove('squash');
+        // 적 피격 반응 다양화 (체크리스트 4번) — 넉백 크기도 타격에 반응
+        el.enemy.classList.remove.apply(el.enemy.classList, REACT_CLASSES);
         void el.enemy.offsetWidth;
-        el.enemy.classList.add('squash');
+        el.enemy.classList.add(rc);
+        el.enemy.style.setProperty('--knock', (view.isBoss ? 6 : ratio >= 0.5 ? 22 : 12) + 'px');
 
-        /* 히트스톱 — 접촉 순간 모두가 잠깐 멈춘다 (타격감의 절반).
-         * setTimeout 해제가 아니라 stage FX 시계가 건다/푼다 — 캔버스 파티클과
-         * DOM(animation-play-state)이 같은 순간에 얼고 같은 순간에 풀린다. */
-        hitstop(accent ? 0.09 : 0.055);
-        if (accent) camera.shake(2, 0.16);
-      }, 120);
+        hitstop(isSkill ? 0.11 : accent ? 0.09 : 0.055);
+        if (big) camera.shake(isSkill ? 3 : 2, 0.16);
+      }, contactMs);
 
       /* 연타 시 이전 복원 타이머가 다음 타격의 공격 포즈를 중간에 되돌리는 경합 방지 */
       clearTimeout(restoreTimer);
-      restoreTimer = setTimeout(restoreWalkPose, 320);
+      restoreTimer = setTimeout(restoreWalkPose, style.dur + 20);
     }
 
     /* 지원 사격 — 2·3번 동료가 자기 주기로 별을 던진다. 데미지는 이미 편성 보너스로
@@ -929,6 +1051,12 @@
         sheetReady: sheetReady,
         lastEmit: function () { return lastEmit; },
         caps: function () { return { particle: PARTICLE_CAP, reserve: INFO_RESERVE, dom: FX_CAP, domCount: fxCount }; },
+        // 단계 3 회귀용 — 캐릭터별 모션·리듬 변주·적 반응을 밖에서 검증한다
+        styleFor: function (id) { return styleFor(Chars.byId(id)).cls; },
+        lastStrike: function () { return lastStrikeInfo; },
+        lastReact: function () { return lastReactClass; },
+        reactClass: reactClass,
+        skillFx: function (id) { var p = enemyPoint(); heroSkillFx(Chars.byId(id), p.x, p.y); },
       },
     };
   }
