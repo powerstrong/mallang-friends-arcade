@@ -56,6 +56,7 @@ function simulate(opts) {
   let golden = false;
   let fevers = 0, gaugeDeaths = 0, missDeaths = 0, shieldFills = 0, shieldUses = 0;
   let wasFever = false;
+  let roundMaxCombo = 0; // 목숨 넘어 라운드 전체 최대 콤보 (해금 조건용)
   let nextTapAt = opts.tapMs + (rng() - 0.5) * 2 * opts.jitMs;
   let restartHoldUntil = -1;
 
@@ -109,12 +110,13 @@ function simulate(opts) {
       if (shield >= 1 && ev && ev.gain) { /* armed */ }
       if (shield >= 1) shieldFills = Math.max(shieldFills, shieldUses + 1);
       s = engine.getState();
+      if (s.maxCombo > roundMaxCombo) roundMaxCombo = s.maxCombo;
       const reached = Math.floor(s.pos / CHECKPOINT_INTERVAL) * CHECKPOINT_INTERVAL;
       if (reached > checkpointStep) { checkpointStep = reached; checkpointScore = currentScore(); }
       if (s.pos > bestStep) bestStep = s.pos;
     }
   }
-  return { bestStep, score: currentScore(), fevers, gaugeDeaths, missDeaths, shieldFills, shieldUses };
+  return { bestStep, score: currentScore(), fevers, gaugeDeaths, missDeaths, shieldFills, shieldUses, roundMaxCombo };
 }
 
 // ---- 1) 엔진 회귀 검증 ----
@@ -185,3 +187,23 @@ for (const p of PROFILES) {
   );
 }
 console.log('\n테마 노출(THEME_STEPS 35/70/110/150 기준): 위 층수 평균과 대조해 판 내 테마 수를 가늠한다.');
+
+// ---- 3) 시크릿 해금 조건 후보 분포 (R13) ----
+console.log('\n해금 조건 후보 — 라운드당 달성 확률(%):');
+console.log('프로파일           | 콤보≥30 | 콤보≥35 | 콤보≥40 | 콤보≥50 | 피버≥2 | 피버≥3');
+for (const p of PROFILES) {
+  const rs = [];
+  for (let i = 0; i < RUNS; i++) {
+    rs.push(simulate({
+      seed: 'unlock:' + i, simSeed: 4242 + i * 977, charId: 'peach-chick',
+      tapMs: p.tapMs, jitMs: p.jitMs, missRate: p.missRate,
+    }));
+  }
+  const pct = (f) => Math.round(100 * rs.filter(f).length / rs.length);
+  console.log(
+    p.name.padEnd(14) +
+    ' | ' + pct(r => r.roundMaxCombo >= 30) + ' | ' + pct(r => r.roundMaxCombo >= 35) +
+    ' | ' + pct(r => r.roundMaxCombo >= 40) + ' | ' + pct(r => r.roundMaxCombo >= 50) +
+    ' | ' + pct(r => r.fevers >= 2) + ' | ' + pct(r => r.fevers >= 3)
+  );
+}

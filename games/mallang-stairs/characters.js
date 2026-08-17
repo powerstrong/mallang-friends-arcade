@@ -96,6 +96,9 @@
       ability: {
         superStep: { everyCombo: 30, steps: 3, mul: 2.0 },
       },
+      // 직접 선택 해금 조건(달성 판정은 game.js). 랜덤 추첨에는 해금과 무관하게 늘 포함.
+      // 임계값 근거: dev/sim.js — 평균(탭400ms) 65%/판, 초보 0% (실력 사다리형 첫 시크릿).
+      unlock: { type: 'combo', value: 50, label: '한 판에 콤보 50' },
     },
     {
       id: 'mint-kitten',
@@ -110,6 +113,8 @@
         feverGainMul: 1.30,
         feverScoreBonus: 0.10,
       },
+      // 임계값 근거: dev/sim.js — 평균 25%/판, 상급 85% (두 번째 시크릿, 도전 목표).
+      unlock: { type: 'fever', value: 2, label: '한 판에 피버 2번' },
     },
   ];
 

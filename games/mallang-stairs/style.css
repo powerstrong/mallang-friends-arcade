@@ -373,6 +373,19 @@ body {
 /* ===== 셋업 화면 주간 TOP3 ===== */
 .weekly-top { font-size: 12px; font-weight: 700; color: #7a6771; text-align: center; min-height: 16px; }
 
+/* ===== 시크릿 캐릭터 해금 ===== */
+.char-chip--locked { position: relative; background: rgba(235, 228, 238, .82); }
+.char-chip--locked img { filter: brightness(0); opacity: .38; }
+.char-chip--locked .char-chip__label { color: #a294a0; letter-spacing: 1px; }
+.char-chip__lock {
+  position: absolute; right: 4px; top: 4px; font-size: 13px; line-height: 1;
+  filter: drop-shadow(0 1px 1px rgba(0,0,0,.15));
+}
+.char-stage__img.is-locked { filter: brightness(0); opacity: .4; }
+.char-stage__cond { font-size: 12px; font-weight: 800; color: #b0699a; margin-top: 2px; }
+.result-unlock { min-height: 18px; margin: -2px 0 2px; font-size: 14px; font-weight: 900; color: var(--pink); animation: unlockPop .5s cubic-bezier(.2,1.35,.5,1); }
+@keyframes unlockPop { from { transform: scale(.7); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
 @media (max-height: 720px) {
   .setup-inner { gap: 8px; padding-top: 14px; }
   .char-stage__img { width: 118px; height: 118px; }

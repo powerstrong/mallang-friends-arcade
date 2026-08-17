@@ -20,6 +20,7 @@
   var PB_KEY = 'mallang-stairs:pb';
   var GHOST_KEY = 'mallang-stairs:pbghost';
   var HINT_KEY = 'mallang-stairs:seen-hint';
+  var UNLOCK_KEY = 'mallang-stairs:unlocks';
   var GOLDEN_TIME_MS = 10000;   // 막판 골든 타임 구간(잔여 시간 기준)
   var GOLDEN_SCORE_MUL = 1.5;   // 골든 타임 점수 배율
   var GHOST_SAMPLE_MS = 500;    // PB 고스트 (시간→층) 곡선 샘플 간격
@@ -111,6 +112,10 @@
   var recSamples = null;        // 이번 라운드 (시간→층) 기록 샘플
   var recLastT = -Infinity;
   var hiddenAt = 0;             // 솔로 일시정지용 — 탭 숨김 시각
+  var unlocks = {};             // 시크릿 직접선택 해금 상태 {charId: true}
+  var roundFevers = 0;          // 이번 라운드 피버 발동 횟수(해금 판정용)
+  var tapFeverOn = false;       // 탭 간 피버 on/off 에지 검출
+  var previewTimer = 0;         // 잠금 캐릭터 미리보기 자동 복귀 타이머
 
   function audio() { return window.MallangStairsAudio; }
   function playSound(name, arg) {
@@ -148,6 +153,38 @@
     note.textContent = personalBest.step > 0
       ? ('내 최고 기록: ' + personalBest.step + '층 · ' + personalBest.score.toLocaleString() + '점')
       : '아직 기록이 없어요 — 첫 도전을 남겨봐요!';
+  }
+
+  // ---- 시크릿 캐릭터 직접선택 해금 (랜덤 추첨 풀은 해금과 무관하게 5종 유지) ----
+  function loadUnlocks() {
+    try {
+      var raw = JSON.parse(window.localStorage.getItem(UNLOCK_KEY) || 'null');
+      if (raw && typeof raw === 'object') unlocks = raw;
+    } catch (e) { /* storage unavailable */ }
+  }
+  function saveUnlocks() {
+    try { window.localStorage.setItem(UNLOCK_KEY, JSON.stringify(unlocks)); } catch (e) { /* ignore */ }
+  }
+  function isUnlocked(id) {
+    var c = Chars.get(id);
+    return !!c && (!c.secret || !!unlocks[id]);
+  }
+  function checkUnlocks() {
+    var newly = [];
+    Chars.LIST.forEach(function (c) {
+      if (!c.secret || !c.unlock || unlocks[c.id]) return;
+      var ok = c.unlock.type === 'combo' ? roundMaxCombo >= c.unlock.value :
+        c.unlock.type === 'fever' ? roundFevers >= c.unlock.value : false;
+      if (ok) {
+        unlocks[c.id] = true;
+        newly.push(c);
+      }
+    });
+    if (newly.length) {
+      saveUnlocks();
+      buildCharPick();
+    }
+    return newly;
   }
 
   // ---- 캐릭터 능력 육각형 레이더 ----
@@ -281,8 +318,15 @@
     Chars.PUBLIC_LIST.forEach(function (c) {
       pick.appendChild(makeChip(c.id, c.assets.main, c.name, false));
     });
+    Chars.LIST.forEach(function (c) {
+      if (!c.secret) return;
+      pick.appendChild(unlocks[c.id]
+        ? makeChip(c.id, c.assets.main, c.name, false)
+        : makeLockedChip(c));
+    });
     pick.appendChild(makeChip('random', null, '랜덤', true));
-    selectChar('peach-chick');
+    // 해금 후 재구성 등에서 기존 선택을 유지한다(랜덤이 잠금 시크릿을 배정한 경우 포함).
+    selectChar(selectedId);
   }
   function makeChip(id, img, label, isRandom) {
     var el = document.createElement('button');
@@ -298,13 +342,48 @@
     el.addEventListener('click', function () { selectChar(id); });
     return el;
   }
+  function makeLockedChip(c) {
+    var el = document.createElement('button');
+    el.type = 'button';
+    el.className = 'char-chip char-chip--locked';
+    el.dataset.id = c.id;
+    el.innerHTML = '<img src="' + c.assets.main + '" alt="" draggable="false" />' +
+      '<span class="char-chip__label">???</span><b class="char-chip__lock">🔒</b>';
+    el.addEventListener('click', function () { previewLockedChar(c.id); });
+    return el;
+  }
+  function setCondNote(text) {
+    var cond = $('setupCharCond');
+    if (!cond) return;
+    cond.textContent = text || '';
+    cond.classList.toggle('is-hidden', !text);
+  }
+  // 잠금 캐릭터 탭 → 실루엣 + 해금 조건만 보여주고(선택은 유지), 잠시 뒤 원래 선택으로 복귀.
+  function previewLockedChar(id) {
+    var c = safeChar(id);
+    clearTimeout(previewTimer);
+    var setupImg = $('setupCharImg'), name = $('setupCharName');
+    setupImg.src = c.assets.main;
+    setupImg.style.visibility = 'visible';
+    setupImg.classList.add('is-locked');
+    name.textContent = '???';
+    setCondNote(c.unlock ? c.unlock.label + '을 해내면 만날 수 있어요!' : '');
+    renderCharRadar('random');
+    previewTimer = setTimeout(function () { selectChar(selectedId); }, 2600);
+  }
+  // 주의: 잠금 시크릿 id 도 허용한다 — 랜덤 추첨(멀티 방 확정 포함)은 해금과 무관하게
+  // 5종 전체에서 뽑히는 것이 설계다. 사용자 직접선택 차단은 잠금 칩이 selectChar 대신
+  // previewLockedChar 를 호출하는 것으로 이미 보장된다.
   function selectChar(id) {
-    if (id !== 'random' && !Chars.get(id)) id = 'mochi-rabbit';
+    if (id !== 'random' && !Chars.get(id)) id = 'peach-chick';
+    clearTimeout(previewTimer);
     selectedId = id;
+    var setupImg = $('setupCharImg'), name = $('setupCharName');
+    setupImg.classList.remove('is-locked');
+    setCondNote('');
     Array.prototype.forEach.call(document.querySelectorAll('.char-chip'), function (el) {
       el.classList.toggle('is-selected', el.dataset.id === id);
     });
-    var setupImg = $('setupCharImg'), name = $('setupCharName');
     if (id === 'random') {
       setupImg.src = '';
       setupImg.style.visibility = 'hidden';
@@ -462,6 +541,7 @@
     goldenActive = false;
     stairLayer.classList.remove('is-golden');
     if (shieldBubble) shieldBubble.classList.remove('is-on');
+    roundFevers = 0;
     startGhostRound();
     activeChar = resolveCharacter();
     preloadPoses(activeChar);
@@ -494,6 +574,7 @@
       startAtStep: Math.max(0, startAtStep || 0)
     });
     if (goldenActive) engine.setScoreBoost(GOLDEN_SCORE_MUL); // 골든 타임 중 부활해도 배율 유지
+    tapFeverOn = false;
     xCache = [0];
     buildPool();
     ensureGhostNode();
@@ -570,6 +651,8 @@
       popBooster(ev.booster);
       playSound('booster', ev.booster);
     }
+    if (ev.fever && !tapFeverOn) roundFevers++; // 탭 간 에지 검출 — 해금(민트) 판정용
+    tapFeverOn = !!ev.fever;
     if (ev.fever && !feverFx.classList.contains('is-on')) enterFever();
     var state = engine.getState();
     updateRoundBest(state);
@@ -1063,6 +1146,7 @@
     if (newRecord) saveGhostCurve();
     renderPbNote();
     renderResultDelta(result, prevBestStep, newRecord);
+    renderResultUnlock(checkUnlocks());
     $('resStep').textContent = result.best;
     $('resScore').textContent = result.score;
     $('resCombo').textContent = result.maxCombo;
@@ -1075,6 +1159,18 @@
     resultTrophy.classList.toggle('is-hidden', !renderResultRank(result));
     renderRetryState();
     resultOverlay.classList.remove('is-hidden');
+  }
+  function renderResultUnlock(newly) {
+    var el = $('resUnlock');
+    if (!el) return;
+    if (!newly || !newly.length) {
+      el.classList.add('is-hidden');
+      return;
+    }
+    var names = newly.map(function (c) { return c.name; }).join(', ');
+    el.textContent = '🎉 새 친구 해금: ' + names + '!';
+    el.classList.remove('is-hidden');
+    announce('새 친구 해금: ' + names);
   }
   // 결과 카드에 "지난 나"와의 비교 한 줄 — 성장 체감용.
   function renderResultDelta(result, prevBestStep, newRecord) {
@@ -1326,6 +1422,7 @@
   }
   function init() {
     loadPersonalBest();
+    loadUnlocks();
     renderPbNote();
     hudBest.textContent = personalBest.step;
     preloadArt();
