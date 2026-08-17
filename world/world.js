@@ -651,7 +651,8 @@
     selectedCharacterId = HUMAN_ID;
     selectedPreset = presetId;
     const saved = loadSavedOutfit();
-    if (saved && saved.preset === presetId) {
+    if (saved && saved.preset === presetId && window.WARDROBE.outfitFitsPreset(saved, presetId)) {
+      // 태그가 안 맞으면(카탈로그 개정으로 소급 불일치) 프리셋 기본으로 치환(P0-2).
       pendingOutfit = window.WARDROBE.sanitizeOutfit(saved, presetId);
     } else {
       pendingOutfit = window.WARDROBE.sanitizeOutfit(null, presetId);
@@ -2106,7 +2107,7 @@
 
     modal.querySelector('.wardrobe-close').addEventListener('click', closeWardrobePanel);
     modal.querySelector('.wardrobe-random').addEventListener('click', () => {
-      wardrobeDraft = window.WARDROBE.randomOutfit();
+      wardrobeDraft = window.WARDROBE.randomOutfit(wardrobePreset);
       renderWardrobeControls();
     });
     modal.querySelector('.wardrobe-revert').addEventListener('click', () => {
@@ -2212,7 +2213,8 @@
     const optional = wardrobeTab === 'hat' || wardrobeTab === 'faceAcc';
     const entries = [];
     if (optional) entries.push({ id: null, label: '없음' });
-    for (const it of W.itemsBySlot(wardrobeTab)) entries.push(it);
+    // fit 태그 필터(P0-2): 프리셋에 맞는 아이템만 노출(치마류=여아 등).
+    for (const it of W.itemsFor(wardrobeTab, wardrobePreset)) entries.push(it);
     for (const it of entries) {
       const card = document.createElement('button');
       card.type = 'button';
@@ -2249,14 +2251,13 @@
     return next;
   }
 
+  /* 프리셋 전용(fit===프리셋) 아이템을 우선 — 여아=치마, 남아=남아 하의처럼
+   * 취향 분기가 태그에서 자연히 나온다(P0-2 일반화, 하드코딩 제거). */
   function defaultSeparate(slot) {
-    const items = window.WARDROBE.itemsBySlot(slot);
+    const items = window.WARDROBE.itemsFor(slot, wardrobePreset);
     if (!items.length) return null;
-    if (slot === 'bottom' && wardrobePreset === 'girl') {
-      const skirt = items.find((i) => i.id.includes('skirt'));
-      if (skirt) return skirt.id;
-    }
-    return items[0].id;
+    const own = items.find((i) => i.fit === wardrobePreset);
+    return (own || items[0]).id;
   }
 
   function paintWardrobeThumb(el, outfit) {

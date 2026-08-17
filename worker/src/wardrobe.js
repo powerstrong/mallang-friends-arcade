@@ -16,17 +16,19 @@ export const WARDROBE = Object.freeze({
     girl: Object.freeze({ outfit: 'outfit_dress_peach', top: null, bottom: null, hair: 'hair_long', hairColor: 'choco', hat: null, faceAcc: null }),
     boy:  Object.freeze({ outfit: 'outfit_tee_sky',     top: null, bottom: null, hair: 'hair_short', hairColor: 'choco', hat: null, faceAcc: null }),
   }),
+  /* fit(P0-2): 노출 필터 태그 미러 — 서버 sanitize 는 태그를 검증하지 않지만
+   * (관대 유지, B단계 옵션) 카탈로그 패리티 테스트가 양쪽 동기를 강제한다. */
   items: Object.freeze([
-    Object.freeze({ id: 'outfit_dress_peach', slot: 'outfit' }),
-    Object.freeze({ id: 'outfit_tee_sky',     slot: 'outfit' }),
-    Object.freeze({ id: 'top_tee_berry',      slot: 'top' }),
-    Object.freeze({ id: 'top_tee_lavender',   slot: 'top' }),
-    Object.freeze({ id: 'bottom_jeans_blue',  slot: 'bottom' }),
-    Object.freeze({ id: 'bottom_skirt_lemon', slot: 'bottom' }),
-    Object.freeze({ id: 'hair_long',  slot: 'hair' }),
-    Object.freeze({ id: 'hair_short', slot: 'hair' }),
-    Object.freeze({ id: 'hat_beret',     slot: 'hat' }),
-    Object.freeze({ id: 'glasses_round', slot: 'faceAcc' }),
+    Object.freeze({ id: 'outfit_dress_peach', slot: 'outfit', fit: 'girl' }),
+    Object.freeze({ id: 'outfit_tee_sky',     slot: 'outfit', fit: 'all' }),
+    Object.freeze({ id: 'top_tee_berry',      slot: 'top',    fit: 'all' }),
+    Object.freeze({ id: 'top_tee_lavender',   slot: 'top',    fit: 'all' }),
+    Object.freeze({ id: 'bottom_jeans_blue',  slot: 'bottom', fit: 'all' }),
+    Object.freeze({ id: 'bottom_skirt_lemon', slot: 'bottom', fit: 'girl' }),
+    Object.freeze({ id: 'hair_long',  slot: 'hair', fit: 'all' }),
+    Object.freeze({ id: 'hair_short', slot: 'hair', fit: 'all' }),
+    Object.freeze({ id: 'hat_beret',     slot: 'hat',     fit: 'all' }),
+    Object.freeze({ id: 'glasses_round', slot: 'faceAcc', fit: 'all' }),
   ]),
 });
 

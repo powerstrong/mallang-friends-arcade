@@ -38,18 +38,24 @@ window.WARDROBE = {
   /* sheet/parts 경로는 assetBase 기준 상대 파일명.
    * hair: parts.back 은 없을 수 있음(짧은 머리). 파일명에 _<팔레트> 삽입.
    * 예: hair_long + rose → hair_long_rose_front.png / hair_long_rose_back.png
+   *
+   * fit: 'girl' | 'boy' | 'all' — 노출 필터(P0-2, §3 개정: 유니섹스 공용 옷장
+   * 정책은 사용자 지시로 폐기). 바디는 여전히 공용이라 에셋 호환은 그대로 —
+   * 태그는 패널 그리드·랜덤·기본 분리옷 선택에만 걸리고, sanitize 는 관대
+   * 유지(비노출 원칙만 강제 — 프리셋 전환 시 서버가 착장을 강제 치환하는
+   * 혼란 방지. 서버 태그 검증은 B단계 옵션). 태깅 확정은 아빠 검수 때.
    */
   items: [
-    { id: 'outfit_dress_peach', slot: 'outfit', label: '복숭아 원피스', free: true, sheet: 'outfit_dress_peach.png' },
-    { id: 'outfit_tee_sky',     slot: 'outfit', label: '하늘 세트',     free: true, sheet: 'outfit_tee_sky.png' },
-    { id: 'top_tee_berry',     slot: 'top',    label: '딸기 티셔츠', free: true, sheet: 'top_tee_berry.png' },
-    { id: 'top_tee_lavender',  slot: 'top',    label: '라벤더 긴팔', free: true, sheet: 'top_tee_lavender.png' },
-    { id: 'bottom_jeans_blue',   slot: 'bottom', label: '청바지',     free: true, sheet: 'bottom_jeans_blue.png' },
-    { id: 'bottom_skirt_lemon',  slot: 'bottom', label: '레몬 치마',  free: true, sheet: 'bottom_skirt_lemon.png' },
-    { id: 'hair_long',  slot: 'hair', label: '긴 생머리', free: true, parts: { front: true, back: true } },
-    { id: 'hair_short', slot: 'hair', label: '짧은 머리', free: true, parts: { front: true, back: false } },
-    { id: 'hat_beret',      slot: 'hat',     label: '베레모',       free: true, sheet: 'hat_beret.png' },
-    { id: 'glasses_round',  slot: 'faceAcc', label: '동글 안경',    free: true, sheet: 'glasses_round.png' },
+    { id: 'outfit_dress_peach', slot: 'outfit', label: '복숭아 원피스', free: true, fit: 'girl', sheet: 'outfit_dress_peach.png' },
+    { id: 'outfit_tee_sky',     slot: 'outfit', label: '하늘 세트',     free: true, fit: 'all',  sheet: 'outfit_tee_sky.png' },
+    { id: 'top_tee_berry',     slot: 'top',    label: '딸기 티셔츠', free: true, fit: 'all', sheet: 'top_tee_berry.png' },
+    { id: 'top_tee_lavender',  slot: 'top',    label: '라벤더 긴팔', free: true, fit: 'all', sheet: 'top_tee_lavender.png' },
+    { id: 'bottom_jeans_blue',   slot: 'bottom', label: '청바지',     free: true, fit: 'all',  sheet: 'bottom_jeans_blue.png' },
+    { id: 'bottom_skirt_lemon',  slot: 'bottom', label: '레몬 치마',  free: true, fit: 'girl', sheet: 'bottom_skirt_lemon.png' },
+    { id: 'hair_long',  slot: 'hair', label: '긴 생머리', free: true, fit: 'all', parts: { front: true, back: true } },
+    { id: 'hair_short', slot: 'hair', label: '짧은 머리', free: true, fit: 'all', parts: { front: true, back: false } },
+    { id: 'hat_beret',      slot: 'hat',     label: '베레모',       free: true, fit: 'all', sheet: 'hat_beret.png' },
+    { id: 'glasses_round',  slot: 'faceAcc', label: '동글 안경',    free: true, fit: 'all', sheet: 'glasses_round.png' },
   ],
 };
 
@@ -64,6 +70,18 @@ window.WARDROBE = {
   };
   W.itemsBySlot = function (slot) {
     return W.items.filter((i) => i.slot === slot);
+  };
+  /* 프리셋 노출 필터(P0-2): fit 태그가 all 이거나 프리셋과 일치하는 것만. */
+  W.itemsFor = function (slot, preset) {
+    return W.items.filter((i) => i.slot === slot && ((i.fit || 'all') === 'all' || i.fit === preset));
+  };
+  /* 착장 전체가 프리셋 태그에 맞는지 — 피커에서 저장 착장 복원 시 검사용. */
+  W.outfitFitsPreset = function (outfit, preset) {
+    const o = outfit || {};
+    return ['outfit', 'top', 'bottom', 'hair', 'hat', 'faceAcc'].every((slot) => {
+      const it = o[slot] ? byId.get(o[slot]) : null;
+      return !it || (it.fit || 'all') === 'all' || it.fit === preset;
+    });
   };
 
   function validId(id, slot) {
@@ -129,19 +147,21 @@ window.WARDROBE = {
     return urls;
   };
 
-  /* 오늘의 랜덤 코디(§7) — 한벌옷/분리옷 반반, 악세는 40% 확률. */
-  W.randomOutfit = function () {
+  /* 오늘의 랜덤 코디(§7) — 한벌옷/분리옷 반반, 악세는 40% 확률.
+   * preset 을 주면 fit 태그 필터를 통과한 아이템만 뽑는다(P0-2). */
+  W.randomOutfit = function (preset) {
+    const slot = (s) => (preset ? W.itemsFor(s, preset) : W.itemsBySlot(s));
     const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
     const maybe = (arr, p) => (arr.length && Math.random() < p ? pick(arr).id : null);
-    const separates = W.itemsBySlot('top').length && W.itemsBySlot('bottom').length && Math.random() < 0.5;
+    const separates = slot('top').length && slot('bottom').length && Math.random() < 0.5;
     return {
-      outfit: separates ? null : pick(W.itemsBySlot('outfit')).id,
-      top: separates ? pick(W.itemsBySlot('top')).id : null,
-      bottom: separates ? pick(W.itemsBySlot('bottom')).id : null,
-      hair: pick(W.itemsBySlot('hair')).id,
+      outfit: separates ? null : pick(slot('outfit')).id,
+      top: separates ? pick(slot('top')).id : null,
+      bottom: separates ? pick(slot('bottom')).id : null,
+      hair: pick(slot('hair')).id,
       hairColor: pick(W.hairPalettes),
-      hat: maybe(W.itemsBySlot('hat'), 0.4),
-      faceAcc: maybe(W.itemsBySlot('faceAcc'), 0.4),
+      hat: maybe(slot('hat'), 0.4),
+      faceAcc: maybe(slot('faceAcc'), 0.4),
     };
   };
 })(window.WARDROBE);
