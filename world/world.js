@@ -593,7 +593,7 @@
         btn.innerHTML = `
           <div class="preview" aria-hidden="true">${preset.emoji || '🧒'}</div>
           <span class="label">${escapeHtml(preset.label)}</span>
-          <span class="sub-label">꾸미기 가능</span>
+          <span class="sub-label">${escapeHtml(preset.sub || '꾸미기 가능')}</span>
         `;
         // 프리뷰: 프리셋 기본 착장의 정면 셀을 합성해 카드에 그린다(완성 전엔 emoji).
         paintHumanCardPreview(btn.querySelector('.preview'), W.sanitizeOutfit(null, presetId));
@@ -2146,8 +2146,6 @@
         <div class="wardrobe-items"></div>
         <div class="wardrobe-presets">
           <span class="wardrobe-presets-label">처음으로:</span>
-          <button type="button" data-preset="girl">👧 여자아이 기본</button>
-          <button type="button" data-preset="boy">👦 남자아이 기본</button>
         </div>
         <div class="modal-actions wardrobe-actions">
           <button type="button" class="btn-ghost wardrobe-random">🎲 랜덤 코디</button>
@@ -2171,12 +2169,20 @@
       sendOutfitChange({ ...wardrobeDraft }, wardrobePreset);
       closeWardrobePanel();
     });
-    for (const b of modal.querySelectorAll('.wardrobe-presets button')) {
+    // 프리셋 기본 버튼 — 이름·이모지는 카탈로그(WARDROBE.presets) 단일 진실.
+    const presetsRow = modal.querySelector('.wardrobe-presets');
+    for (const presetId of Object.keys(window.WARDROBE.presets)) {
+      const preset = window.WARDROBE.presets[presetId];
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.dataset.preset = presetId;
+      b.textContent = `${preset.emoji || '🧒'} ${preset.label} 기본`;
       b.addEventListener('click', () => {
-        wardrobePreset = b.dataset.preset;
-        wardrobeDraft = window.WARDROBE.sanitizeOutfit(null, wardrobePreset);
+        wardrobePreset = presetId;
+        wardrobeDraft = window.WARDROBE.sanitizeOutfit(null, presetId);
         renderWardrobeControls();
       });
+      presetsRow.appendChild(b);
     }
     const tabsEl = modal.querySelector('.wardrobe-tabs');
     for (const t of WARDROBE_TABS) {
