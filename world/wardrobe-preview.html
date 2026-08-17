@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>옷장 정합 QA — 아바타 레이어 프리뷰 (개발용)</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; padding: 16px; background: #17211a; color: #e8f0e8; font: 14px/1.5 system-ui, sans-serif; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .sub { color: #9ab09a; font-size: 12px; margin-bottom: 12px; }
+  .panel { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; background: #1f2b22; border: 1px solid #33453a; border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; }
+  .panel label { display: inline-flex; align-items: center; gap: 6px; }
+  select, input[type=range] { accent-color: #7fd98a; }
+  select { background: #141c17; color: #e8f0e8; border: 1px solid #3a4d40; border-radius: 6px; padding: 3px 6px; }
+  .views { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start; }
+  canvas { image-rendering: auto; background: repeating-conic-gradient(#20281f 0% 25%, #283227 0% 50%) 0 / 24px 24px; border: 1px solid #33453a; border-radius: 8px; }
+  .walkrow { display: flex; gap: 14px; }
+  .walkbox { text-align: center; }
+  .walkbox div { font-size: 12px; color: #9ab09a; margin-top: 4px; }
+  #missing { color: #ff9b7b; font-size: 12px; white-space: pre-line; margin-top: 10px; }
+  .tag { font-size: 11px; background: #33453a; border-radius: 999px; padding: 1px 8px; margin-left: 6px; }
+</style>
+</head>
+<body>
+<h1>옷장 정합 QA <span class="tag">개발용 · AVATAR_DESIGN.md §12.5</span></h1>
+<div class="sub">합성 순서: hair_back → 코디 → hair_front → 얼굴 소품 → 모자. 고스트=정본 마네킹 50% 오버레이(이중상이 보이면 FAIL).</div>
+
+<div class="panel">
+  <label>코디 <select id="selOutfit"></select></label>
+  <label>헤어 <select id="selHair"></select></label>
+  <label>색 <select id="selPalette"></select></label>
+  <label>모자 <select id="selHat"></select></label>
+  <label>얼굴 소품 <select id="selFace"></select></label>
+  <label><input type="checkbox" id="chkGhost"> 마네킹 고스트</label>
+  <label><input type="checkbox" id="chkGrid" checked> 셀 경계선</label>
+  <label>걸음 <select id="selBeat"><option value="4">4박자 (A→정지→B→정지)</option><option value="2">2박자 (A↔B)</option></select></label>
+  <label>속도 <input type="range" id="rngMs" min="90" max="200" step="10" value="130"> <span id="msVal">130ms</span></label>
+</div>
+
+<div class="views">
+  <div>
+    <canvas id="sheet" width="384" height="384"></canvas>
+    <div class="sub">합성 시트 (배포 규격 384², 셀 128)</div>
+  </div>
+  <div>
+    <div class="walkrow">
+      <div class="walkbox"><canvas class="walk" data-dir="down" width="120" height="120"></canvas><div>앞 (down)</div></div>
+      <div class="walkbox"><canvas class="walk" data-dir="left" width="120" height="120"></canvas><div>왼쪽 (미러)</div></div>
+      <div class="walkbox"><canvas class="walk" data-dir="right" width="120" height="120"></canvas><div>오른쪽</div></div>
+      <div class="walkbox"><canvas class="walk" data-dir="up" width="120" height="120"></canvas><div>뒤 (up)</div></div>
+    </div>
+    <div class="sub">광장 렌더 재현 (drawAvatar 규칙: 100px, FOOT_FRACTION 0.85)</div>
+    <div id="missing"></div>
+  </div>
+</div>
+
+<script src="/shared/wardrobe_catalog.js"></script>
+<script>
+(() => {
+  const W = window.WARDROBE;
+  const SIZE = 384;
+  const imgs = new Map();   // url -> {img, ok, pending}
+  const missing = new Set();
+
+  function load(url) {
+    if (imgs.has(url)) return imgs.get(url);
+    const entry = { img: new Image(), ok: false, pending: true };
+    entry.img.onload = () => { entry.ok = true; entry.pending = false; missing.delete(url); compose(); };
+    entry.img.onerror = () => { entry.pending = false; missing.add(url); compose(); };
+    entry.img.src = url;
+    imgs.set(url, entry);
+    return entry;
+  }
+
+  function itemsBySlot(slot) { return W.items.filter((i) => i.slot === slot); }
+
+  function fillSelect(sel, slot, allowNone) {
+    const items = itemsBySlot(slot);
+    sel.innerHTML = '';
+    if (allowNone) sel.appendChild(new Option('(없음)', ''));
+    for (const it of items) sel.appendChild(new Option(it.label, it.id));
+  }
+
+  const selOutfit = document.getElementById('selOutfit');
+  const selHair = document.getElementById('selHair');
+  const selPalette = document.getElementById('selPalette');
+  const selHat = document.getElementById('selHat');
+  const selFace = document.getElementById('selFace');
+  fillSelect(selOutfit, 'outfit', false);
+  fillSelect(selHair, 'hair', true);
+  selPalette.innerHTML = W.hairPalettes.map((p) => `<option>${p}</option>`).join('');
+  fillSelect(selHat, 'hat', true);
+  fillSelect(selFace, 'faceAcc', true);
+  selHair.value = 'hair_long';
+
+  // 현재 착장의 레이어 URL 목록 (z-order 순)
+  function layerUrls() {
+    const urls = [];
+    const hair = W.itemById(selHair.value);
+    const pal = selPalette.value;
+    if (hair && hair.parts.back) urls.push(W.hairSheet(hair.id, pal, 'back'));
+    const outfit = W.itemById(selOutfit.value);
+    if (outfit) urls.push(`${W.assetBase}/${outfit.sheet}`);
+    if (hair && hair.parts.front) urls.push(W.hairSheet(hair.id, pal, 'front'));
+    const face = W.itemById(selFace.value);
+    if (face) urls.push(`${W.assetBase}/${face.sheet}`);
+    const hat = W.itemById(selHat.value);
+    if (hat) urls.push(`${W.assetBase}/${hat.sheet}`);
+    return urls;
+  }
+
+  const compCanvas = document.createElement('canvas');
+  compCanvas.width = compCanvas.height = SIZE;
+  const compCtx = compCanvas.getContext('2d');
+  let compositeReady = false;
+
+  function compose() {
+    const urls = layerUrls();
+    compCtx.clearRect(0, 0, SIZE, SIZE);
+    compositeReady = false;
+    let allOk = true;
+    for (const url of urls) {
+      const e = load(url);
+      if (e.pending) allOk = false;
+      else if (e.ok) compCtx.drawImage(e.img, 0, 0, SIZE, SIZE);
+      else allOk = false;
+    }
+    compositeReady = true; // 로드 실패분 제외하고 그리기는 계속
+    drawSheet();
+    document.getElementById('missing').textContent = missing.size
+      ? '누락/로드 실패:\n' + [...missing].join('\n') : '';
+    return allOk;
+  }
+
+  const sheetCtx = document.getElementById('sheet').getContext('2d');
+  function drawSheet() {
+    sheetCtx.clearRect(0, 0, SIZE, SIZE);
+    if (document.getElementById('chkGhost').checked) {
+      const g = load(`${W.assetBase}/_mannequin.png`);
+      if (g.ok) { sheetCtx.globalAlpha = 0.5; sheetCtx.drawImage(g.img, 0, 0, SIZE, SIZE); sheetCtx.globalAlpha = 1; }
+    }
+    sheetCtx.drawImage(compCanvas, 0, 0);
+    if (document.getElementById('chkGrid').checked) {
+      sheetCtx.strokeStyle = 'rgba(127,217,138,.35)';
+      for (let i = 1; i < 3; i++) {
+        sheetCtx.beginPath(); sheetCtx.moveTo(i * SIZE / 3, 0); sheetCtx.lineTo(i * SIZE / 3, SIZE); sheetCtx.stroke();
+        sheetCtx.beginPath(); sheetCtx.moveTo(0, i * SIZE / 3); sheetCtx.lineTo(SIZE, i * SIZE / 3); sheetCtx.stroke();
+      }
+    }
+  }
+
+  // ── 걷기 재생 (world.js drawAvatar 재현) ────────────────────────────────
+  const walkCanvases = [...document.querySelectorAll('.walk')];
+  const rng = document.getElementById('rngMs');
+  const msVal = document.getElementById('msVal');
+  rng.oninput = () => { msVal.textContent = rng.value + 'ms'; };
+
+  function frameCol(now) {
+    const ms = Number(rng.value);
+    if (document.getElementById('selBeat').value === '2') {
+      return (Math.floor(now / ms) % 2) + 1;            // A↔B (현행 광장)
+    }
+    return [1, 0, 2, 0][Math.floor(now / ms) % 4];      // A→정지→B→정지 (§5-6)
+  }
+
+  function tick(now) {
+    const cell = SIZE / 3;
+    for (const cv of walkCanvases) {
+      const ctx = cv.getContext('2d');
+      const dir = cv.dataset.dir;
+      const row = dir === 'down' ? 0 : dir === 'up' ? 2 : 1;
+      const col = frameCol(now);
+      ctx.clearRect(0, 0, cv.width, cv.height);
+      ctx.save();
+      ctx.translate(cv.width / 2, cv.height * 0.92);
+      const drawW = 100, drawH = 100, FOOT = 0.85;
+      if (dir === 'left') ctx.scale(-1, 1);            // side row 는 우향 → left 미러
+      ctx.drawImage(compCanvas, col * cell, row * cell, cell, cell, -drawW / 2, -drawH * FOOT, drawW, drawH);
+      ctx.restore();
+    }
+    requestAnimationFrame(tick);
+  }
+
+  for (const el of [selOutfit, selHair, selPalette, selHat, selFace]) el.onchange = compose;
+  document.getElementById('chkGhost').onchange = drawSheet;
+  document.getElementById('chkGrid').onchange = drawSheet;
+  compose();
+  requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>
