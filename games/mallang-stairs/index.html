@@ -23,6 +23,7 @@
 
           <div class="char-pick" id="charPick" role="listbox" aria-label="캐릭터 선택"></div>
           <p id="pbNote" class="pb-note"></p>
+          <p id="weeklyTop" class="weekly-top is-hidden"></p>
           <section id="roomPanel" class="room-panel" aria-live="polite">
             <ol id="rosterList" class="roster-list is-hidden"></ol>
             <p id="roomStatus" class="room-status is-hidden"></p>
@@ -87,6 +88,7 @@
           <div id="player" class="player">
             <img id="comboFlame" class="combo-flame" src="./assets/fx-combo-flame.png" alt="" draggable="false" />
             <img id="playerImg" src="" alt="" draggable="false" />
+            <img id="shieldBubble" class="shield-bubble" src="./assets/fx-shield-bubble.png" alt="" draggable="false" />
           </div>
 
           <div class="touch-zones" aria-hidden="true">
@@ -110,6 +112,10 @@
           <div id="feverFx" class="fever-fx" aria-hidden="true"></div>
           <div id="floatLayer" class="float-layer" aria-hidden="true"></div>
           <p id="gameAnnouncement" class="sr-only" aria-live="polite"></p>
+          <div id="tutorialHint" class="tutorial-hint is-hidden">
+            <span>반짝이는 계단 쪽<br />화면을 눌러요!</span>
+            <b>← →</b>
+          </div>
           <div id="countdown" class="countdown is-hidden"><span id="countNum">3</span></div>
 
         </div>
@@ -125,6 +131,7 @@
               <div class="result-grid__cell"><span>최대 콤보</span><strong id="resCombo">0</strong></div>
               <div class="result-grid__cell"><span>Perfect</span><strong id="resPerfect">0</strong></div>
             </div>
+            <p id="resDelta" class="result-delta"></p>
             <div class="result-card__char-name" id="resCharName"></div>
             <div id="resultRank" class="result-rank is-hidden"></div>
             <p id="retryHint" class="retry-hint"></p>

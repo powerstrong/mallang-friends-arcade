@@ -18,23 +18,30 @@
   var SHIELD_GAIN_PER_POINT = 1 / 1000; // 약 1000점마다 보호막 1칸(가득) — 30초 레이스에 한 판 한 번꼴
   var SHIELD_STEP_LINE = 10;           // 보호막 발동 시 부활 지점을 10층 단위로 끌어올림
   var PB_KEY = 'mallang-stairs:pb';
+  var GHOST_KEY = 'mallang-stairs:pbghost';
+  var HINT_KEY = 'mallang-stairs:seen-hint';
+  var GOLDEN_TIME_MS = 10000;   // 막판 골든 타임 구간(잔여 시간 기준)
+  var GOLDEN_SCORE_MUL = 1.5;   // 골든 타임 점수 배율
+  var GHOST_SAMPLE_MS = 500;    // PB 고스트 (시간→층) 곡선 샘플 간격
+  // 30초 레이스 기준 테마 구간 — 평균 어린이(탭 ~400ms)가 한 판에 2~3개 테마를 보도록 압축.
   var THEME_STEPS = [
     { min: 0, bg: 'bg-sky-day.jpg', stair: 'stair-cloud.png' },
-    { min: 60, bg: 'bg-sky-high.jpg', stair: 'stair-cloud.png' },
-    { min: 140, bg: 'bg-sunset.jpg', stair: 'stair-candy.png' },
-    { min: 220, bg: 'bg-sky-dawn.jpg', stair: 'stair-candy.png' },
-    { min: 300, bg: 'bg-space.jpg', stair: 'stair-cookie.png' }
+    { min: 35, bg: 'bg-sky-high.jpg', stair: 'stair-cloud.png' },
+    { min: 70, bg: 'bg-sunset.jpg', stair: 'stair-candy.png' },
+    { min: 110, bg: 'bg-sky-dawn.jpg', stair: 'stair-candy.png' },
+    { min: 150, bg: 'bg-space.jpg', stair: 'stair-cookie.png' }
   ];
   var FX_ASSETS = {
     dust: 'fx-step-dust.png', perfect: 'fx-perfect-ring.png', fall: 'fx-fall-puff.png',
-    feverBurst: 'fx-fever-burst.png', star: 'fx-star-yellow.png'
+    feverBurst: 'fx-fever-burst.png', star: 'fx-star-yellow.png', shieldPop: 'fx-shield-pop.png'
   };
   var ART_ASSETS = [
     'bg-sky-day.jpg', 'bg-sky-high.jpg', 'bg-sunset.jpg', 'bg-sky-dawn.jpg', 'bg-space.jpg',
     'bg-cloud-parallax.png', 'stair-cloud.png', 'stair-candy.png', 'stair-cookie.png', 'stair-next-glow.png',
-    'booster-speed.png', 'booster-stable.png', 'booster-combo.png', 'booster-fever.png',
+    'stair-gold.png', 'booster-speed.png', 'booster-stable.png', 'booster-combo.png', 'booster-fever.png',
     'fx-perfect-ring.png', 'fx-step-dust.png', 'fx-combo-flame.png', 'fx-fever-burst.png', 'fx-fall-puff.png', 'fx-star-yellow.png',
-    'ui-title-plate.png', 'ui-trophy.png'
+    'fx-shield-bubble.png', 'fx-shield-pop.png',
+    'ui-title-plate.png', 'ui-trophy.png', 'ui-medal-gold.png', 'ui-medal-silver.png', 'ui-medal-bronze.png'
   ];
 
   var $ = function (id) { return document.getElementById(id); };
@@ -50,6 +57,7 @@
   var rivalWrap = $('rivalWrap'), feverFx = $('feverFx'), floatLayer = $('floatLayer');
   var rivalAbove = $('rivalAbove'), rivalBelow = $('rivalBelow');
   var soundBtn = $('soundBtn'), gameAnnouncement = $('gameAnnouncement');
+  var shieldBubble = $('shieldBubble'), tutorialHint = $('tutorialHint');
   var countdown = $('countdown'), countNum = $('countNum');
   var resultOverlay = $('resultOverlay');
   var rosterList = $('rosterList'), roomStatus = $('roomStatus');
@@ -97,6 +105,12 @@
   var playerPoseTimer = 0;
   var rankByPlayerId = {};
   var isRoomEntry = !!Boot.code;
+  var goldenActive = false;     // 막판 골든 타임 진입 여부
+  var ghostCurve = null;        // 솔로 재생용 PB 곡선 {charId, samples:[{t,s}]}
+  var ghostNode = null;         // 고스트 DOM {el, step}
+  var recSamples = null;        // 이번 라운드 (시간→층) 기록 샘플
+  var recLastT = -Infinity;
+  var hiddenAt = 0;             // 솔로 일시정지용 — 탭 숨김 시각
 
   function audio() { return window.MallangStairsAudio; }
   function playSound(name, arg) {
@@ -107,7 +121,7 @@
     var sfx = audio();
     var muted = !sfx || sfx.isMuted();
     soundBtn.setAttribute('aria-pressed', String(muted));
-    soundBtn.textContent = muted ? 'SOUND OFF' : 'SOUND ON';
+    soundBtn.textContent = muted ? '소리 끔' : '소리 켬';
   }
   function announce(message) {
     if (gameAnnouncement) gameAnnouncement.textContent = message;
@@ -300,6 +314,7 @@
       setupImg.src = c.assets.main;
       setupImg.style.visibility = 'visible';
       name.textContent = c.name;
+      preloadPoses(c); // 선택 시점에 포즈 프리로드 — 첫 홉 이미지 팝 방지
     }
     renderCharRadar(id);
     if (connected && mp) {
@@ -361,6 +376,7 @@
     buildFxPool('fall', 1);
     buildFxPool('feverBurst', 1);
     buildFxPool('star', 5);
+    buildFxPool('shieldPop', 1);
   }
   function playFx(kind, x, y, flip) {
     var pool = fxPools[kind];
@@ -374,7 +390,8 @@
     void node.offsetWidth;
     node.classList.add('is-active');
     node._fxTimer = setTimeout(function () { node.classList.remove('is-active'); },
-      kind === 'dust' ? 300 : kind === 'perfect' ? 370 : kind === 'fall' ? 420 : kind === 'feverBurst' ? 520 : 1120);
+      kind === 'dust' ? 300 : kind === 'perfect' ? 370 : kind === 'fall' ? 420 :
+      kind === 'shieldPop' ? 450 : kind === 'feverBurst' ? 520 : 1120);
   }
   function updateCharacterFx(s) {
     comboFlame.classList.toggle('is-active', !!s && s.combo >= 15 && !s.feverActive);
@@ -403,11 +420,17 @@
     for (var n = 0; n < POOL; n++) {
       var idx = lo + n;
       var el = poolNodes[n];
-      el.style.transform = 'translate3d(' + stepX(idx) + 'px,' + stepY(idx) + 'px,0)';
+      // 같은 라운드에선 시드가 고정이라 계단 index 가 같으면 위치도 같다 — 변경 시에만 DOM 쓰기.
+      if (el._idx !== idx) {
+        el._idx = idx;
+        el.style.transform = 'translate3d(' + stepX(idx) + 'px,' + stepY(idx) + 'px,0)';
+      }
       el.classList.toggle('is-next', idx === pos + 1);
-      var badge = el.firstChild;
-      var b = idx > pos ? engine.boosterAt(idx) : null;
-      badge.innerHTML = b ? boosterIcon(b) : '';
+      var key = idx > pos ? (engine.boosterAt(idx) || '') : '';
+      if (el._booster !== key) {
+        el._booster = key;
+        el.firstChild.innerHTML = key ? boosterIcon(key) : '';
+      }
     }
   }
   function boosterIcon(t) {
@@ -436,6 +459,10 @@
     roundMaxCombo = 0;
     roundPerfect = 0;
     lastResult = null;
+    goldenActive = false;
+    stairLayer.classList.remove('is-golden');
+    if (shieldBubble) shieldBubble.classList.remove('is-on');
+    startGhostRound();
     activeChar = resolveCharacter();
     preloadPoses(activeChar);
     createLifeEngine(false);
@@ -466,18 +493,27 @@
       character: activeChar,
       startAtStep: Math.max(0, startAtStep || 0)
     });
+    if (goldenActive) engine.setScoreBoost(GOLDEN_SCORE_MUL); // 골든 타임 중 부활해도 배율 유지
     xCache = [0];
     buildPool();
+    ensureGhostNode();
     setIdlePose();
     playerEl.classList.remove('is-dead');
     comboFlame.classList.remove('is-active');
     if (startNow) engine.start();
+  }
+  function shouldShowHint() {
+    try { return !window.localStorage.getItem(HINT_KEY); } catch (e) { return false; }
+  }
+  function markHintSeen() {
+    try { window.localStorage.setItem(HINT_KEY, '1'); } catch (e) { /* ignore */ }
   }
   function runCountdown() {
     var n = 3;
     countNum.textContent = n;
     playSound('countdown', n);
     countdown.classList.remove('is-hidden');
+    if (tutorialHint && shouldShowHint()) tutorialHint.classList.remove('is-hidden');
     var iv = setInterval(function () {
       n--;
       if (n <= 0) {
@@ -495,6 +531,10 @@
     }, 700);
   }
   function startPlay() {
+    if (tutorialHint && !tutorialHint.classList.contains('is-hidden')) {
+      tutorialHint.classList.add('is-hidden');
+      markHintSeen();
+    }
     engine.start();
     playing = true;
     lifeRestarting = false;
@@ -522,7 +562,7 @@
       shield = Math.min(1, shield + ev.gain * SHIELD_GAIN_PER_POINT);
       if (!wasArmed && shield >= 1) {
         spawnFloat('보호막 완성!', 'checkpoint', 150, 1400);
-        announce('Shield ready');
+        announce('보호막 완성');
         playSound('booster', 'stable');
       }
     }
@@ -611,6 +651,9 @@
       finishRound('time');
       return;
     }
+    if (!goldenActive && Number.isFinite(roundEndAt) && remainingMs() <= GOLDEN_TIME_MS) {
+      enterGoldenTime();
+    }
 
     engine.tick(dt);
     var s = engine.getState();
@@ -632,11 +675,14 @@
 
     updateRoundBest(s);
     updateHud(s);
+    recordGhostSample(false);
     if (isMulti && mp) {
       sendSnapshot(s, false);
       renderRanking();
       renderShadows();
       renderRivalMarkers(s.pos);
+    } else {
+      renderGhost();
     }
     rafId = requestAnimationFrame(frame);
   }
@@ -658,7 +704,7 @@
     checkpointStep = reached;
     checkpointScore = lifeScoreOffset + s.score;
     spawnFloat('SAFE STEP ' + checkpointStep, 'checkpoint', 132);
-    announce('Safe step reached: ' + checkpointStep);
+    announce('안전 계단 도달: ' + checkpointStep + '층');
     playSound('checkpoint');
   }
   function remainingMs() {
@@ -678,6 +724,7 @@
     feverFill.style.transform = 'scaleX(' + Math.min(1, s.feverRatio) + ')';
     shieldFill.style.transform = 'scaleX(' + Math.min(1, shield) + ')';
     shieldGauge.classList.toggle('is-armed', shield >= 1);
+    if (shieldBubble) shieldBubble.classList.toggle('is-on', shield >= 1);
     timeGauge.classList.toggle('is-danger', s.gaugeRatio < 0.25);
     var left = remainingMs();
     if (Number.isFinite(left)) {
@@ -731,7 +778,7 @@
     var previousPlace = rankByPlayerId[mine.id];
     if (previousPlace && mine.place < previousPlace && mine.best > 0) {
       spawnFloat(mine.place === 1 ? 'TAKE THE LEAD!' : 'OVERTAKE!', 'overtake', 166);
-      announce(mine.place === 1 ? 'You took the lead!' : 'You overtook a friend!');
+      announce(mine.place === 1 ? '선두로 나섰어요!' : '친구를 추월했어요!');
       playSound('overtake');
     }
     rows.forEach(function (row) { rankByPlayerId[row.id] = row.place; });
@@ -851,6 +898,84 @@
     updateRivalMarker(rivalBelow, nearestRival(myStep, -1));
   }
 
+  // ---- 골든 타임: 잔여 10초 동안 점수 배율 + 황금 발판 ----
+  function enterGoldenTime() {
+    goldenActive = true;
+    engine.setScoreBoost(GOLDEN_SCORE_MUL);
+    stairLayer.classList.add('is-golden');
+    spawnFloat('골든 타임! 점수 ' + GOLDEN_SCORE_MUL + '배', 'overtake', 150, 1300);
+    announce('골든 타임 — 점수 ' + GOLDEN_SCORE_MUL + '배');
+    playSound('overtake');
+  }
+
+  // ---- 솔로 PB 고스트: 개인 최고 기록 런의 (시간→최고층) 곡선을 유령으로 재생 ----
+  // 기록은 솔로/멀티 모두 하고(신기록이면 곡선 저장), 표시는 솔로에서만 한다.
+  function loadGhostCurve() {
+    try {
+      var raw = JSON.parse(window.localStorage.getItem(GHOST_KEY) || 'null');
+      if (raw && raw.v === 1 && Array.isArray(raw.samples) && raw.samples.length > 1) return raw;
+    } catch (e) { /* storage unavailable */ }
+    return null;
+  }
+  function saveGhostCurve() {
+    if (!recSamples || recSamples.length < 2) return;
+    try {
+      window.localStorage.setItem(GHOST_KEY, JSON.stringify({
+        v: 1, charId: activeChar ? activeChar.id : selectedId, samples: recSamples,
+      }));
+    } catch (e) { /* ignore */ }
+  }
+  function startGhostRound() {
+    recSamples = [];
+    recLastT = -Infinity;
+    ghostCurve = isMulti ? null : loadGhostCurve();
+    ghostNode = null;
+  }
+  function recordGhostSample(force) {
+    if (!recSamples || !Number.isFinite(roundDurationMs)) return;
+    var elapsed = roundDurationMs - remainingMs();
+    if (!force && elapsed - recLastT < GHOST_SAMPLE_MS) return;
+    recLastT = elapsed;
+    recSamples.push({ t: Math.round(elapsed), s: bestStep });
+  }
+  function ensureGhostNode() {
+    var prevStep = ghostNode ? ghostNode.step : 0;
+    ghostNode = null;
+    if (!ghostCurve || isMulti || !shadowLayer) return;
+    var el = document.createElement('div');
+    el.className = 'remote-player remote-player--ghost';
+    var img = document.createElement('img');
+    img.alt = '';
+    img.draggable = false;
+    img.src = safeChar(ghostCurve.charId).assets.main;
+    var label = document.createElement('span');
+    label.className = 'remote-player__name';
+    label.textContent = '👻 지난 최고';
+    el.appendChild(img);
+    el.appendChild(label);
+    shadowLayer.appendChild(el);
+    ghostNode = { el: el, step: prevStep };
+  }
+  function ghostStepAt(elapsed) {
+    var ss = ghostCurve.samples;
+    if (elapsed <= ss[0].t) return ss[0].s;
+    for (var i = 1; i < ss.length; i++) {
+      if (elapsed <= ss[i].t) {
+        var a = ss[i - 1], b = ss[i];
+        var f = b.t === a.t ? 1 : (elapsed - a.t) / (b.t - a.t);
+        return a.s + (b.s - a.s) * f;
+      }
+    }
+    return ss[ss.length - 1].s;
+  }
+  function renderGhost() {
+    if (!ghostNode || !ghostCurve || !Number.isFinite(roundDurationMs)) return;
+    var target = ghostStepAt(roundDurationMs - remainingMs());
+    ghostNode.step += (target - ghostNode.step) * 0.25;
+    ghostNode.el.style.transform =
+      'translate3d(' + interpStepX(ghostNode.step) + 'px,' + interpStepY(ghostNode.step) + 'px,0)';
+  }
+
   function onDeath() {
     if (!playing) return;
     updateRoundBest(engine.getState());
@@ -865,8 +990,10 @@
       if (line > checkpointStep) checkpointStep = line;
       checkpointScore = lifeScoreOffset + s.score;
       shield = 0;
+      if (shieldBubble) shieldBubble.classList.remove('is-on');
+      playFx('shieldPop', homeX(), homeY() - 40);
       spawnFloat('보호막 발동! ' + checkpointStep + '층에서 부활', 'overtake', 150, 1400);
-      announce('Shield saved you at step ' + checkpointStep);
+      announce('보호막 발동 — ' + checkpointStep + '층에서 부활');
     }
     clearPlayerPoseTimer();
     playerImg.classList.remove('is-idle');
@@ -906,6 +1033,7 @@
     if (!engine || lastResult) return;
     var s = engine.getState();
     updateRoundBest(s);
+    recordGhostSample(true);
     playing = false;
     lifeRestarting = false;
     cancelAnimationFrame(rafId);
@@ -930,8 +1058,11 @@
       duration: Number.isFinite(roundDurationMs) ? Math.round(roundDurationMs / 1000) : 0,
     });
     submitToLeaderboard(result.best, result.score, activeChar);
+    var prevBestStep = personalBest.step; // savePersonalBest 가 덮어쓰기 전에 스냅샷
     var newRecord = savePersonalBest(result.best, result.score);
+    if (newRecord) saveGhostCurve();
     renderPbNote();
+    renderResultDelta(result, prevBestStep, newRecord);
     $('resStep').textContent = result.best;
     $('resScore').textContent = result.score;
     $('resCombo').textContent = result.maxCombo;
@@ -944,6 +1075,27 @@
     resultTrophy.classList.toggle('is-hidden', !renderResultRank(result));
     renderRetryState();
     resultOverlay.classList.remove('is-hidden');
+  }
+  // 결과 카드에 "지난 나"와의 비교 한 줄 — 성장 체감용.
+  function renderResultDelta(result, prevBestStep, newRecord) {
+    var el = $('resDelta');
+    if (!el) return;
+    el.classList.remove('is-up');
+    if (prevBestStep > 0) {
+      var diff = result.best - prevBestStep;
+      if (diff > 0) {
+        el.textContent = '지난 최고보다 +' + diff + '층!';
+        el.classList.add('is-up');
+      } else if (diff === 0) {
+        el.textContent = newRecord ? '같은 층, 점수 신기록!' : '최고 기록과 동률!';
+        if (newRecord) el.classList.add('is-up');
+      } else {
+        el.textContent = '최고 기록까지 ' + (-diff) + '층 남았어요';
+      }
+    } else {
+      el.textContent = newRecord ? '첫 기록 등록!' : '';
+      if (newRecord) el.classList.add('is-up');
+    }
   }
   function setResultCharacter(c) {
     var image = $('resultCharImg');
@@ -963,8 +1115,12 @@
     });
     rankRowsByBest(rows);
     rankEl.innerHTML = rows.map(function (r) {
+      var medal = r.place <= 3
+        ? '<img class="result-rank__medal" src="./assets/ui-medal-' +
+          (r.place === 1 ? 'gold' : r.place === 2 ? 'silver' : 'bronze') + '.png" alt="" />'
+        : '<span class="result-rank__medal"></span>';
       return '<div class="result-rank__row' + (r.me ? ' is-me' : '') + '">' +
-        '<span>' + r.place + '위 ' + escapeHtml(r.name) + '</span>' +
+        '<span class="result-rank__left">' + medal + r.place + '위 ' + escapeHtml(r.name) + '</span>' +
         '<span>' + r.best + '층 · ' + r.score + '점</span></div>';
     }).join('');
     rankEl.classList.remove('is-hidden');
@@ -1084,6 +1240,20 @@
       doInput(dir);
     });
     window.addEventListener('keydown', onKey);
+    // 솔로 한정: 탭이 숨겨진 동안 판이 흘러가 버리지 않게 종료 시각을 뒤로 민다.
+    // (엔진 게이지는 rAF tick 기반이라 자동으로 멈춘다. 멀티는 벽시계 공유가 규칙이므로 불개입.)
+    document.addEventListener('visibilitychange', function () {
+      if (isMulti) return;
+      if (document.hidden) {
+        if (playing && Number.isFinite(roundEndAt)) hiddenAt = performance.now();
+      } else if (hiddenAt) {
+        if (playing && Number.isFinite(roundEndAt)) {
+          roundEndAt += performance.now() - hiddenAt;
+          lastTs = 0;
+        }
+        hiddenAt = 0;
+      }
+    });
     soundBtn.addEventListener('click', function (e) {
       e.stopPropagation();
       var sfx = audio();
@@ -1134,6 +1304,26 @@
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
     });
   }
+  // 셋업 화면에 이번 주 TOP3 표시 — 실패해도 조용히 생략(파이어&포겟).
+  function renderWeeklyTop() {
+    var el = $('weeklyTop');
+    if (!el || typeof window.fetch !== 'function') return;
+    var base = (window.WORKER_URL || '').replace(/\/+$/, '');
+    fetch(base + '/api/leaderboard?game=mallang-stairs')
+      .then(function (res) { return res.ok ? res.json() : null; })
+      .then(function (data) {
+        var entries = (data && data.entries) || [];
+        if (!entries.length) return;
+        var parts = entries.slice(0, 3).map(function (e, i) {
+          // 저장 점수는 (층×100000+점수) 복합값 — 층만 디코드해 보여준다.
+          var floor = Math.floor((Number(e.best_score) || 0) / 100000);
+          return (i + 1) + '위 ' + String(e.player_name || '말랑이').slice(0, 10) + ' ' + floor + '층';
+        });
+        el.textContent = '🏆 이번 주 최고 · ' + parts.join(' · ');
+        el.classList.remove('is-hidden');
+      })
+      .catch(function () { /* 네트워크 불가 — 무시 */ });
+  }
   function init() {
     loadPersonalBest();
     renderPbNote();
@@ -1144,6 +1334,7 @@
     buildCharPick();
     bind();
     syncSoundButton();
+    renderWeeklyTop();
     if (isRoomEntry) {
       connectRoom();
     }

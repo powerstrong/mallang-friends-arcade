@@ -16,6 +16,7 @@
  *   e.input(dir);            // dir = -1(왼쪽) | +1(오른쪽). 즉시 판정.
  *   e.dirAt(index);          // 해당 계단의 방향(-1|1). 결정적.
  *   e.getState();            // 렌더/스냅샷용 상태 스냅샷
+ *   e.setScoreBoost(mul);    // 외부 연출용 점수 배율(골든 타임 등). 즉사·게이지 룰 불개입.
  */
 (function () {
   'use strict';
@@ -102,6 +103,8 @@
     var ability = character.ability || {};
     var seedInt = (typeof opts.seed === 'number') ? (opts.seed >>> 0) : hashSeed(opts.seed);
     var startStep = Math.max(0, Math.floor(opts.startAtStep || 0));
+    // 외부(라운드 연출) 점수 배율 — start()/사망과 무관하게 유지되며 점수에만 곱해진다.
+    var externalScoreMul = 1;
 
     // 계단 방향 시퀀스는 seed 로부터 0번부터 순방향으로만 생성/캐시한다.
     // 같은 seed 면 모든 클라이언트가 동일한 배열을 얻는다.
@@ -250,6 +253,9 @@
       seedInt: seedInt,
       dirAt: dirAt,
       boosterAt: function (step) { ensureBoosterPlan(step); return boosterAtStep[step] || null; },
+      setScoreBoost: function (mul) {
+        externalScoreMul = Math.max(0, Number(mul) || 1);
+      },
 
       start: function () {
         st.started = true;
@@ -368,7 +374,7 @@
           feverMul = FEVER.scoreMul + (ability.feverScoreBonus || 0);
         }
 
-        var gain = BASE_STEP_SCORE * speedMul * comboMul * charMul * feverMul * buildMul;
+        var gain = BASE_STEP_SCORE * speedMul * comboMul * charMul * feverMul * buildMul * externalScoreMul;
         st.score += Math.round(gain);
 
         // --- 게이지 회복 ---
