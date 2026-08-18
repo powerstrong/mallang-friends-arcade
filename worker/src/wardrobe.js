@@ -5,12 +5,13 @@
  * 필요한 최소(id·slot·프리셋·팔레트)만 미러링한다 — sheet 경로는 클라 전용.
  *
  * v2(상·하의 분리): 착장 규칙 = outfit(한벌옷) XOR (top AND bottom).
+ * v3(성별 전용): 옷·헤어에 fit:'all' 없음 — 안경만 공용(클라 주석 참조).
  */
 
 export const HUMAN_CHARACTER_ID = 'human';
 
 export const WARDROBE = Object.freeze({
-  catalogVersion: 2,
+  catalogVersion: 3,
   hairPalettes: Object.freeze(['choco', 'rose', 'gold', 'black']),
   presets: Object.freeze({
     girl: Object.freeze({ outfit: 'outfit_dress_peach', top: null, bottom: null, hair: 'hair_long', hairColor: 'choco', hat: null, faceAcc: null }),
@@ -21,18 +22,30 @@ export const WARDROBE = Object.freeze({
   items: Object.freeze([
     Object.freeze({ id: 'outfit_dress_peach', slot: 'outfit', fit: 'girl' }),
     Object.freeze({ id: 'outfit_dress_dot',   slot: 'outfit', fit: 'girl' }),
-    Object.freeze({ id: 'outfit_tee_sky',     slot: 'outfit', fit: 'all' }),
+    Object.freeze({ id: 'outfit_star_dress',  slot: 'outfit', fit: 'girl' }),
+    Object.freeze({ id: 'outfit_tee_sky',     slot: 'outfit', fit: 'boy' }),
     Object.freeze({ id: 'outfit_hoodie_dino', slot: 'outfit', fit: 'boy' }),
-    Object.freeze({ id: 'top_tee_berry',      slot: 'top',    fit: 'all' }),
-    Object.freeze({ id: 'top_tee_lavender',   slot: 'top',    fit: 'all' }),
+    Object.freeze({ id: 'outfit_space_suit',  slot: 'outfit', fit: 'boy' }),
+    Object.freeze({ id: 'top_tee_berry',      slot: 'top',    fit: 'girl' }),
+    Object.freeze({ id: 'top_tee_lavender',   slot: 'top',    fit: 'girl' }),
+    Object.freeze({ id: 'top_frill_coral',    slot: 'top',    fit: 'girl' }),
     Object.freeze({ id: 'top_shirt_check',    slot: 'top',    fit: 'boy' }),
     Object.freeze({ id: 'top_sweat_navy',     slot: 'top',    fit: 'boy' }),
-    Object.freeze({ id: 'bottom_jeans_blue',  slot: 'bottom', fit: 'all' }),
+    Object.freeze({ id: 'top_stripe_orange',  slot: 'top',    fit: 'boy' }),
     Object.freeze({ id: 'bottom_skirt_lemon', slot: 'bottom', fit: 'girl' }),
+    Object.freeze({ id: 'bottom_pleat_sky',   slot: 'bottom', fit: 'girl' }),
+    Object.freeze({ id: 'bottom_cord_berry',  slot: 'bottom', fit: 'girl' }),
+    Object.freeze({ id: 'bottom_jeans_blue',  slot: 'bottom', fit: 'boy' }),
     Object.freeze({ id: 'bottom_cargo_sand',  slot: 'bottom', fit: 'boy' }),
-    Object.freeze({ id: 'hair_long',  slot: 'hair', fit: 'all' }),
-    Object.freeze({ id: 'hair_short', slot: 'hair', fit: 'all' }),
-    Object.freeze({ id: 'hat_beret',     slot: 'hat',     fit: 'all' }),
+    Object.freeze({ id: 'bottom_jogger_navy', slot: 'bottom', fit: 'boy' }),
+    Object.freeze({ id: 'hair_long',  slot: 'hair', fit: 'girl' }),
+    Object.freeze({ id: 'hair_bob',   slot: 'hair', fit: 'girl' }),
+    Object.freeze({ id: 'hair_twin',  slot: 'hair', fit: 'girl' }),
+    Object.freeze({ id: 'hair_short', slot: 'hair', fit: 'boy' }),
+    Object.freeze({ id: 'hair_curly', slot: 'hair', fit: 'boy' }),
+    Object.freeze({ id: 'hair_crop',  slot: 'hair', fit: 'boy' }),
+    Object.freeze({ id: 'hat_beret',     slot: 'hat',     fit: 'girl' }),
+    Object.freeze({ id: 'hat_cap_red',   slot: 'hat',     fit: 'boy' }),
     Object.freeze({ id: 'glasses_round', slot: 'faceAcc', fit: 'all' }),
   ]),
 });

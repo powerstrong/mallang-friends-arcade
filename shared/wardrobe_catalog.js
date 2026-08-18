@@ -13,7 +13,7 @@
  * 색은 팔레트 ID (§12.4). 헤어 색상 PNG는 빌드 시 사전 생성.
  */
 window.WARDROBE = {
-  catalogVersion: 2,
+  catalogVersion: 3,
   assetBase: '/world/assets/avatar',
   baseBodySheet: '_mannequin.png', // 분리옷 전용 바닥 레이어
   slots: ['outfit', 'top', 'bottom', 'hair', 'hat', 'faceAcc'],
@@ -43,23 +43,43 @@ window.WARDROBE = {
    * 정책은 사용자 지시로 폐기). 바디는 여전히 공용이라 에셋 호환은 그대로 —
    * 태그는 패널 그리드·랜덤·기본 분리옷 선택에만 걸리고, sanitize 는 관대
    * 유지(비노출 원칙만 강제 — 프리셋 전환 시 서버가 착장을 강제 치환하는
-   * 혼란 방지. 서버 태그 검증은 B단계 옵션). 태깅 확정은 아빠 검수 때.
+   * 혼란 방지. 서버 태그 검증은 B단계 옵션).
+   *
+   * v3(2026-08-18, 사용자 2차 지시 "남자용이랑 여자용은 겹치지 않게"):
+   * **옷(outfit/top/bottom)과 헤어에는 fit:'all' 을 두지 않는다** — 전부
+   * girl|boy 전용. 남아 프리셋에 긴 생머리·치마가 뜨던 것이 이 지시의 발단
+   * 이므로 헤어도 성별 전용이다. 예외는 소품 2종:
+   *   - glasses_round(안경): 아이 눈에 성별이 없는 물건 — all 유지.
+   *   - 모자는 베레모(girl)/야구모자(boy)로 분리해 all 을 없앴다.
+   * 슬롯별 성별당 3종을 최소 목표로 채운다(현재 outfit/top/bottom/hair 각 3종).
    */
   items: [
     { id: 'outfit_dress_peach', slot: 'outfit', label: '복숭아 원피스', free: true, fit: 'girl', sheet: 'outfit_dress_peach.png' },
     { id: 'outfit_dress_dot',   slot: 'outfit', label: '도트 원피스',   free: true, fit: 'girl', sheet: 'outfit_dress_dot.png' },
-    { id: 'outfit_tee_sky',     slot: 'outfit', label: '하늘 세트',     free: true, fit: 'all',  sheet: 'outfit_tee_sky.png' },
+    { id: 'outfit_star_dress',  slot: 'outfit', label: '별밤 원피스',   free: true, fit: 'girl', sheet: 'outfit_star_dress.png' },
+    { id: 'outfit_tee_sky',     slot: 'outfit', label: '하늘 세트',     free: true, fit: 'boy',  sheet: 'outfit_tee_sky.png' },
     { id: 'outfit_hoodie_dino', slot: 'outfit', label: '공룡 후드 세트', free: true, fit: 'boy', sheet: 'outfit_hoodie_dino.png' },
-    { id: 'top_tee_berry',     slot: 'top',    label: '딸기 티셔츠', free: true, fit: 'all', sheet: 'top_tee_berry.png' },
-    { id: 'top_tee_lavender',  slot: 'top',    label: '라벤더 긴팔', free: true, fit: 'all', sheet: 'top_tee_lavender.png' },
-    { id: 'top_shirt_check',   slot: 'top',    label: '체크 남방',   free: true, fit: 'boy', sheet: 'top_shirt_check.png' },
-    { id: 'top_sweat_navy',    slot: 'top',    label: '로켓 맨투맨', free: true, fit: 'boy', sheet: 'top_sweat_navy.png' },
-    { id: 'bottom_jeans_blue',   slot: 'bottom', label: '청바지',     free: true, fit: 'all',  sheet: 'bottom_jeans_blue.png' },
-    { id: 'bottom_skirt_lemon',  slot: 'bottom', label: '레몬 치마',  free: true, fit: 'girl', sheet: 'bottom_skirt_lemon.png' },
-    { id: 'bottom_cargo_sand',   slot: 'bottom', label: '카고 반바지', free: true, fit: 'boy',  sheet: 'bottom_cargo_sand.png' },
-    { id: 'hair_long',  slot: 'hair', label: '긴 생머리', free: true, fit: 'all', parts: { front: true, back: true } },
-    { id: 'hair_short', slot: 'hair', label: '짧은 머리', free: true, fit: 'all', parts: { front: true, back: false } },
-    { id: 'hat_beret',      slot: 'hat',     label: '베레모',       free: true, fit: 'all', sheet: 'hat_beret.png' },
+    { id: 'outfit_space_suit',  slot: 'outfit', label: '우주복',        free: true, fit: 'boy',  sheet: 'outfit_space_suit.png' },
+    { id: 'top_tee_berry',      slot: 'top',    label: '딸기 티셔츠',   free: true, fit: 'girl', sheet: 'top_tee_berry.png' },
+    { id: 'top_tee_lavender',   slot: 'top',    label: '라벤더 긴팔',   free: true, fit: 'girl', sheet: 'top_tee_lavender.png' },
+    { id: 'top_frill_coral',    slot: 'top',    label: '프릴 블라우스', free: true, fit: 'girl', sheet: 'top_frill_coral.png' },
+    { id: 'top_shirt_check',    slot: 'top',    label: '체크 남방',     free: true, fit: 'boy',  sheet: 'top_shirt_check.png' },
+    { id: 'top_sweat_navy',     slot: 'top',    label: '로켓 맨투맨',   free: true, fit: 'boy',  sheet: 'top_sweat_navy.png' },
+    { id: 'top_stripe_orange',  slot: 'top',    label: '줄무늬 티셔츠', free: true, fit: 'boy',  sheet: 'top_stripe_orange.png' },
+    { id: 'bottom_skirt_lemon',  slot: 'bottom', label: '레몬 치마',     free: true, fit: 'girl', sheet: 'bottom_skirt_lemon.png' },
+    { id: 'bottom_pleat_sky',    slot: 'bottom', label: '하늘 주름치마', free: true, fit: 'girl', sheet: 'bottom_pleat_sky.png' },
+    { id: 'bottom_cord_berry',   slot: 'bottom', label: '라즈베리 바지', free: true, fit: 'girl', sheet: 'bottom_cord_berry.png' },
+    { id: 'bottom_jeans_blue',   slot: 'bottom', label: '청바지',        free: true, fit: 'boy',  sheet: 'bottom_jeans_blue.png' },
+    { id: 'bottom_cargo_sand',   slot: 'bottom', label: '카고 반바지',   free: true, fit: 'boy',  sheet: 'bottom_cargo_sand.png' },
+    { id: 'bottom_jogger_navy',  slot: 'bottom', label: '조거 팬츠',     free: true, fit: 'boy',  sheet: 'bottom_jogger_navy.png' },
+    { id: 'hair_long',  slot: 'hair', label: '긴 생머리',   free: true, fit: 'girl', parts: { front: true, back: true } },
+    { id: 'hair_bob',   slot: 'hair', label: '단발머리',     free: true, fit: 'girl', parts: { front: true, back: true } },
+    { id: 'hair_twin',  slot: 'hair', label: '양갈래',       free: true, fit: 'girl', parts: { front: true, back: true } },
+    { id: 'hair_short', slot: 'hair', label: '짧은 머리',   free: true, fit: 'boy', parts: { front: true, back: false } },
+    { id: 'hair_curly', slot: 'hair', label: '곱슬머리',     free: true, fit: 'boy', parts: { front: true, back: false } },
+    { id: 'hair_crop',  slot: 'hair', label: '스포츠머리',   free: true, fit: 'boy', parts: { front: true, back: false } },
+    { id: 'hat_beret',      slot: 'hat',     label: '베레모',       free: true, fit: 'girl', sheet: 'hat_beret.png' },
+    { id: 'hat_cap_red',    slot: 'hat',     label: '야구모자',     free: true, fit: 'boy',  sheet: 'hat_cap_red.png' },
     { id: 'glasses_round',  slot: 'faceAcc', label: '동글 안경',    free: true, fit: 'all', sheet: 'glasses_round.png' },
   ],
 };

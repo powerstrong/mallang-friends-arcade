@@ -11,6 +11,11 @@ scripts/_*
 scripts/*.png
 scripts/cleanup_diff.txt
 *.log
+__pycache__/
+# 아바타 파이프라인: 커밋하는 것은 프롬프트(.md)와 생성 원본(*_raw.png)뿐이다.
+# 중간 산출물(추출/분리 마스터)과 즉석 검수 이미지는 build_assets.sh 로 다시 만든다.
+scripts/avatar/check_*.png
+scripts/avatar/raw/*_master*.png
 PLAN_*.md
 tmp/
 worker/dist/

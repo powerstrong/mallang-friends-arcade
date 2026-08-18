@@ -100,6 +100,23 @@
   // 되돌리거나 MS 를 90~200 사이로 조정한다.
   const HUMAN_WALK_MS = 130;
   const HUMAN_WALK_PATTERN = [1, 0, 2, 0];
+  /* 광장 걸음 v2(2026-08-18) — 3열 시트로 낼 수 있는 감성의 최대치를 코드로 낸다.
+   * 시트를 4~6열 워크사이클로 늘리는 정공법은 막혀 있다(마네킹을 다시 만들어야
+   * 하는데 align.json row_dy 가 마네킹 세대 고유값 — 재생성 금지). 그래서 남는
+   * 레버 셋을 쓴다:
+   *   ① 비대칭 타이밍 — 접지 셀(A/B)은 오래 머물고 통과 셀(정지 그림)은 스쳐야
+   *      한 걸음이 또렷하다. 균등 4박자(130ms×4)는 발이 뭉개져 로봇처럼 보인다.
+   *   ② 상하 바운스 — 실제 보행은 접지에서 가장 낮고 통과에서 가장 높다. 2px
+   *      남짓이면 충분하고, 이게 없으면 미끄러지듯 이동해 보인다.
+   *   ③ 위상 개인화 — 전역 시계를 그대로 쓰면 광장의 모든 사람이 같은 발을 같은
+   *      순간에 내딛어 군무가 된다. 각자 걷기 시작 시각을 0으로 잡아 첫 발부터.
+   * 실기기 감성 판정(P1)에서 되돌릴 땐 STEP/PASS 를 같은 값으로 두면 구 4박자다. */
+  const HUMAN_STEP_MS = 165;   // 접지 셀 체류
+  const HUMAN_PASS_MS = 85;    // 통과 셀 체류
+  const HUMAN_GAIT_MS = HUMAN_STEP_MS * 2 + HUMAN_PASS_MS * 2;
+  const HUMAN_BOB_PX = 2.2;    // 접지에서 내려앉는 깊이(통과에서 같은 만큼 뜬다)
+  const HUMAN_SETTLE_MS = 140; // 멈춘 뒤 바운스가 가라앉는 시간
+  const HUMAN_SHADOW = true;   // 접지 그림자는 사람 전용 — 아래 drawAvatar 주석 참조
   const HUMAN_SHEET_SIZE = 384;        // 배포 정규화 규격(셀 128px, §5-7)
   const HUMAN_SHEET_CACHE_MAX = 24;    // LRU 상한(§5-8)
 
@@ -902,6 +919,7 @@
     canvas.height = bounds.height;
 
     peers = new Map();
+    humanGait.clear(); // 재접속 — 떠난 id 의 걸음 위상까지 들고 있지 않는다
     if (Array.isArray(d.players)) {
       for (const p of d.players) {
         if (p && p.id && p.id !== me.id) peers.set(p.id, { ...p });
@@ -998,6 +1016,7 @@
     peers.delete(d.id);
     bubbles.delete(d.id);
     reactions.delete(d.id);
+    humanGait.delete(d.id);
   }
 
   function handleTick(d) {
@@ -2690,6 +2709,36 @@
     ctx.closePath();
   }
 
+  /* 사람 걸음 상태 — id 별 위상. 걷기 시작 시각(t0)을 기준으로 재생하므로 각
+   * 플레이어가 자기 박자로 걷고, 멈췄다 다시 걸으면 항상 첫 발부터 시작한다.
+   * 광장을 떠난 id 는 handlePlayerLeft/handleWelcome 에서 함께 지운다. */
+  const humanGait = new Map(); // id -> { t0, stoppedAt }
+
+  function humanGaitFrame(p, now) {
+    let g = humanGait.get(p.id);
+    if (!g) { g = { t0: now, stoppedAt: now }; humanGait.set(p.id, g); }
+    if (p.moving) {
+      if (g.stoppedAt) { g.t0 = now; g.stoppedAt = 0; } // 재출발 — 첫 발부터
+    } else if (!g.stoppedAt) {
+      g.stoppedAt = now;
+    }
+    if (!p.moving) {
+      // 멈추는 순간 바운스를 뚝 끊으면 몸이 튄다 — 짧게 가라앉힌다.
+      const settle = Math.max(0, 1 - (now - g.stoppedAt) / HUMAN_SETTLE_MS);
+      return { col: 0, bob: -HUMAN_BOB_PX * settle * 0.5 };
+    }
+    const u = (now - g.t0) % HUMAN_GAIT_MS;
+    const col = u < HUMAN_STEP_MS ? 1
+      : u < HUMAN_STEP_MS + HUMAN_PASS_MS ? 0
+      : u < HUMAN_STEP_MS * 2 + HUMAN_PASS_MS ? 2
+      : 0;
+    // 접지 셀 한가운데에서 최저(+), 통과 셀 한가운데에서 최고(-). 두 극점의
+    // 간격이 정확히 GAIT/4 라 코사인 한 줄로 맞아떨어진다.
+    const bob = HUMAN_BOB_PX
+      * Math.cos(((u - HUMAN_STEP_MS / 2) / (HUMAN_GAIT_MS / 2)) * Math.PI * 2);
+    return { col, bob };
+  }
+
   function drawAvatar(p, isYou) {
     const r = 18;
     ctx.save();
@@ -2706,10 +2755,24 @@
     if (sprite.ready) {
       const dir = p.dir || 'down';
       const row = dir === 'down' ? 0 : dir === 'up' ? 2 : 1; // left/right -> side
-      // 사람 아바타는 4박자(A→정지→B→정지, §5-6), 동물은 기존 2박자 유지.
-      const col = !p.moving ? 0
-        : isHuman ? HUMAN_WALK_PATTERN[Math.floor(performance.now() / HUMAN_WALK_MS) % HUMAN_WALK_PATTERN.length]
+      // 사람은 위상 개인화 + 비대칭 4박자 + 바운스(§5-6 v2), 동물은 기존 2박자.
+      const gait = isHuman ? humanGaitFrame(p, performance.now()) : null;
+      const col = gait ? gait.col
+        : !p.moving ? 0
         : (Math.floor(performance.now() / WALK_FRAME_MS) % 2) + 1;
+      // 접지 그림자는 사람만 붙인다. 동물 시트는 셀 하단 패딩이 제각각이라 어떤
+      // y 에 두어도 한쪽에서 발과 분리돼 떠 보였다(위 주석). 사람 시트는 384²
+      // 정규화 + align.json 공통 정렬이라 발 위치가 모든 착장에서 같다.
+      if (gait && HUMAN_SHADOW) {
+        const lift = (HUMAN_BOB_PX - gait.bob) / (HUMAN_BOB_PX * 2); // 0=접지 1=최고점
+        ctx.save();
+        ctx.globalAlpha = 0.15 - 0.05 * lift;
+        ctx.fillStyle = '#2c3720';
+        ctx.beginPath();
+        ctx.ellipse(0, 1, 15 - 2.4 * lift, 4.6 - 0.9 * lift, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
       const { width: fw, height: fh } = getSpriteSourceFrame(sprite);
       const drawW = 100, drawH = 100;
       const destX = -drawW / 2;
@@ -2718,8 +2781,8 @@
       // 셀 패딩이 지면 아래로 빠지고 시각적 발이 y≈0(컨택트 쉐도우 자리)에
       // 닿도록 한다.
       const FOOT_FRACTION = 0.85;
-      const destY = -drawH * FOOT_FRACTION;
-      nameTagY = destY - 8;
+      const destY = -drawH * FOOT_FRACTION + (gait ? gait.bob : 0);
+      nameTagY = -drawH * FOOT_FRACTION - 8; // 이름표는 바운스에서 뺀다(따라 떨면 어지럽다)
 
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = 'high';
