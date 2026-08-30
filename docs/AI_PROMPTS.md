@@ -89,7 +89,7 @@ worker/ 변경이 포함되므로 PR 후 관리자 리뷰가 반드시 필요해
 - gameModules.js 등록: worker/src/gameModules.js 에 import + MODULES 배열 추가만.
 - 코어 변경 금지: worker/src/index.js, worker/src/room.js, worker/src/world.js 등 기존 핵심 파일 수정 금지.
 - 클라이언트 작업 범위: games/<id>/ 폴더 안에서만. shared/, world/ 수정 금지.
-- 게임 id 중복 금지: jump-climber / mallang-quiz-battle / sseuk-sseuk 는 예약 id — 절대 사용 금지.
+- 게임 id 중복 금지: jump-climber / sseuk-sseuk 는 예약 id — 절대 사용 금지.
 - 빌드 도구 금지: npm install, package.json, 번들러, 트랜스파일러 전부 금지.
 - 외부 패키지 금지: CDN 스크립트 포함 금지. 순수 HTML/CSS/JavaScript 만 사용.
 - 모바일 동작 필수: 세로 화면(portrait)에서 UI가 잘림 없이 표시되고, 터치 조작이 작동해야 함.

@@ -52,7 +52,7 @@ import { myGame } from './games/my-game.js';
 const MODULES = [ exampleServerGame, myGame ];  // 추가
 ```
 
-**예약된 id(등록 금지)**: `jump-climber`, `mallang-quiz-battle`, `sseuk-sseuk`
+**예약된 id(등록 금지)**: `jump-climber`, `sseuk-sseuk`
 
 ### 3단계 — 클라이언트 작성
 

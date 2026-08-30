@@ -91,7 +91,7 @@ test('모듈 storage 는 게임별 네임스페이스로 격리된다', async ()
   // 접두사로 모아 둬야 코어가 "이 방이 남긴 모듈 상태"를 통째로 지울 수 있다.
   assert.equal(data.get('mod:choice-holdem:k'), 1);
   assert.equal(await ctx.storage.get('k'), 1);
-  assert.equal(await room._moduleCtx('machine-animal-runner').storage.get('k'), undefined, '다른 게임의 키를 읽지 않는다');
+  assert.equal(await room._moduleCtx('example-first-button').storage.get('k'), undefined, '다른 게임의 키를 읽지 않는다');
   await ctx.storage.delete('k');
   assert.equal(data.has('mod:choice-holdem:k'), false);
 });

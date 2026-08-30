@@ -144,7 +144,6 @@ ctx.sendTo(ws, { type: 'mod', event: 'joined', you: me.id });
 아래 id는 코어 GameRoom switch에서 직접 처리하므로 모듈로 등록하면 오류가 발생합니다.
 
 - `jump-climber`
-- `mallang-quiz-battle`
 - `sseuk-sseuk`
 
 ---

@@ -19,9 +19,7 @@ const BOOTH_CATALOG = [
   { gameId: 'jump-climber',          title: '말랑프렌즈 점프',     minPlayers: 1, maxPlayers: 2 },
   { gameId: 'sseuk-sseuk',           title: '말랑프렌즈 쓱쓱',     minPlayers: 2, maxPlayers: 6 },
   { gameId: 'mallang-stairs',        title: '말랑 계단 레이스',   minPlayers: 1, maxPlayers: 6 },
-  // 'machine-animal-runner' 는 광장 정면 부스에서 내려 '실험실'(🧪)로 이동했다.
-  //   → registry.js 의 stage:'LAB' 로 노출, world/world.js 의 클라 전용 실험실
-  //     부스가 목록을 렌더한다(매칭 없음, ?from=lab 솔로 진입). 협동은 ?coop= 직접 URL.
+  // 실험실(stage:'LAB') 게임은 여기가 아니라 아래 LAB_MATCH_CATALOG 로 노출된다.
   // 정식 부스 3번째 슬롯은 mallang-stairs가 사용한다.
   // 실험실 LAB_BOOTH는 world/world.js에서 x:571,y:424로 이동해 겹치지 않는다.
 ];
@@ -64,12 +62,11 @@ const ZONES_BY_ID = new Map(GAME_ZONES.map((z) => [z.id, z]));
 // 부스처럼 위치(rect)·dwell(holdMs) 이 없고, 클라가 명시적으로 큐에 들어온다
 // (world.js _handleLabQueue). 발사는 기존 월드 매칭 파이프라인을 그대로 재사용하므로
 // 여기 gameId 는 반드시 room.js GAME_PATHS + world.js GAME_URLS 에 등록돼 있어야 한다.
-//   현재 충족: machine-animal-runner (GameRoom 권위 협동방).
+//   현재 충족: choice-holdem (GameRoom 권위 2인 대전방).
 //   mallang-stairs는 MallangRelay 게임이다. 여기서는 lab_queue 자동 매칭에서만
 //   제외하며, 정식 부스의 world-launch 파이프라인은 탈 수 있다.
 const LAB_ZONE_PREFIX = 'lab:';
 const LAB_MATCH_CATALOG = [
-  { gameId: 'machine-animal-runner', title: '말랑프렌즈 러너', minPlayers: 2, maxPlayers: 2 },
   { gameId: 'choice-holdem', title: '초이스 홀덤', minPlayers: 2, maxPlayers: 2 },
 ];
 const LAB_ZONES_BY_ID = new Map(LAB_MATCH_CATALOG.map((b) => {

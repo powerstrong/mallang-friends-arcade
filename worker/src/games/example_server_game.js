@@ -6,7 +6,7 @@
  * gameModules.js 레지스트리에 등록되어 라우팅된다.
  *
  * 모듈 인터페이스:
- *   id: string                              // gameId (예약 id 금지: jump-climber/mallang-quiz-battle/sseuk-sseuk)
+ *   id: string                              // gameId (예약 id 금지: jump-climber/sseuk-sseuk)
  *   onJoin(ctx, ws, msg): void|Promise      // 참가자 합류
  *   onMessage(ctx, ws, payload): void|Promise // 클라가 보낸 {type:'mod', payload} 의 payload
  *   onLeave(ctx, player): void|Promise      // 참가자 이탈

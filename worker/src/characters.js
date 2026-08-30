@@ -2,9 +2,8 @@
  * Keep these two files in sync — see assertSharedMatchesWorker() below.
  *
  * Each character declares which games it can be used in. The truth lives in
- * worker/src/room.js (JUMP_CHARACTERS, QUIZ_VALID_CHARS, SS_VALID_CHARS):
+ * worker/src/room.js (JUMP_CHARACTERS, SS_VALID_CHARS):
  *   jump-climber        : all five
- *   mallang-quiz-battle : all five
  *   sseuk-sseuk         : all five
  *   mallang-stairs      : all five (same kebab-case ids as jump-climber)
  */
@@ -12,23 +11,23 @@
 export const CHARACTERS = Object.freeze([
   Object.freeze({
     worldId: 'latte_puppy', label: '라떼강아지',
-    gameIds: Object.freeze({ 'jump-climber': 'latte-puppy', 'mallang-quiz-battle': 'latte-puppy', 'sseuk-sseuk': 'latte-puppy', 'mallang-stairs': 'latte-puppy' }),
+    gameIds: Object.freeze({ 'jump-climber': 'latte-puppy', 'sseuk-sseuk': 'latte-puppy', 'mallang-stairs': 'latte-puppy' }),
   }),
   Object.freeze({
     worldId: 'mochi_rabbit', label: '토끼',
-    gameIds: Object.freeze({ 'jump-climber': 'mochi-rabbit', 'mallang-quiz-battle': 'mochi-rabbit', 'sseuk-sseuk': 'mochi-rabbit', 'mallang-stairs': 'mochi-rabbit' }),
+    gameIds: Object.freeze({ 'jump-climber': 'mochi-rabbit', 'sseuk-sseuk': 'mochi-rabbit', 'mallang-stairs': 'mochi-rabbit' }),
   }),
   Object.freeze({
     worldId: 'pudding_hamster', label: '햄스터',
-    gameIds: Object.freeze({ 'jump-climber': 'pudding-hamster', 'mallang-quiz-battle': 'pudding-hamster', 'sseuk-sseuk': 'pudding-hamster', 'mallang-stairs': 'pudding-hamster' }),
+    gameIds: Object.freeze({ 'jump-climber': 'pudding-hamster', 'sseuk-sseuk': 'pudding-hamster', 'mallang-stairs': 'pudding-hamster' }),
   }),
   Object.freeze({
     worldId: 'mint_kitten', label: '고양이',
-    gameIds: Object.freeze({ 'jump-climber': 'mint-kitten', 'mallang-quiz-battle': 'mint-kitten', 'sseuk-sseuk': 'mint-kitten', 'mallang-stairs': 'mint-kitten' }),
+    gameIds: Object.freeze({ 'jump-climber': 'mint-kitten', 'sseuk-sseuk': 'mint-kitten', 'mallang-stairs': 'mint-kitten' }),
   }),
   Object.freeze({
     worldId: 'peach_chick', label: '병아리',
-    gameIds: Object.freeze({ 'jump-climber': 'peach-chick', 'mallang-quiz-battle': 'peach-chick', 'sseuk-sseuk': 'peach-chick', 'mallang-stairs': 'peach-chick' }),
+    gameIds: Object.freeze({ 'jump-climber': 'peach-chick', 'sseuk-sseuk': 'peach-chick', 'mallang-stairs': 'peach-chick' }),
   }),
 ]);
 

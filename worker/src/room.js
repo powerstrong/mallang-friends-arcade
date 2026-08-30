@@ -20,7 +20,6 @@ const GAME_PATHS = {
   'jump-climber': '/games/jump-climber/index.html',
   'sseuk-sseuk': '/games/sseuk-sseuk/index.html',
   'mallang-stairs': '/games/mallang-stairs/index.html',
-  'machine-animal-runner': '/games/machine-animal-runner/index.html',
   'choice-holdem': '/games/choice-holdem/index.html',
 };
 
@@ -213,7 +212,7 @@ const RELAY_RATE_LIMIT = 40;           // 연결당 초당 메시지 상한
 const RELAY_RATE_WINDOW_MS = 1000;
 const RELAY_MAX_FRAME_CHARS = 65536;   // parse 전 raw 프레임 길이 상한 (DO isolate 보호)
 // 내장 권위형 게임 id — 릴레이로 합류 불가 (전용 서버 로직 보호).
-const RESERVED_GAME_IDS = new Set(['jump-climber', 'mallang-quiz-battle', 'sseuk-sseuk']);
+const RESERVED_GAME_IDS = new Set(['jump-climber', 'sseuk-sseuk']);
 // 서버 권위형 모듈이 쓰는 storage 키 접두사 — 방 재사용 시 이 접두사만 통째로 지우면 된다.
 const MODULE_STORAGE_PREFIX = 'mod:';
 
@@ -308,7 +307,7 @@ export class GameRoom {
       ws.send(JSON.stringify({ type: 'error', message: '릴레이: 잘못된 gameId 입니다.' }));
       return;
     }
-    // 내장 권위형 게임은 릴레이로 합류할 수 없다 (jump/quiz/sseuk 전용 로직 보호).
+    // 내장 권위형 게임은 릴레이로 합류할 수 없다 (jump/sseuk 전용 로직 보호).
     if (RESERVED_GAME_IDS.has(gameId)) {
       ws.send(JSON.stringify({ type: 'error', message: '릴레이: 예약된 게임 id 라 사용할 수 없습니다.' }));
       return;
@@ -2490,7 +2489,7 @@ export class GameRoom {
    * which already handles phase=playing + gameRoster correctly.
    *
    * Caller contract:
-   *   gameId  : 'jump-climber' | 'sseuk-sseuk' | 'mallang-stairs' | 'machine-animal-runner'
+   *   gameId  : 'jump-climber' | 'sseuk-sseuk' | 'mallang-stairs' | 'choice-holdem'
    *   players : [{ id, name, characterId? }]  (id is the world sessionId,
    *             reused as the game playerId so the URL ?playerId= matches)
    *   code    : optional 4-digit-style code; for world matches we just use

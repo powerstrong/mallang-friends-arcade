@@ -17,7 +17,6 @@
 | 게임 | 인원 | 방식 |
 |------|------|------|
 | [말랑프렌즈 점프](./docs/games/jump-climber.md) | 1~2명 | 로컬 동시 플레이 |
-| [말랑프렌즈 퀴즈배틀(공사중)](./docs/games/mallang-quiz-battle.md) | 2~6명 | 온라인 실시간 |
 | [말랑프렌즈 쓱쓱](./docs/games/sseuk-sseuk.md) | 2~6명 | 온라인 실시간 |
 
 ## 기여하기

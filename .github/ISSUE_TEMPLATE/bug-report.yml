@@ -16,7 +16,6 @@ body:
       options:
         - 로비 (메인 화면)
         - jump-climber (말랑프렌즈 점프)
-        - mallang-quiz-battle (말랑프렌즈 퀴즈배틀)
         - sseuk-sseuk (말랑프렌즈 쓱쓱)
         - 기타 (아래 기타 의견란에 적어 주세요)
     validations:

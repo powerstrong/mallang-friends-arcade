@@ -12,7 +12,6 @@ mallang-friends-arcade/
 │   ├── registry.js           ← 게임 등록 파일 (항목 추가만 허용)
 │   ├── _template/            ← 새 게임 시작 템플릿 (복사해서 사용)
 │   ├── jump-climber/         ← 말랑프렌즈 점프
-│   ├── mallang-quiz-battle/  ← 말랑프렌즈 퀴즈배틀
 │   └── sseuk-sseuk/          ← 말랑프렌즈 쓱쓱
 │
 ├── worker/                   ← 서버 코어 [수정 금지]

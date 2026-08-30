@@ -134,7 +134,7 @@ test('findZoneAt returns the matching zone or null', () => {
 });
 
 test('every zone has a registered gameId path', () => {
-  const known = new Set(['jump-climber', 'sseuk-sseuk', 'mallang-stairs', 'machine-animal-runner']);
+  const known = new Set(['jump-climber', 'sseuk-sseuk', 'mallang-stairs']);
   for (const zone of GAME_ZONES) {
     assert.ok(known.has(zone.gameId), `unknown gameId: ${zone.gameId}`);
     assert.ok(zone.minPlayers >= 1);
@@ -158,7 +158,7 @@ test('character ids round-trip world → game', () => {
   assert.equal(isValidCharacterId('not_a_thing'), false);
 
   assert.equal(toGameCharacterId('mochi_rabbit', 'jump-climber'), 'mochi-rabbit');
-  assert.equal(toGameCharacterId('mint_kitten', 'mallang-quiz-battle'), 'mint-kitten');
+  assert.equal(toGameCharacterId('mint_kitten', 'sseuk-sseuk'), 'mint-kitten');
   assert.equal(toGameCharacterId('peach_chick', 'jump-climber'), 'peach-chick');
   assert.equal(toGameCharacterId('mochi_rabbit', 'mallang-stairs'), 'mochi-rabbit');
   assert.equal(toGameCharacterId('not_a_thing', 'jump-climber'), null);

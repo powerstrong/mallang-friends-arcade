@@ -241,10 +241,8 @@
   const boothImages = {};
   function getBoothImage(gameId) {
     const file = gameId === 'jump-climber' ? 'booth_jump.png'
-               : gameId === 'mallang-quiz-battle' ? 'booth_quiz.png'
                : gameId === 'sseuk-sseuk' ? 'booth_sseuk.png'
-               : gameId === 'mallang-stairs' ? 'booth_stairs.png'
-               : gameId === 'machine-animal-runner' ? 'booth_runner.png' : null;
+               : gameId === 'mallang-stairs' ? 'booth_stairs.png' : null;
     if (!file) return null;
     let entry = boothImages[gameId];
     if (entry) return entry;
@@ -313,7 +311,6 @@
     // 주의: Cloudflare Pages 가 docs/ 는 서빙하지 않으므로 서빙되는 world/assets/ 에 둔다.
     'jump-climber': '/world/assets/preview_jump.gif',
     'sseuk-sseuk': '/world/assets/preview_sseuk.gif',
-    // 'mallang-quiz-battle': 프리뷰 GIF 준비되면 world/assets/preview_quiz.gif 추가
   };
   // 하단 패널이 현재 pre-match(참가 준비) 로 띄워 둔 zoneId. null 이면 미표시.
   let panelZone = null;
@@ -1760,9 +1757,7 @@
   // Per-game booth theme — accent colour + a playful icon.
   const ZONE_THEME = {
     'jump-climber':           { color: '#ff9f4d', dark: '#d9791c', icon: '🧗' },
-    'mallang-quiz-battle':    { color: '#7db4ff', dark: '#4d83d9', icon: '🧠' },
     'sseuk-sseuk':            { color: '#10b981', dark: '#047857', icon: '✏️' },
-    'machine-animal-runner':  { color: '#4fa3ff', dark: '#2f7fd9', icon: '🐤' },
   };
   function zoneTheme(z) {
     return ZONE_THEME[z.gameId] || ZONE_THEME[z.id] ||
