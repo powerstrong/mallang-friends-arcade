@@ -21,6 +21,7 @@ const GAME_PATHS = {
   'sseuk-sseuk': '/games/sseuk-sseuk/index.html',
   'mallang-stairs': '/games/mallang-stairs/index.html',
   'machine-animal-runner': '/games/machine-animal-runner/index.html',
+  'choice-holdem': '/games/choice-holdem/index.html',
 };
 
 const SS_VALID_CHARS = ['mochi-rabbit', 'pudding-hamster', 'peach-chick', 'latte-puppy', 'mint-kitten'];

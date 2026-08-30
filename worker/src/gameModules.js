@@ -14,12 +14,14 @@
  */
 import { exampleServerGame } from './games/example_server_game.js';
 import { machineAnimalRunnerCoop } from './games/machine_animal_runner.js';
+import { choiceHoldem } from './games/choice_holdem.js';
 
 const RESERVED = new Set(['jump-climber', 'mallang-quiz-battle', 'sseuk-sseuk']);
 
 const MODULES = [
   exampleServerGame,
   machineAnimalRunnerCoop,
+  choiceHoldem,
 ];
 
 export const SERVER_GAME_MODULES = new Map();

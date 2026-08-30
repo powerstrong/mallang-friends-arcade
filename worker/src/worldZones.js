@@ -70,6 +70,7 @@ const ZONES_BY_ID = new Map(GAME_ZONES.map((z) => [z.id, z]));
 const LAB_ZONE_PREFIX = 'lab:';
 const LAB_MATCH_CATALOG = [
   { gameId: 'machine-animal-runner', title: '말랑프렌즈 러너', minPlayers: 2, maxPlayers: 2 },
+  { gameId: 'choice-holdem', title: '초이스 홀덤', minPlayers: 2, maxPlayers: 2 },
 ];
 const LAB_ZONES_BY_ID = new Map(LAB_MATCH_CATALOG.map((b) => {
   const id = LAB_ZONE_PREFIX + b.gameId;

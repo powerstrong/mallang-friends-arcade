@@ -4,15 +4,19 @@
 
 | 파일 | 역할 |
 |------|------|
-| `games/choice-holdem/engine/choice-holdem.js` | 규칙 엔진 (순수 함수 · 브라우저와 서버가 같은 파일을 쓴다) |
-| `games/choice-holdem/engine/bot.js` | 실험실 솔로용 상대 봇 (가려진 뷰만 보고 판단) |
-| `games/choice-holdem/index.html` | 실험실 클라이언트 (말랑봇 1:1) |
-| `worker/tests/choice-holdem-engine.test.mjs` | 규칙 테스트 (CI 게이트) |
-| `worker/tests/choice-holdem-bot.test.mjs` | 봇 테스트 (CI 게이트) |
+| `games/choice-holdem/engine/choice-holdem.js` | 규칙 엔진 (순수 함수 · **브라우저와 워커가 같은 파일을 쓴다** — wrangler 가 번들에 포함) |
+| `games/choice-holdem/engine/bot.js` | 솔로용 상대 봇 (가려진 뷰만 보고 판단) |
+| `games/choice-holdem/index.html` | 클라이언트 — 솔로/온라인 두 모드 |
+| `worker/src/games/choice_holdem.js` | 서버 권위 모듈 (온라인 1:1) |
+| `worker/tests/choice-holdem-{engine,bot,module}.test.mjs` | 규칙·봇·서버 모듈 테스트 (CI 게이트) |
 
-지금은 **광장 실험실(🧪) 카드 → 솔로(말랑봇 대전)** 로만 접근한다
-(`registry.js` 의 `stage:'LAB'`, `status:'DRAFT'`). 사람 대 사람은 아래 5번 이유로
-서버 권위형 모듈로 올린 뒤에만 가능하다 — 실험실 솔로 빌드는 state 가 브라우저에 있다.
+접근 경로 두 가지 (`registry.js`: `stage:'LAB'` · `labMatch:true` · `status:'DRAFT'`):
+
+- **실험실 카드 탭** → 솔로. 엔진이 브라우저에서 돌고 말랑봇과 1:1.
+- **실험실 '같이하기'** → 광장이 2명을 매칭해 같은 방으로 보낸다. 판은 서버가 소유한다.
+  방 코드로 직접 들어가는 것도 된다(시작 화면 '친구와 하기' → 주소 공유).
+
+규칙이 두 벌로 갈라지지 않는 것이 핵심이다 — 솔로든 온라인이든 판정하는 코드는 같은 파일 하나다.
 
 ---
 
@@ -117,6 +121,27 @@ UI 에서만 가리는 방식은 개발자 도구로 뚫리므로 금지.
 
 서버가 검증하는 항목: 차례 여부 · 보유 칩 초과 · 레이즈 1회 제한 ·
 REVEAL 은 선플레이어만 · SELECT 는 후플레이어만 · 카드 id 가 실제 Choice 카드인지.
+
+### 온라인 모드에서 서버가 추가로 하는 일
+
+- **좌석 = 신원.** 액션의 `playerId` 는 클라가 보낸 값을 버리고 그 연결의 좌석으로 덮어쓴다.
+  남의 차례를 대신 두거나 상대 대신 Choice 를 고르는 것이 프로토콜 수준에서 불가능하다.
+- **좌석 토큰.** 서버가 발급해 그 좌석에게만 보낸다(상대에게는 절대 가지 않는다).
+  새로고침·네트워크 끊김 뒤 같은 자리·같은 패로 돌아온다.
+- **영속.** 하이버네이션 DO 는 ws 가 살아 있어도 in-memory 가 사라지므로 매 변화마다 storage 에 쓴다.
+- **다음 라운드 동의.** 양쪽이 눌러야 넘어간다(상대가 끊겨 있으면 혼자서도 진행 가능).
+
+프로토콜 — 클라 → `{type:'mod', payload}`:
+
+| payload | 뜻 |
+|---------|-----|
+| `{a:'action', action:{type, amount?, cardId?}}` | 베팅·공개·선택 |
+| `{a:'next'}` | 라운드 정산 후 다음 라운드 준비 |
+| `{a:'rematch'}` | 게임 종료 후 재대결 |
+| `{a:'sync'}` | 재접속 직후 현재 뷰 요청 |
+
+서버 → 클라: `seated`(그 좌석에만, 토큰 포함) · `state`(좌석별 뷰, 개인 전송) ·
+`log`(공개 이벤트) · `reject` · `full` · `seats`.
 
 ---
 
