@@ -102,3 +102,49 @@ test('봇은 뷰에 없는 정보를 요구하지 않는다 — 뷰만으로 모
     assert.ok(phasesSeen.has(phase), `${phase} 단계를 한 번도 거치지 않았다`);
   }
 });
+
+/* 같은 카드가 hole 과 choice.cards 양쪽에 있어 남은 덱에서 두 번 빠지면 승률이 틀어진다.
+ * 뷰에 보이는 카드를 id 로 세어 얻은 "정확한 남은 덱"과 봇 계산이 일치해야 한다. */
+test('Choice 가 끝난 뒤에도 봇의 승률은 카드 id 기준 남은 덱과 일치한다', () => {
+  let s = createGame({ players: [{ id: A }, { id: B }], seed: 3, stackedDecks: [[5, 5, 4, 5, 1, 3, 2]] });
+  const step = (action) => {
+    const res = applyAction(s, action);
+    assert.equal(res.error, null, `거부됨: ${JSON.stringify(action)} → ${JSON.stringify(res.error)}`);
+    s = res.state;
+  };
+  step({ type: ACTION.START });
+  step({ type: ACTION.CHECK, playerId: A });
+  step({ type: ACTION.CHECK, playerId: B });
+  step({ type: ACTION.REVEAL, playerId: A, cardId: s.choice.cardIds[0] });
+  step({ type: ACTION.SELECT, playerId: B, cardId: s.choice.cardIds[0] });
+
+  const view = viewFor(s, A);
+  // A 는 [5,5,4] + 5 + 2 = 포카드는 아니고 트리플 5. 남은 미지수는 상대의 뒷면 1장뿐이다.
+  const seen = new Map();
+  for (const card of view.community) seen.set(card.id, card.rank);
+  for (const card of view.you.hole) seen.set(card.id, card.rank);
+  for (const card of view.opponent.hole) if (card.rank != null) seen.set(card.id, card.rank);
+  for (const card of view.choice.cards) if (card.rank != null) seen.set(card.id, card.rank);
+  const remaining = new Array(6).fill(4);
+  remaining[0] = 0;
+  for (const rank of seen.values()) remaining[rank] -= 1;
+  const deckLeft = remaining.reduce((a, b) => a + b, 0);
+  assert.equal(deckLeft, 20 - seen.size, '전제: 뷰에 보이는 카드는 6장(중복 제거 기준)');
+
+  // 상대의 마지막 한 장만 남은 덱에서 뽑는다 — 각 숫자가 나올 확률로 직접 계산한 값.
+  let expected = 0;
+  const mine = evaluateHand(view.community.concat(view.you.hole).map((c) => ({ rank: c.rank })));
+  const theirKnown = view.opponent.hole.filter((c) => c.rank != null).map((c) => c.rank);
+  for (let rank = 1; rank <= 5; rank++) {
+    if (!remaining[rank]) continue;
+    const theirs = evaluateHand(
+      view.community.map((c) => ({ rank: c.rank })).concat(theirKnown.map((r) => ({ rank: r })), [{ rank }])
+    );
+    const cmp = compareHands(mine, theirs);
+    expected += (remaining[rank] / deckLeft) * (cmp > 0 ? 1 : cmp === 0 ? 0.45 : 0);
+  }
+  assert.ok(
+    Math.abs(winProbability(view) - expected) < 1e-9,
+    `봇 승률 ${winProbability(view)} ≠ 정확값 ${expected} — Choice 카드를 두 번 빼고 있다`
+  );
+});

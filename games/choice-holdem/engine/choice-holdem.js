@@ -251,6 +251,19 @@ function isBettingPhase(phase) {
   return phase === PHASE.BETTING_1 || phase === PHASE.BETTING_2;
 }
 
+/* 헤즈업 유효 스택 — "이 베팅 단계에서 의미 있는 총 베팅액(raise-to)의 상한".
+ * 상대가 낼 수 있는 최대 총액(상대 베팅액 + 상대 잔여 칩)을 넘겨 베팅해도 상대는 받을 수 없어
+ * 초과분이 그대로 반환될 뿐이다. 특히 상대가 이미 올인이면 상한 = 현재 최고 베팅액이라 레이즈가
+ * 막힌다 — 그래야 올인한 상대에게 "콜 0" 차례가 돌아가는 유령 라운드가 생기지 않는다. */
+function effectiveMaxTo(state, playerId) {
+  const street = state.street;
+  const oppId = opponentOf(state, playerId);
+  return Math.min(
+    street.bets[playerId] + state.players[playerId].chips,
+    street.bets[oppId] + state.players[oppId].chips
+  );
+}
+
 /* 지금 이 플레이어가 낼 수 있는 액션 목록. UI·AI·서버 검증이 공유한다. */
 export function legalActions(state, playerId) {
   if (state.phase === PHASE.WAITING) return [{ type: ACTION.START }];
@@ -273,20 +286,27 @@ export function legalActions(state, playerId) {
   const stack = state.players[playerId].chips;
   const top = maxBet(street, state.playerOrder);
   const toCall = top - street.bets[playerId];
+  const capTo = effectiveMaxTo(state, playerId);       // 상대가 받을 수 있는 총액 상한
+  const allInTo = street.bets[playerId] + stack;       // 내가 올인하면 되는 총액
   const out = [{ type: ACTION.FOLD }];
 
   if (toCall === 0) {
     out.push({ type: ACTION.CHECK });
-    if (stack > 0 && top === 0) out.push({ type: ACTION.BET, min: 1, max: stack });
-    if (stack > 0) out.push({ type: ACTION.ALL_IN, amount: stack });
+    if (stack > 0 && top === 0) {
+      if (capTo > 0) out.push({ type: ACTION.BET, min: 1, max: capTo });
+      // 올인은 내가 숏스택일 때만 의미가 있다. 빅스택이면 BET 상한이 곧 실질 올인이다.
+      if (allInTo <= capTo) out.push({ type: ACTION.ALL_IN, amount: stack });
+    }
   } else {
     out.push({ type: ACTION.CALL, amount: Math.min(toCall, stack) });
-    const canRaise = street.raises < state.config.maxRaisesPerStreet && stack > toCall;
-    if (canRaise) {
-      out.push({ type: ACTION.RAISE, min: top + 1, max: street.bets[playerId] + stack });
-      out.push({ type: ACTION.ALL_IN, amount: stack });
-    } else if (stack <= toCall && stack > 0) {
-      out.push({ type: ACTION.ALL_IN, amount: stack });
+    // 상대가 이미 올인이면 capTo === top 이라 레이즈가 열리지 않는다(콜·폴드만).
+    const raiseRoom = street.raises < state.config.maxRaisesPerStreet && capTo > top;
+    if (raiseRoom && stack > toCall) {
+      out.push({ type: ACTION.RAISE, min: top + 1, max: capTo });
+    }
+    if (stack > 0) {
+      if (stack <= toCall) out.push({ type: ACTION.ALL_IN, amount: stack });                     // 올인 콜
+      else if (raiseRoom && allInTo <= capTo) out.push({ type: ACTION.ALL_IN, amount: stack });  // 올인 레이즈
     }
   }
   return out;
@@ -448,32 +468,60 @@ export function finalCards(state, playerId) {
   return state.community.concat(state.players[playerId].hole);
 }
 
+/* 이월이 불가능한 동점에서 팟을 반씩 나눈다.
+ * 홀수 1칩은 칩이 적은 쪽(같으면 후플레이어)에게 — 나누기 때문에 오히려 탈락하는 일이 없게. */
+function splitPot(state, pot) {
+  const [a, b] = state.playerOrder;
+  const half = Math.floor(pot / 2);
+  const odd = pot - half * 2;
+  const oddTo = state.players[a].chips === state.players[b].chips
+    ? state.secondPlayerId
+    : (state.players[a].chips < state.players[b].chips ? a : b);
+  state.players[a].chips += half;
+  state.players[b].chips += half;
+  if (odd) state.players[oddTo].chips += odd;
+  return { [a]: half + (oddTo === a ? odd : 0), [b]: half + (oddTo === b ? odd : 0) };
+}
+
 function settle(state, result, events) {
   const pot = state.pot;
+  const [a, b] = state.playerOrder;
+  let carried = 0;
+  let split = null;
   if (result.winnerId) {
     state.players[result.winnerId].chips += pot;
-    state.pot = 0;
+  } else if (state.players[a].chips === 0 || state.players[b].chips === 0) {
+    // 완전 동점 + 한쪽 칩 0. 이월은 "다음 라운드"가 있어야 성립하는데 그 라운드가 오지 않으므로
+    // 이월 팟이 아무에게도 가지 않고 사라진다. 이 경우에만 그 자리에서 반씩 나눈다.
+    split = splitPot(state, pot);
   } else {
     // 완전 동점 — 팟을 나누지 않고 다음 라운드로 이월한다.
     state.carryPot = pot;
-    state.pot = 0;
+    carried = pot;
   }
+  state.pot = 0;
   state.lastResult = {
     round: state.round,
     reason: result.reason,
     winnerId: result.winnerId ?? null,
     pot,
-    carried: result.winnerId ? 0 : pot,
+    carried,
+    split,
     hands: result.hands ?? null,
     chips: { ...chipsSnapshot(state) },
   };
   state.street = null;
   events.push({ type: 'SETTLEMENT', ...state.lastResult });
 
-  const [a, b] = state.playerOrder;
   const aBroke = state.players[a].chips === 0;
   const bBroke = state.players[b].chips === 0;
   if (aBroke || bBroke) {
+    // 방어: 여기서 이월 팟이 남아 있으면 주인 없는 칩이 된다(위 분기상 0이어야 한다).
+    if (state.carryPot > 0) {
+      if (aBroke && bBroke) splitPot(state, state.carryPot);
+      else state.players[aBroke ? b : a].chips += state.carryPot;
+      state.carryPot = 0;
+    }
     state.phase = PHASE.GAME_OVER;
     state.gameResult = aBroke && bBroke
       ? { winnerId: null, reason: 'DRAW' }
@@ -579,6 +627,8 @@ function applyBettingAction(state, next, action, events) {
   const player = next.players[playerId];
   const top = maxBet(street, next.playerOrder);
   const toCall = top - street.bets[playerId];
+  // 상대가 받을 수 있는 총액 상한. 이걸 넘는 베팅은 어차피 반환되므로 아예 거부한다.
+  const capTo = effectiveMaxTo(next, playerId);
 
   switch (type) {
     case ACTION.FOLD: {
@@ -611,6 +661,9 @@ function applyBettingAction(state, next, action, events) {
       const amount = action.amount;
       if (!Number.isInteger(amount) || amount < 1) return fail(state, 'BAD_AMOUNT', '베팅은 1칩 이상이어야 합니다.');
       if (amount > player.chips) return fail(state, 'NOT_ENOUGH_CHIPS', '보유 칩을 초과했습니다.');
+      if (amount > capTo) {
+        return fail(state, 'OVER_EFFECTIVE_STACK', `상대가 받을 수 있는 금액(${capTo}칩)까지만 베팅할 수 있습니다.`);
+      }
       commit(next, playerId, amount);
       street.acted = { [next.playerOrder[0]]: false, [next.playerOrder[1]]: false };
       street.acted[playerId] = true;
@@ -634,6 +687,12 @@ function applyBettingAction(state, next, action, events) {
       if (!Number.isInteger(target) || target <= top) {
         return fail(state, 'BAD_AMOUNT', `레이즈는 ${top + 1}칩 이상(총액 기준)이어야 합니다.`);
       }
+      if (capTo <= top) {
+        return fail(state, 'OVER_EFFECTIVE_STACK', '상대가 이미 올인이라 더 올릴 수 없습니다 — 콜 또는 폴드만 가능합니다.');
+      }
+      if (target > capTo) {
+        return fail(state, 'OVER_EFFECTIVE_STACK', `상대가 받을 수 있는 총액(${capTo}칩)까지만 레이즈할 수 있습니다.`);
+      }
       const need = target - street.bets[playerId];
       if (need > player.chips) return fail(state, 'NOT_ENOUGH_CHIPS', '보유 칩을 초과했습니다.');
       commit(next, playerId, need);
@@ -648,6 +707,9 @@ function applyBettingAction(state, next, action, events) {
       if (stack <= 0) return fail(state, 'NOT_ENOUGH_CHIPS', '남은 칩이 없습니다.');
       if (toCall === 0) {
         if (top !== 0) return fail(state, 'CANNOT_BET', '이미 베팅이 있습니다.');
+        if (street.bets[playerId] + stack > capTo) {
+          return fail(state, 'OVER_EFFECTIVE_STACK', `상대가 받을 수 있는 금액(${capTo}칩)까지만 베팅할 수 있습니다.`);
+        }
         commit(next, playerId, stack);
         street.acted = { [next.playerOrder[0]]: false, [next.playerOrder[1]]: false };
         street.acted[playerId] = true;
@@ -659,6 +721,9 @@ function applyBettingAction(state, next, action, events) {
       } else {
         if (street.raises >= next.config.maxRaisesPerStreet) {
           return fail(state, 'RAISE_LIMIT', '레이즈가 이미 사용되어 올인할 수 없습니다 — CALL 만 가능합니다.');
+        }
+        if (street.bets[playerId] + stack > capTo) {
+          return fail(state, 'OVER_EFFECTIVE_STACK', '상대가 받을 수 있는 금액을 넘습니다 — 콜 또는 폴드만 가능합니다.');
         }
         commit(next, playerId, stack);
         street.raises += 1;

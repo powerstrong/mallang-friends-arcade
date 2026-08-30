@@ -12,16 +12,19 @@ const RANKS = 5;
 const COPIES = 4;
 const TIE_SCORE = 0.45; // 동점은 팟 이월이라 승리보다 확실히 나쁘고 패배보다는 낫다.
 
-/* 뷰에서 "아직 못 본 카드"의 숫자별 장수. 상대 손패·덱·미공개 Choice 카드가 여기 섞여 있다. */
+/* 뷰에서 "아직 못 본 카드"의 숫자별 장수. 상대 손패·덱·미공개 Choice 카드가 여기 섞여 있다.
+ * 같은 카드가 여러 곳에 나타나므로(Choice 선택이 끝나면 그 카드는 hole 과 choice.cards 양쪽에
+ * 있다) 반드시 카드 id 로 중복을 제거한다 — 안 하면 덱에서 두 번 빠져 승률이 틀어진다. */
 function unseenCounts(view) {
   const counts = new Array(RANKS + 1).fill(COPIES);
   counts[0] = 0;
-  const seen = [];
-  for (const c of view.community) seen.push(c.rank);
-  for (const c of view.you.hole) seen.push(c.rank);
-  for (const c of view.opponent.hole) if (c.rank != null) seen.push(c.rank);
-  if (view.choice) for (const c of view.choice.cards) if (c.rank != null) seen.push(c.rank);
-  for (const rank of seen) {
+  const seen = new Map();   // cardId -> rank (같은 카드는 한 번만 센다)
+  const note = (c) => { if (c && c.rank != null) seen.set(c.id, c.rank); };
+  for (const c of view.community) note(c);
+  for (const c of view.you.hole) note(c);
+  for (const c of view.opponent.hole) note(c);
+  if (view.choice) for (const c of view.choice.cards) note(c);
+  for (const rank of seen.values()) {
     if (rank >= 1 && rank <= RANKS) counts[rank] = Math.max(0, counts[rank] - 1);
   }
   return counts;

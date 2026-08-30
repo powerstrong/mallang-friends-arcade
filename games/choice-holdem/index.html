@@ -712,6 +712,13 @@ function playPotPayout(view) {
   if (!result || reduceMotion()) return 0;
   const potEl = el('potValue').parentElement;
   if (result.winnerId == null) {
+    if (result.split) {
+      // 이월이 불가능한 동점(한쪽 칩 0) — 팟이 양쪽 자리로 반씩 날아간다.
+      for (const [playerId, amount] of Object.entries(result.split)) {
+        if (amount > 0) flyChip(potEl, seatElFor(playerId, view), `+${amount}칩`);
+      }
+      return 780;
+    }
     flyChip(potEl, potEl, `${result.pot}칩 이월`, 'refund');
     return 780;
   }
@@ -719,7 +726,7 @@ function playPotPayout(view) {
   return 780;
 }
 
-function handRow(label, cards, handName, isWinner) {
+function handRow(label, cards, handName, isWinner, startDelay = 0) {
   const box = document.createElement('div');
   box.className = 'hand-row' + (isWinner ? ' winner' : '');
   const who = document.createElement('div');
@@ -729,7 +736,8 @@ function handRow(label, cards, handName, isWinner) {
   row.className = 'cards';
   cards.forEach((card, i) => {
     const node = cardEl(card, { small: true, highlight: isWinner });
-    node.style.animationDelay = `${i * 90}ms`;   // 한 장씩 뒤집히며 공개
+    // 내 줄이 다 열린 뒤에 상대 줄이 열리도록 줄마다 시작 지연을 준다(startDelay).
+    node.style.animationDelay = `${startDelay + i * 90}ms`;   // 한 장씩 뒤집히며 공개
     row.appendChild(node);
   });
   const name = document.createElement('div');
@@ -762,7 +770,7 @@ function showSettlement(view, kind) {
     } else {
       const tie = result.winnerId == null;
       // 라운드 결과와 게임 종료를 문구로 확실히 구분한다("앨리스 승리"는 판이 끝난 것처럼 읽힌다).
-      title.textContent = tie ? '완전 동점!'
+      title.textContent = tie ? (result.split ? '완전 동점 — 반씩 나눠요' : '완전 동점!')
         : result.winnerId === meId ? '이번 라운드 내가 이겼어요 🎉'
         : `이번 라운드는 ${opponentName()}`;
       verdict.textContent = '패를 맞춰봅니다…';
@@ -796,7 +804,11 @@ function showSettlement(view, kind) {
         if (result.winnerId === meId) myRow.classList.add('winner');
         else if (result.winnerId === oppId) oppRow.classList.add('winner');
         // 승패가 갈린 뒤에는 이유 문장과 팟 뱃지가 결과를 말한다 — 중복 문구는 지운다.
-        verdict.textContent = tie ? `팟 ${result.pot}칩은 나누지 않고 다음 라운드로 이월됩니다.` : '';
+        verdict.textContent = tie
+          ? (result.split
+              ? `한쪽 칩이 0이라 이월할 수 없어요 — 팟 ${result.pot}칩을 ${result.split[meId]}칩씩 나눠 가집니다.`
+              : `팟 ${result.pot}칩은 나누지 않고 다음 라운드로 이월됩니다.`)
+          : '';
         verdict.hidden = !tie;
         why.hidden = false;
         if (result.winnerId) badge.hidden = false;
@@ -909,13 +921,14 @@ function showRules() {
       + '<b>콜</b> — 상대가 건 만큼 맞춰 냅니다.<br>'
       + '<b>레이즈</b> — 더 크게 올립니다. 한 베팅마다 1번까지.<br>'
       + '<b>폴드</b> — 이 판을 포기합니다. 팟은 상대가 가져갑니다.<br>'
-      + '<b>올인</b> — 남은 칩을 전부 겁니다.'
+      + '<b>올인</b> — 남은 칩을 전부 겁니다. 상대가 받을 수 있는 만큼까지만 걸 수 있어요 — '
+      + '상대가 이미 올인이면 콜·폴드만 남습니다.'
       + '</div>';
 
     const extra = document.createElement('div');
     extra.className = 'verdict';
     extra.textContent = '족보: 포카드 > 풀하우스 > 스트레이트(1·2·3·4·5) > 트리플 > 투페어 > 원페어. '
-      + '완전 동점이면 팟은 다음 라운드로 이월됩니다.';
+      + '완전 동점이면 팟은 다음 라운드로 이월됩니다(한쪽 칩이 0이라 다음 라운드가 없으면 반씩 나눕니다).';
     const ok = document.createElement('button');
     ok.className = 'button go';
     ok.textContent = '닫기';
@@ -1195,11 +1208,11 @@ function handleMod(msg) {
       readySeats = msg.ready || [];
       if (readySeats.includes(mySeatId) === false) iAmReady = false;
       updateOnlineBanner();
+      // 첫 판은 log 가 state 보다 먼저 도착해 버퍼에 쌓여 있다. applyView "전에" 풀어야
+      // 이번 뷰에서 그 연출이 소비된다 — 뒤에 풀면 큐에 남아 다음 액션 때 섞여 재생된다.
+      if (bufferedEvents.length) pushLog(bufferedEvents.splice(0));
       if (msg.view) applyView(msg.view);
-      if (bufferedEvents.length) {
-        pushLog(bufferedEvents.splice(0));
-        render();
-      }
+      else { fxQueue.length = 0; render(); }   // 뷰가 없으면 남은 연출은 버린다
       break;
     case 'reject':
       el('hint').textContent = msg.message || '지금은 할 수 없는 액션이에요.';

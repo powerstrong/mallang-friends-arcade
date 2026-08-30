@@ -214,6 +214,8 @@ const RELAY_RATE_WINDOW_MS = 1000;
 const RELAY_MAX_FRAME_CHARS = 65536;   // parse 전 raw 프레임 길이 상한 (DO isolate 보호)
 // 내장 권위형 게임 id — 릴레이로 합류 불가 (전용 서버 로직 보호).
 const RESERVED_GAME_IDS = new Set(['jump-climber', 'mallang-quiz-battle', 'sseuk-sseuk']);
+// 서버 권위형 모듈이 쓰는 storage 키 접두사 — 방 재사용 시 이 접두사만 통째로 지우면 된다.
+const MODULE_STORAGE_PREFIX = 'mod:';
 
 export class GameRoom {
   constructor(state, env) {
@@ -357,10 +359,18 @@ export class GameRoom {
   // ── 서버 권위형 게임 모듈 (gameModules.js 에 등록된 신규 게임 라우팅) ──────────────
   _moduleCtx(gameId) {
     if (!this.moduleGames.has(gameId)) this.moduleGames.set(gameId, {});
+    // 모듈이 쓰는 storage 키는 전부 'mod:<gameId>:' 아래로 모은다. 그래야 방 코드가 재사용될 때
+    // 코어가 이전 방의 모듈 상태(판·좌석 토큰)를 남김없이 지울 수 있다(_resetRoomState).
+    const prefix = `${MODULE_STORAGE_PREFIX}${gameId}:`;
+    const storage = {
+      get: (key) => this.state.storage.get(prefix + key),
+      put: (key, value) => this.state.storage.put(prefix + key, value),
+      delete: (key) => this.state.storage.delete(prefix + key),
+    };
     return {
       gameId,
       state: this.moduleGames.get(gameId),
-      storage: this.state.storage,
+      storage,
       sessions: () => this._getGameSessions(gameId).filter(({ player }) => player.mode === 'module'),
       roster: () => this._getGameSessions(gameId)
         .filter(({ player }) => player.mode === 'module')
@@ -2199,6 +2209,19 @@ export class GameRoom {
     );
   }
 
+  /* 이 DO 를 "새 방"으로 되돌린다 — 저장된 것도, in-memory 도 전부.
+   * 4자리 코드는 재사용되므로(POST /api/rooms) 이 초기화가 방과 방 사이의 유일한 경계다. */
+  async _resetRoomState() {
+    this._stopJumpLoop();
+    this.jumpGame = null;
+    this.sseukGame = null;
+    this.moduleGames.clear();
+    this.relayRates = new Map();
+    // storage 전체 삭제 — 모듈 상태('mod:*': 판·좌석 토큰)와 로비 상태(phase/currentGame/
+    // gameRoster/scores/chatLog)가 모두 이전 방의 것이다.
+    await this.state.storage.deleteAll();
+  }
+
   // ── fetch ──────────────────────────────────────────────────────────────────
 
   async fetch(request) {
@@ -2214,6 +2237,9 @@ export class GameRoom {
           headers: { 'Content-Type': 'application/json' },
         });
       }
+      // 재사용된 코드다 — 이전 방의 잔여 상태를 반드시 비운다. 안 비우면 새 손님이 남의 판을
+      // 물려받고(진행 중이던 게임 상태 복원), 이전 방의 좌석 토큰 보유자가 그 자리로 돌아온다.
+      await this._resetRoomState();
       await this.state.storage.put('code', code);
       return new Response('OK');
     }

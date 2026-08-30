@@ -425,6 +425,102 @@ test('legalActions 는 단계별로 가능한 액션만 준다', () => {
   assert.deepEqual(legalActions(choice, B), []);
 });
 
+// ── 올인 상대 · 동점 탈락 (리뷰 지적 수정) ──────────────────────────────────
+
+/* 1R: A 가 8칩 베팅 → B 콜 → A 트리플로 승리(A 29 / B 11).
+ * 2R: 선플레이어가 B 로 바뀌고, 앤티 뒤 A 28 / B 10 인 불균등 스택이 된다. */
+function unevenStacks() {
+  const s = play(game([[1, 1, 2, 1, 3, 4, 5], [5, 5, 4, 3, 3, 2, 2]]), [
+    { type: ACTION.START },
+    { type: ACTION.BET, playerId: A, amount: 8 },
+    { type: ACTION.CALL, playerId: B },
+  ]);
+  const afterChoice = play(s, [
+    { type: ACTION.REVEAL, playerId: A, cardId: s.choice.cardIds[0] },
+    { type: ACTION.SELECT, playerId: B, cardId: s.choice.cardIds[0] },
+    { type: ACTION.CHECK, playerId: A },
+    { type: ACTION.CHECK, playerId: B },
+  ]);
+  assert.equal(afterChoice.lastResult.winnerId, A, '전제: 1R 은 A 승리');
+  const r2 = play(afterChoice, [{ type: ACTION.NEXT_ROUND, playerId: A }]);
+  assert.equal(r2.firstPlayerId, B, '전제: 2R 선플레이어는 B');
+  assert.equal(r2.players[A].chips, 28);
+  assert.equal(r2.players[B].chips, 10);
+  return r2;
+}
+
+test('올인한 상대에게는 레이즈할 수 없다 — 콜·폴드만 남고 콜하면 바로 스트리트가 닫힌다', () => {
+  const s = play(unevenStacks(), [{ type: ACTION.ALL_IN, playerId: B }]);
+  assert.equal(s.players[B].chips, 0);
+
+  assert.deepEqual(
+    legalActions(s, A).map((a) => a.type).sort(),
+    [ACTION.CALL, ACTION.FOLD].sort(),
+    '칩이 0인 상대는 더 받을 수 없다 — 레이즈·올인은 제시되지 않는다'
+  );
+  assert.equal(applyAction(s, { type: ACTION.RAISE, playerId: A, amount: 15 }).error.code, 'OVER_EFFECTIVE_STACK');
+  assert.equal(applyAction(s, { type: ACTION.ALL_IN, playerId: A }).error.code, 'OVER_EFFECTIVE_STACK');
+
+  const called = play(s, [{ type: ACTION.CALL, playerId: A }]);
+  assert.equal(called.street, null, '콜 즉시 단계가 닫힌다 — 칩 0 인 B 에게 "콜 0" 차례가 돌아가지 않는다');
+  assert.equal(called.phase, PHASE.CHOICE_REVEAL);
+  assert.deepEqual(legalActions(called, B).map((a) => a.type), [ACTION.REVEAL],
+    '남은 것은 Choice 공개뿐 — 칩 0 인 B 에게 베팅 액션은 없다');
+});
+
+test('베팅 상한은 상대가 받을 수 있는 금액까지다(헤즈업 유효 스택)', () => {
+  const r2 = unevenStacks();
+  const bet = legalActions(r2, B).find((a) => a.type === ACTION.BET);
+  assert.equal(bet.max, 10, '숏스택 B 의 상한은 자기 칩');
+
+  // B 체크 → A(빅스택) 차례. A 는 28칩을 갖고 있어도 B 가 받을 수 있는 10칩까지만 베팅한다.
+  const turnA = play(r2, [{ type: ACTION.CHECK, playerId: B }]);
+  const betA = legalActions(turnA, A).find((a) => a.type === ACTION.BET);
+  assert.equal(betA.max, 10, '빅스택은 상대 잔여 칩까지만');
+  assert.ok(!legalActions(turnA, A).some((a) => a.type === ACTION.ALL_IN), '빅스택 올인은 의미가 없어 제시되지 않는다');
+  assert.equal(applyAction(turnA, { type: ACTION.BET, playerId: A, amount: 11 }).error.code, 'OVER_EFFECTIVE_STACK');
+});
+
+test('동점인데 한쪽 칩이 0이면 이월 대신 반씩 나눈다 — 이월 팟이 증발하지 않는다', () => {
+  const s = play(unevenStacks(), [
+    { type: ACTION.ALL_IN, playerId: B },   // 10칩 올인
+    { type: ACTION.CALL, playerId: A },
+  ]);
+  const done = play(s, [
+    { type: ACTION.REVEAL, playerId: B, cardId: s.choice.cardIds[0] },
+    { type: ACTION.SELECT, playerId: A, cardId: s.choice.cardIds[0] },
+  ]);
+  // 2R 덱은 양쪽 최종 패가 [5,5,4,3,2] 로 완전히 같게 짜여 있다.
+  assert.equal(done.lastResult.reason, 'SHOWDOWN');
+  assert.equal(done.lastResult.winnerId, null, '완전 동점');
+  assert.equal(done.lastResult.pot, 22);
+  assert.equal(done.lastResult.carried, 0, '다음 라운드가 없는데 이월하면 팟이 사라진다');
+  assert.deepEqual(done.lastResult.split, { [A]: 11, [B]: 11 });
+  assert.equal(done.carryPot, 0);
+  assert.equal(done.phase, PHASE.SETTLEMENT, '나눠 가졌으니 둘 다 살아 있고 게임은 계속된다');
+  assert.equal(done.players[A].chips + done.players[B].chips, 40);
+  assert.equal(done.players[B].chips, 11);
+});
+
+test('동점이라도 양쪽이 살아 있으면 예전처럼 다음 라운드로 이월한다', () => {
+  const s = play(game([[5, 5, 4, 3, 3, 2, 2]]), [
+    { type: ACTION.START },
+    { type: ACTION.CHECK, playerId: A },
+    { type: ACTION.CHECK, playerId: B },
+  ]);
+  const done = play(s, [
+    { type: ACTION.REVEAL, playerId: A, cardId: s.choice.cardIds[0] },
+    { type: ACTION.SELECT, playerId: B, cardId: s.choice.cardIds[0] },
+    { type: ACTION.CHECK, playerId: A },
+    { type: ACTION.CHECK, playerId: B },
+  ]);
+  assert.equal(done.lastResult.winnerId, null);
+  assert.equal(done.lastResult.split, null);
+  assert.equal(done.carryPot, 2, '앤티 2칩이 다음 라운드로 이월된다');
+  const next = play(done, [{ type: ACTION.NEXT_ROUND, playerId: A }]);
+  assert.equal(next.pot, 4, '이월 2 + 앤티 2');
+});
+
 // ── 무작위 자가대국 — 칩 보존 불변식 ─────────────────────────────────────────
 
 /* 액션을 무작위로 고른다. 금액이 필요한 액션은 legalActions 가 준 min/max 안에서 뽑는다. */
@@ -477,6 +573,9 @@ test('무작위 자가대국 200판 — 칩 총량 40이 항상 보존되고 게
       assert.ok(++steps < 5000, `seed ${seed}: 게임이 끝나지 않는다`);
     }
     assert.ok(s.players[A].chips === 0 || s.players[B].chips === 0);
+    // 게임이 끝난 뒤 이월 팟이 남아 있으면 그 칩은 아무에게도 가지 않고 사라진다.
+    assert.equal(s.carryPot, 0, `seed ${seed}: 끝났는데 이월 팟 ${s.carryPot} 칩이 남았다`);
+    assert.equal(s.players[A].chips + s.players[B].chips, 40, `seed ${seed}: 끝난 뒤 칩 합계가 40 이 아니다`);
   }
 });
 
