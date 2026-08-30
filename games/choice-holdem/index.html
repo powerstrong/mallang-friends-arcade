@@ -50,7 +50,7 @@
 
     /* ── 테이블 ────────────────────────────────────────────── */
     .table{flex:1;display:flex;flex-direction:column;justify-content:center;gap:10px;padding:4px 12px 12px}
-    .seat{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:16px;
+    .seat{position:relative;display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:16px;
       background:rgba(255,255,255,.09);color:#eaf7f0}
     .seat.turn{background:rgba(255,233,168,.2);box-shadow:0 0 0 2px rgba(255,233,168,.55)}
     .seat .who{display:flex;flex-direction:column;gap:2px;min-width:0}
@@ -130,7 +130,39 @@
       display:flex;flex-direction:column;gap:12px;text-align:center}
     .sheet h2{margin:0;font-size:21px;letter-spacing:-.02em}
     .sheet .verdict{font-size:13px;color:var(--muted);font-weight:700;line-height:1.6}
-    .hand-row{display:flex;flex-direction:column;gap:6px;padding:10px;border-radius:14px;background:#eef6f0}
+    .hand-row{display:flex;flex-direction:column;gap:6px;padding:10px;border-radius:14px;background:#eef6f0;
+      transition:background .3s,box-shadow .3s}
+    .hand-row.winner{background:#fff6e0;box-shadow:0 0 0 2px var(--gold) inset}
+    .hand-row .card{animation:flipIn .42s cubic-bezier(.2,.7,.3,1) both}
+    @keyframes flipIn{from{transform:rotateY(90deg) scale(.9);opacity:0}to{transform:none;opacity:1}}
+    .pot-badge{align-self:center;padding:5px 14px;border-radius:999px;background:var(--gold);color:#4a3300;
+      font-size:14px;font-weight:900;animation:badgePop .5s cubic-bezier(.2,1.4,.4,1) both}
+    @keyframes badgePop{from{transform:scale(.4);opacity:0}to{transform:none;opacity:1}}
+
+    /* ── 연출 레이어 — 칩 이동·말풍선·Choice 전달 ───────────────────────── */
+    .fx-chip{position:fixed;z-index:15;pointer-events:none;padding:5px 11px;border-radius:999px;
+      background:var(--gold);color:#4a3300;font-size:13px;font-weight:900;white-space:nowrap;
+      box-shadow:0 6px 14px rgba(0,0,0,.35)}
+    .fx-chip.refund{background:#eaf7f0;color:var(--felt-dark)}
+    .fx-hand{position:fixed;z-index:15;pointer-events:none;display:flex;flex-direction:column;
+      align-items:center;gap:5px}
+    .fx-hand .tag{padding:2px 9px;border-radius:999px;background:rgba(0,0,0,.55);color:#fff;
+      font-size:11px;font-weight:900;white-space:nowrap}
+    .seat-bubble{position:absolute;right:12px;top:-9px;z-index:5;pointer-events:none;
+      padding:4px 11px;border-radius:999px;background:#fff;color:var(--felt-dark);
+      font-size:12px;font-weight:900;box-shadow:0 5px 12px rgba(0,0,0,.32);
+      animation:bubbleUp 1.6s ease forwards}
+    @keyframes bubbleUp{0%{opacity:0;transform:translateY(8px) scale(.9)}
+      14%{opacity:1;transform:translateY(0) scale(1)}68%{opacity:1;transform:translateY(0)}
+      100%{opacity:0;transform:translateY(-12px)}}
+    .pot.bump{animation:potBump .5s ease}
+    @keyframes potBump{0%,100%{transform:scale(1)}40%{transform:scale(1.16)}}
+
+    @media (prefers-reduced-motion: reduce){
+      .seat-bubble{animation:none}
+      .hand-row .card,.pot-badge{animation:none}
+      .pot.bump{animation:none}
+    }
     .hand-row .who{font-size:12px;font-weight:900;color:var(--muted)}
     .hand-row .cards{display:flex;gap:5px;justify-content:center}
     .hand-row .name{font-size:13.5px;font-weight:900;color:var(--felt-dark)}
@@ -281,6 +313,8 @@ let iAmReady = false;
 let retries = 0;
 let closedByUs = false;
 let bufferedEvents = [];   // 첫 state 보다 먼저 온 log — 좌석/이름을 안 뒤에 문장으로 만든다
+let fxQueue = [];          // 아직 연출하지 않은 엔진 이벤트
+let potShown = 0;          // 화면에 찍혀 있는 팟 값(카운트업 시작점)
 
 // ── 렌더 ────────────────────────────────────────────────────────────────────
 
@@ -386,12 +420,12 @@ function renderActions(view) {
 
   if (view.phase === PHASE.CHOICE_REVEAL) {
     if (view.isFirstPlayer) return renderReveal(view);
-    el('hint').textContent = `${opponentName()}이(가) 두 장을 확인하고 있어요…`;
+    el('hint').textContent = `${josa(opponentName(), '이', '가')} 두 장을 확인하고 있어요…`;
     return;
   }
   if (view.phase === PHASE.CHOICE_SELECT) {
     if (!view.isFirstPlayer) return renderSelect(view);
-    el('hint').textContent = `${opponentName()}이(가) 두 장 중 하나를 고르는 중…`;
+    el('hint').textContent = `${josa(opponentName(), '이', '가')} 두 장 중 하나를 고르는 중…`;
     return;
   }
 
@@ -435,7 +469,7 @@ function renderReveal(view) {
   el('choicePanel').hidden = false;
   el('choiceTitle').textContent = '두 장 중 한 장만 공개하세요';
   el('choiceDesc').textContent =
-    `나만 두 장을 다 봅니다. 공개한 카드와 뒷면 카드 중 하나를 ${opponentName()}이(가) 가져가고, 남은 한 장이 내 것이 됩니다.`;
+    `나만 두 장을 다 봅니다. 공개한 카드와 뒷면 카드 중 하나를 ${josa(opponentName(), '이', '가')} 가져가고, 남은 한 장이 내 것이 됩니다.`;
   const box = el('choiceCards');
   box.innerHTML = '';
   for (const card of view.choice.cards) {
@@ -460,7 +494,7 @@ function renderSelect(view) {
   el('choicePanel').hidden = false;
   el('choiceTitle').textContent = '어느 쪽을 가져갈까요?';
   el('choiceDesc').textContent =
-    `${opponentName()}은(는) 두 장을 모두 보고 한 장만 깠습니다. 내가 고르지 않은 카드는 ${opponentName()}이(가) 가져갑니다.`;
+    `${josa(opponentName(), '은', '는')} 두 장을 모두 보고 한 장만 깠습니다. 내가 고르지 않은 카드는 ${josa(opponentName(), '이', '가')} 가져갑니다.`;
   const box = el('choiceCards');
   box.innerHTML = '';
   for (const card of view.choice.cards) {
@@ -560,6 +594,7 @@ function whoIs(playerId) {
 /* 엔진 이벤트를 그대로 읽는다 — solo 는 로컬 엔진에서, online 은 서버가 보낸 같은 이벤트에서.
  * 이벤트에는 공개 정보만 담기므로 그대로 문장으로 만들어도 안전하다. */
 function pushLog(events) {
+  fxQueue.push(...events);   // 같은 이벤트로 로그와 연출을 함께 만든다
   for (const event of events) {
     const who = whoIs(event.playerId);
     switch (event.type) {
@@ -594,6 +629,7 @@ function closeOverlay() {
 
 function overlay(kind, build) {
   closeOverlay();
+  for (const node of document.querySelectorAll('.fx-hand, .fx-chip')) node.remove();
   const back = document.createElement('div');
   back.className = 'overlay';
   const sheet = document.createElement('div');
@@ -611,8 +647,18 @@ function overlay(kind, build) {
 function syncOverlays(view) {
   if (view.phase === PHASE.SETTLEMENT) {
     const kind = `settle:${view.round}`;
-    if (overlayKind !== kind) showSettlement(view, kind);
-    else updateSettlementWait();
+    if (overlayKind !== kind) {
+      // 팟이 승자에게 날아가는 것을 먼저 보여주고 결과판을 연다(동점이면 이월 표시).
+      overlayKind = kind;                       // 중복 예약 방지 — 오버레이는 잠시 뒤에 만든다
+      const delay = playPotPayout(view);
+      setTimeout(() => {
+        if (overlayKind !== kind || currentView.phase !== PHASE.SETTLEMENT) return;
+        overlayKind = null;
+        showSettlement(currentView, kind);
+      }, delay);
+    } else {
+      updateSettlementWait();
+    }
     return;
   }
   if (view.phase === PHASE.GAME_OVER) {
@@ -622,15 +668,70 @@ function syncOverlays(view) {
   if (overlayKind && overlayKind !== 'rules') closeOverlay();
 }
 
+/* 같은 족보끼리 비교할 때 tiebreak 각 자리가 무슨 숫자인지 — "왜 졌는지"를 말로 설명한다. */
+const TIEBREAK_LABELS = {
+  포카드: ['포카드 숫자', '남은 카드'],
+  풀하우스: ['트리플 숫자', '페어 숫자'],
+  트리플: ['트리플 숫자', '남은 카드', '남은 카드'],
+  투페어: ['높은 페어', '낮은 페어', '남은 카드'],
+  원페어: ['페어 숫자', '남은 카드', '남은 카드', '남은 카드'],
+};
+
+/* 받침 유무로 조사를 고른다 — "투페어이(가)" 같은 어색한 표기를 없앤다. */
+function josa(word, withFinal, withoutFinal) {
+  const last = String(word).charCodeAt(String(word).length - 1);
+  const hasFinal = last >= 0xac00 && last <= 0xd7a3 && (last - 0xac00) % 28 !== 0;
+  return word + (hasFinal ? withFinal : withoutFinal);
+}
+
+/* "누가 왜 이겼는지" 한 문장. 족보가 갈리면 족보로, 같으면 어느 숫자에서 갈렸는지. */
+function compareSentence(mine, theirs, winnerId, meId, oppLabel) {
+  if (winnerId == null) return '족보도 숫자도 완전히 같아요 — 팟은 다음 라운드로 넘어갑니다.';
+  const iWon = winnerId === meId;
+  const win = iWon ? mine : theirs;
+  const lose = iWon ? theirs : mine;
+  const winner = iWon ? '나' : oppLabel;
+  if (win.name !== lose.name) {
+    return `${winner} 승 — ${josa(win.name, '이', '가')} ${lose.name}보다 높아요.`;
+  }
+  const labels = TIEBREAK_LABELS[win.name] || [];
+  for (let i = 0; i < win.tiebreak.length; i++) {
+    if (win.tiebreak[i] !== lose.tiebreak[i]) {
+      const what = labels[i] || '남은 카드';
+      return `둘 다 ${win.name} — ${what}에서 갈렸어요 (${win.tiebreak[i]} vs ${lose.tiebreak[i]}). ${winner} 승.`;
+      // (같은 족보면 어느 자리에서 갈렸는지가 핵심이라 족보 이름에 조사를 붙이지 않는다)
+    }
+  }
+  return `${winner} 승.`;
+}
+
+/* 라운드가 끝나면 팟이 승자 자리로 날아간다(동점이면 팟 자리에서 '이월'로 튕긴다).
+ * 결과판을 열기까지 기다릴 시간(ms)을 돌려준다. */
+function playPotPayout(view) {
+  const result = view.lastResult;
+  if (!result || reduceMotion()) return 0;
+  const potEl = el('potValue').parentElement;
+  if (result.winnerId == null) {
+    flyChip(potEl, potEl, `${result.pot}칩 이월`, 'refund');
+    return 780;
+  }
+  flyChip(potEl, seatElFor(result.winnerId, view), `+${result.pot}칩`);
+  return 780;
+}
+
 function handRow(label, cards, handName, isWinner) {
   const box = document.createElement('div');
-  box.className = 'hand-row';
+  box.className = 'hand-row' + (isWinner ? ' winner' : '');
   const who = document.createElement('div');
   who.className = 'who';
   who.textContent = label;
   const row = document.createElement('div');
   row.className = 'cards';
-  for (const card of cards) row.appendChild(cardEl(card, { small: true, highlight: isWinner }));
+  cards.forEach((card, i) => {
+    const node = cardEl(card, { small: true, highlight: isWinner });
+    node.style.animationDelay = `${i * 90}ms`;   // 한 장씩 뒤집히며 공개
+    row.appendChild(node);
+  });
   const name = document.createElement('div');
   name.className = 'name';
   name.textContent = handName;
@@ -651,20 +752,55 @@ function showSettlement(view, kind) {
     if (result.reason === 'FOLD') {
       const iWon = result.winnerId === meId;
       title.textContent = iWon ? `${opponentName()} 폴드!` : '폴드했어요';  // 라운드 종료
-      verdict.textContent = `${iWon ? '내가' : opponentName() + '이(가)'} 팟 ${result.pot}칩을 가져갑니다.`;
+      verdict.textContent = `${iWon ? '내가' : josa(opponentName(), '이', '가')} 팟 ${result.pot}칩을 가져갑니다. `
+        + '폴드로 끝난 라운드는 카드를 공개하지 않아요.';
       sheet.append(title, verdict);
+      const badge = document.createElement('div');
+      badge.className = 'pot-badge';
+      badge.textContent = `${iWon ? '나' : opponentName()} +${result.pot}칩`;
+      sheet.appendChild(badge);
     } else {
       const tie = result.winnerId == null;
       // 라운드 결과와 게임 종료를 문구로 확실히 구분한다("앨리스 승리"는 판이 끝난 것처럼 읽힌다).
       title.textContent = tie ? '완전 동점!'
         : result.winnerId === meId ? '이번 라운드 내가 이겼어요 🎉'
         : `이번 라운드는 ${opponentName()}`;
-      verdict.textContent = tie
-        ? `팟 ${result.pot}칩은 나누지 않고 다음 라운드로 이월됩니다.`
-        : `팟 ${result.pot}칩 획득.`;
+      verdict.textContent = '패를 맞춰봅니다…';
       sheet.append(title, verdict);
-      sheet.appendChild(handRow('나', view.community.concat(view.you.hole), result.hands[meId].name, result.winnerId === meId));
-      sheet.appendChild(handRow(opponentName(), view.community.concat(view.opponent.hole), result.hands[oppId].name, result.winnerId === oppId));
+
+      // 내 패 → 상대 패 순으로 한 장씩 공개하고, 다 뒤집힌 뒤에 승자를 밝힌다.
+      // (하이라이트를 처음부터 칠하면 결과가 먼저 새어 공개가 심심해진다.)
+      const rowDelay = reduceMotion() ? 0 : 520;
+      const myRow = handRow('나', view.community.concat(view.you.hole), result.hands[meId].name, false, 0);
+      const oppRow = handRow(opponentName(), view.community.concat(view.opponent.hole), result.hands[oppId].name, false, rowDelay);
+      sheet.append(myRow, oppRow);
+
+      // 왜 이겼는지 — 족보가 같을 때 어느 숫자에서 갈렸는지까지 말로 설명한다.
+      const why = document.createElement('div');
+      why.className = 'verdict';
+      why.textContent = compareSentence(result.hands[meId], result.hands[oppId], result.winnerId, meId, opponentName());
+      why.hidden = true;
+      sheet.appendChild(why);
+
+      const badge = document.createElement('div');
+      badge.className = 'pot-badge';
+      badge.hidden = true;
+      if (result.winnerId) {
+        badge.textContent = `${result.winnerId === meId ? '나' : opponentName()} +${result.pot}칩`;
+        sheet.appendChild(badge);
+      }
+
+      const revealAt = reduceMotion() ? 0 : rowDelay + 5 * 90 + 140;
+      setTimeout(() => {
+        if (!why.isConnected) return;          // 그새 다음 라운드로 넘어갔으면 중단
+        if (result.winnerId === meId) myRow.classList.add('winner');
+        else if (result.winnerId === oppId) oppRow.classList.add('winner');
+        // 승패가 갈린 뒤에는 이유 문장과 팟 뱃지가 결과를 말한다 — 중복 문구는 지운다.
+        verdict.textContent = tie ? `팟 ${result.pot}칩은 나누지 않고 다음 라운드로 이월됩니다.` : '';
+        verdict.hidden = !tie;
+        why.hidden = false;
+        if (result.winnerId) badge.hidden = false;
+      }, revealAt);
     }
 
     const next = document.createElement('button');
@@ -717,6 +853,20 @@ function showGameOver(view) {
     const verdict = document.createElement('div');
     verdict.className = 'verdict';
     verdict.textContent = `${view.round}라운드에서 결착. 최종 칩 ${view.you.chips} : ${view.opponent.chips}`;
+    sheet.append(title, verdict);
+
+    // 마지막 판이 쇼다운이었으면 그 패를 보여준다 — 안 그러면 어떻게 끝났는지 못 본 채 종료된다.
+    const last = view.lastResult;
+    if (last && last.reason === 'SHOWDOWN' && last.hands) {
+      const oppId = view.opponent.id;
+      sheet.appendChild(handRow('나', view.community.concat(view.you.hole), last.hands[meId].name, last.winnerId === meId));
+      sheet.appendChild(handRow(opponentName(), view.community.concat(view.opponent.hole), last.hands[oppId].name, last.winnerId === oppId));
+      const why = document.createElement('div');
+      why.className = 'verdict';
+      why.textContent = '마지막 판 — ' + compareSentence(last.hands[meId], last.hands[oppId], last.winnerId, meId, opponentName());
+      sheet.appendChild(why);
+    }
+
     const again = document.createElement('button');
     again.className = 'button go';
     again.textContent = '한 판 더';
@@ -734,7 +884,7 @@ function showGameOver(view) {
     exit.className = 'button ghost';
     exit.textContent = '나가기';
     exit.addEventListener('click', () => window.GameBoot && window.GameBoot.exit());
-    sheet.append(title, verdict, again, exit);
+    sheet.append(again, exit);
     setTimeout(() => again.focus(), 0);
   });
 }
@@ -782,9 +932,165 @@ function showRules() {
 // ── 뷰 갱신 ─────────────────────────────────────────────────────────────────
 
 function applyView(view) {
+  const prev = currentView;
   currentView = view;
   render();
-  syncOverlays(view);
+  playFx(prev, view);      // 이번 액션의 칩·말풍선이 먼저
+  syncOverlays(view);      // 그 다음 정산/종료 연출
+}
+
+// ── 연출 ────────────────────────────────────────────────────────────────────
+// 상태가 툭 바뀌기만 하면 "무슨 일이 일어났는지"가 안 보인다. 엔진 이벤트를 그대로
+// 읽어 (1) 누가 얼마를 냈는지 (2) Choice 카드가 누구에게 갔는지 (3) 누가 왜 이겼는지를
+// 눈에 보이게 만든다. 전부 표현 계층 — 판정은 건드리지 않는다.
+
+const reduceMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+function centerOf(node) {
+  const r = node.getBoundingClientRect();
+  return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+}
+
+function seatElFor(playerId, view) {
+  return playerId === view.you.id ? el('seatMe') : el('seatBot');
+}
+
+/* 좌석 위에 뜨는 액션 말풍선 — "레이즈 7" 처럼 무엇을 했는지 한 줄. */
+function seatBubble(seatEl, text) {
+  const node = document.createElement('span');
+  node.className = 'seat-bubble';
+  node.textContent = text;
+  seatEl.appendChild(node);
+  setTimeout(() => node.remove(), 1700);
+}
+
+/* 칩이 좌석 → 팟(또는 그 반대)으로 날아간다. 금액이 눈으로 따라가진다. */
+function flyChip(fromEl, toEl, label, kind) {
+  const node = document.createElement('div');
+  node.className = 'fx-chip' + (kind ? ' ' + kind : '');
+  node.textContent = label;
+  document.body.appendChild(node);
+  const from = centerOf(fromEl);
+  const to = centerOf(toEl);
+  const box = node.getBoundingClientRect();
+  node.style.left = `${from.x - box.width / 2}px`;
+  node.style.top = `${from.y - box.height / 2}px`;
+  if (reduceMotion()) { setTimeout(() => node.remove(), 500); return; }
+  node.animate([
+    { transform: 'translate(0,0) scale(.7)', opacity: 0 },
+    { transform: 'translate(0,0) scale(1)', opacity: 1, offset: 0.18 },
+    { transform: `translate(${to.x - from.x}px, ${to.y - from.y}px) scale(.85)`, opacity: 0 },
+  ], { duration: 720, easing: 'cubic-bezier(.25,.8,.35,1)' })
+    .finished.then(() => node.remove()).catch(() => node.remove());
+}
+
+/* 팟 숫자 카운트업 + 튕김. 얼마가 쌓였는지 체감되게. */
+function animatePot(to) {
+  const value = el('potValue');
+  const pot = value.parentElement;
+  const from = potShown;
+  potShown = to;
+  pot.classList.remove('bump');
+  void pot.offsetWidth;
+  pot.classList.add('bump');
+  if (reduceMotion() || from === to) { value.textContent = String(to); return; }
+  const started = performance.now();
+  const step = (now) => {
+    const k = Math.min(1, (now - started) / 420);
+    value.textContent = String(Math.round(from + (to - from) * k));
+    if (k < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
+/* Choice 결과 — 두 장이 각자의 자리로 날아간다. 상대가 가져간 카드가 내가 볼 수 없는
+ * 카드면 뒷면 그대로 날아간다(뷰가 이미 가려 놨으므로 여기서 새는 일은 없다). */
+function playChoiceHandoff(view) {
+  const mine = view.you.hole[1];
+  const theirs = view.opponent.hole[1];
+  if (!mine || !theirs) return;
+  // 공용 카드 줄 위에서 출발하면 카드가 겹쳐 헷갈린다 — 팟(테이블 한가운데)에서 내보낸다.
+  const origin = centerOf(el('potValue').parentElement);
+  const targets = [
+    { card: theirs, seat: el('seatBot'), tag: `${opponentName()} 가져감`, dir: -1 },
+    { card: mine, seat: el('seatMe'), tag: '내가 가져감', dir: 1 },
+  ];
+  for (const { card, seat, tag, dir } of targets) {
+    const wrap = document.createElement('div');
+    wrap.className = 'fx-hand';
+    wrap.appendChild(cardEl(card));
+    const label = document.createElement('span');
+    label.className = 'tag';
+    label.textContent = tag;
+    wrap.appendChild(label);
+    document.body.appendChild(wrap);
+    const box = wrap.getBoundingClientRect();
+    wrap.style.left = `${origin.x - box.width / 2 + dir * 62}px`;
+    wrap.style.top = `${origin.y - box.height / 2}px`;
+    if (reduceMotion()) { setTimeout(() => wrap.remove(), 700); continue; }
+    const to = centerOf(seat);
+    wrap.animate([
+      { transform: 'translate(0,0) scale(.6)', opacity: 0 },
+      { transform: 'translate(0,0) scale(1)', opacity: 1, offset: 0.25 },
+      { transform: 'translate(0,0) scale(1)', opacity: 1, offset: 0.6 },
+      { transform: `translate(${to.x - origin.x - dir * 62}px, ${to.y - origin.y}px) scale(.5)`, opacity: 0 },
+    ], { duration: 1150, easing: 'cubic-bezier(.3,.7,.3,1)' })
+      .finished.then(() => wrap.remove()).catch(() => wrap.remove());
+  }
+}
+
+/* 쌓인 엔진 이벤트를 화면 움직임으로 바꾼다. prev 는 금액 차이를 계산하는 데만 쓴다. */
+function playFx(prev, view) {
+  const events = fxQueue.splice(0);
+  if (!view) return;
+  // 첫 뷰(새 판·재접속)는 이미 쌓여 있는 팟이라 0부터 세면 방금 딴 것처럼 보인다 — 그냥 맞춘다.
+  if (!prev) { potShown = view.pot; el('potValue').textContent = String(view.pot); }
+  let choiceDone = false;
+
+  for (const event of events) {
+    switch (event.type) {
+      case 'BASE_BET': {
+        for (const [playerId, amount] of Object.entries(event.paid || {})) {
+          if (amount > 0) flyChip(seatElFor(playerId, view), el('potValue').parentElement, `+${amount}`);
+        }
+        break;
+      }
+      case 'BET':
+      case 'CALL':
+      case 'ALL_IN':
+      case 'RAISE': {
+        const seat = seatElFor(event.playerId, view);
+        // RAISE 의 amount 는 그 단계 총액이라 실제로 낸 금액은 이전 베팅액을 빼야 한다.
+        const before = prev && prev.street ? (prev.street.bets[event.playerId] || 0) : 0;
+        const paid = event.type === 'RAISE' ? Math.max(0, event.amount - before) : event.amount;
+        const label = {
+          BET: `베팅 ${event.amount}`,
+          CALL: `콜 ${event.amount}`,
+          RAISE: `레이즈 ${event.amount}`,
+          ALL_IN: `올인 ${event.amount}`,
+        }[event.type];
+        seatBubble(seat, label);
+        if (paid > 0) flyChip(seat, el('potValue').parentElement, `+${paid}`);
+        break;
+      }
+      case 'CHECK': seatBubble(seatElFor(event.playerId, view), '패스'); break;
+      case 'FOLD': seatBubble(seatElFor(event.playerId, view), '폴드'); break;
+      case 'UNCALLED_RETURNED':
+        flyChip(el('potValue').parentElement, seatElFor(event.playerId, view), `-${event.amount} 반환`, 'refund');
+        break;
+      case 'CHOICE_REVEALED':
+        seatBubble(seatElFor(view.firstPlayerId, view), `${event.rank} 공개`);
+        break;
+      case 'CHOICE_SELECTED':
+        choiceDone = true;
+        break;
+      default:
+        break;
+    }
+  }
+
+  if (choiceDone) playChoiceHandoff(view);
+  if (prev) animatePot(view.pot);
 }
 
 // ── solo ────────────────────────────────────────────────────────────────────
