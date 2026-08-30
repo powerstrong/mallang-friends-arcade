@@ -36,6 +36,8 @@
     .rules{margin:8px 0 0;padding:16px;border-radius:18px;background:rgba(255,255,255,.1);
       text-align:left;font-size:13.5px;line-height:1.7;color:#e6f6ee}
     .rules b{color:#ffe9a8}
+    .rules.on-sheet{background:#eef6f0;color:var(--ink)}
+    .rules.on-sheet b{color:var(--felt-dark)}
     .rules ol{margin:8px 0 0;padding-left:20px}
 
     /* ── 상단 바 ───────────────────────────────────────────── */
@@ -54,6 +56,8 @@
     .seat .who{display:flex;flex-direction:column;gap:2px;min-width:0}
     .seat .nm{font-size:13.5px;font-weight:900;display:flex;align-items:center;gap:5px}
     .seat .st{font-size:11.5px;color:#b9e0cd;font-weight:700}
+    .seat .st #myHand:not(:empty){margin-left:6px;padding:1px 7px;border-radius:999px;
+      background:rgba(255,233,168,.22);color:#ffe9a8;font-weight:900}
     .seat .cards{margin-left:auto;display:flex;gap:5px}
     .badge{padding:1px 7px;border-radius:999px;font-size:10.5px;font-weight:900;background:var(--gold);color:#4a3300}
     .badge.second{background:rgba(255,255,255,.28);color:#eaf7f0}
@@ -136,7 +140,7 @@
   <section class="screen intro active" id="screenIntro">
     <h1>초이스 홀덤</h1>
     <p class="sub">공용 3장 + 개인 2장 = 정확히 5장</p>
-    <div class="rules">
+    <div class="rules" id="rulesBlock">
       <b>Choice 가 이 게임의 전부입니다.</b>
       <ol>
         <li>Choice 카드 2장이 나옵니다. <b>선플레이어만 두 장을 다 봅니다.</b></li>
@@ -158,6 +162,7 @@
       <span class="chip-pill" id="pillRound">1라운드</span>
       <span class="chip-pill" id="pillBase">기본 1칩</span>
       <span class="spacer"></span>
+      <button class="icon-button" id="btnRules" aria-label="규칙 보기">?</button>
       <button class="icon-button" id="btnExit" aria-label="나가기">✕</button>
     </div>
 
@@ -179,7 +184,7 @@
       <div class="seat" id="seatMe">
         <span class="who">
           <span class="nm">🙂 나 <span class="badge second" id="myRole">후</span></span>
-          <span class="st" id="myChips">20칩</span>
+          <span class="st"><span id="myChips">20칩</span><span id="myHand"></span></span>
         </span>
         <span class="cards" id="myCards"></span>
       </div>
@@ -222,7 +227,7 @@
 <script src="/shared/bootstrap.js"></script>
 <script type="module">
 import {
-  PHASE, ACTION, createGame, applyAction, viewFor,
+  PHASE, ACTION, createGame, applyAction, viewFor, evaluateHand,
 } from './engine/choice-holdem.js';
 import { decide } from './engine/bot.js';
 
@@ -279,6 +284,10 @@ function render() {
   el('myRole').className = 'badge' + (iAmFirst ? '' : ' second');
   el('botRole').textContent = iAmFirst ? '후' : '선';
   el('botRole').className = 'badge' + (iAmFirst ? ' second' : '');
+
+  // 최종 5장이 확정된 뒤에만 족보를 띄운다(그 전에는 4장이라 판정 자체가 불가능하다).
+  const myFive = view.community.concat(view.you.hole);
+  el('myHand').textContent = myFive.length === 5 ? evaluateHand(myFive).name : '';
 
   fillCards(el('communityCards'), view.community);
   fillCards(el('myCards'), view.you.hole, { small: true });
@@ -615,6 +624,27 @@ function startGame() {
   submit({ type: ACTION.START, playerId: ME });
 }
 
+function showRules() {
+  overlay((sheet, close) => {
+    const title = document.createElement('h2');
+    title.textContent = '초이스 홀덤 규칙';
+    const body = el('rulesBlock').cloneNode(true);
+    body.removeAttribute('id');
+    body.classList.add('on-sheet');
+    const extra = document.createElement('div');
+    extra.className = 'verdict';
+    extra.textContent = '족보: 포카드 > 풀하우스 > 스트레이트(1·2·3·4·5) > 트리플 > 투페어 > 원페어. '
+      + '레이즈는 한 베팅마다 1번까지. 완전 동점이면 팟은 다음 라운드로 이월됩니다.';
+    const ok = document.createElement('button');
+    ok.className = 'button go';
+    ok.textContent = '닫기';
+    ok.addEventListener('click', close);
+    sheet.append(title, body, extra, ok);
+    setTimeout(() => ok.focus(), 0);
+  });
+}
+
+el('btnRules').addEventListener('click', showRules);
 el('btnStart').addEventListener('click', startGame);
 el('btnExit').addEventListener('click', () => window.GameBoot && window.GameBoot.exit());
 el('btnIntroExit').addEventListener('click', () => window.GameBoot && window.GameBoot.exit());
