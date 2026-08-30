@@ -1,7 +1,18 @@
 # 초이스 홀덤(Choice Hold'em) 규칙 · 엔진 명세
 
-2인용 포커. 구현체는 `worker/src/games/choice_holdem_engine.js`(순수 함수),
-테스트는 `worker/tests/choice-holdem-engine.test.mjs`.
+2인용 포커.
+
+| 파일 | 역할 |
+|------|------|
+| `games/choice-holdem/engine/choice-holdem.js` | 규칙 엔진 (순수 함수 · 브라우저와 서버가 같은 파일을 쓴다) |
+| `games/choice-holdem/engine/bot.js` | 실험실 솔로용 상대 봇 (가려진 뷰만 보고 판단) |
+| `games/choice-holdem/index.html` | 실험실 클라이언트 (말랑봇 1:1) |
+| `worker/tests/choice-holdem-engine.test.mjs` | 규칙 테스트 (CI 게이트) |
+| `worker/tests/choice-holdem-bot.test.mjs` | 봇 테스트 (CI 게이트) |
+
+지금은 **광장 실험실(🧪) 카드 → 솔로(말랑봇 대전)** 로만 접근한다
+(`registry.js` 의 `stage:'LAB'`, `status:'DRAFT'`). 사람 대 사람은 아래 5번 이유로
+서버 권위형 모듈로 올린 뒤에만 가능하다 — 실험실 솔로 빌드는 state 가 브라우저에 있다.
 
 ---
 
@@ -113,7 +124,7 @@ REVEAL 은 선플레이어만 · SELECT 는 후플레이어만 · 카드 id 가 
 
 ```js
 import { createGame, applyAction, viewFor, legalActions, ACTION, PHASE }
-  from '../src/games/choice_holdem_engine.js';
+  from './engine/choice-holdem.js';
 
 let state = createGame({ players: [{ id: 'a', name: '앨리스' }, { id: 'b', name: '밥' }], seed });
 

@@ -1,0 +1,623 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1f6b52">
+  <meta name="description" content="선플레이어는 두 장을 다 보고 한 장만 공개한다 — 후플레이어는 확실한 카드와 미지의 카드 중 하나를 고른다">
+  <title>초이스 홀덤</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext y='26' font-size='26'%3E%F0%9F%83%8F%3C/text%3E%3C/svg%3E">
+  <style>
+    :root{
+      --ink:#20302a; --muted:#5f7168; --paper:#fbfdf9; --line:#cfe0d5;
+      --felt:#1f6b52; --felt-dark:#134c39; --gold:#e0a83a; --coral:#e96d7e;
+      --violet:#7766d8; --shadow:0 12px 32px rgba(15,52,38,.22);
+      --card-w:clamp(48px,15vw,64px);
+    }
+    *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+    html{min-height:100%;background:#0f3426}
+    body{min-height:100%;margin:0;color:var(--ink);overscroll-behavior:none;
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans KR",sans-serif;
+      background:radial-gradient(circle at 50% 0%,#2b8064 0 30%,#123f2e 70%,#0f3426 100%)}
+    button{font:inherit}
+    button,[role=button]{touch-action:manipulation;cursor:pointer}
+    button:focus-visible{outline:3px solid #ffe9a8;outline-offset:2px}
+    [hidden]{display:none!important}
+
+    .app{width:min(100%,520px);min-height:100dvh;margin:0 auto;display:flex;flex-direction:column;
+      background:linear-gradient(180deg,rgba(255,255,255,.06),transparent 30%)}
+    .screen{display:none;flex:1;flex-direction:column}
+    .screen.active{display:flex}
+
+    /* ── 시작 화면 ─────────────────────────────────────────── */
+    .intro{padding:26px 20px 32px;gap:16px;color:#f3fbf6;text-align:center;justify-content:center}
+    .intro h1{margin:0;font-size:clamp(28px,8vw,38px);letter-spacing:-.02em;text-shadow:0 3px 0 rgba(0,0,0,.25)}
+    .intro .sub{margin:0;color:#bfe6d3;font-size:14px;font-weight:700}
+    .rules{margin:8px 0 0;padding:16px;border-radius:18px;background:rgba(255,255,255,.1);
+      text-align:left;font-size:13.5px;line-height:1.7;color:#e6f6ee}
+    .rules b{color:#ffe9a8}
+    .rules ol{margin:8px 0 0;padding-left:20px}
+
+    /* ── 상단 바 ───────────────────────────────────────────── */
+    .topbar{display:flex;align-items:center;gap:8px;padding:10px 12px;color:#e8f6ef}
+    .chip-pill{display:inline-flex;align-items:center;gap:5px;min-height:30px;padding:4px 10px;border-radius:999px;
+      background:rgba(0,0,0,.24);font-size:12px;font-weight:800;white-space:nowrap}
+    .topbar .spacer{flex:1}
+    .icon-button{display:inline-grid;place-items:center;width:38px;height:38px;border:0;border-radius:12px;
+      background:rgba(0,0,0,.24);color:#e8f6ef;font-size:17px}
+
+    /* ── 테이블 ────────────────────────────────────────────── */
+    .table{flex:1;display:flex;flex-direction:column;justify-content:center;gap:10px;padding:4px 12px 12px}
+    .seat{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:16px;
+      background:rgba(255,255,255,.09);color:#eaf7f0}
+    .seat.turn{background:rgba(255,233,168,.2);box-shadow:0 0 0 2px rgba(255,233,168,.55)}
+    .seat .who{display:flex;flex-direction:column;gap:2px;min-width:0}
+    .seat .nm{font-size:13.5px;font-weight:900;display:flex;align-items:center;gap:5px}
+    .seat .st{font-size:11.5px;color:#b9e0cd;font-weight:700}
+    .seat .cards{margin-left:auto;display:flex;gap:5px}
+    .badge{padding:1px 7px;border-radius:999px;font-size:10.5px;font-weight:900;background:var(--gold);color:#4a3300}
+    .badge.second{background:rgba(255,255,255,.28);color:#eaf7f0}
+
+    .pot{align-self:center;display:flex;flex-direction:column;align-items:center;gap:2px;
+      padding:7px 18px;border-radius:16px;background:rgba(0,0,0,.28);color:#ffe9a8}
+    .pot b{font-size:20px;letter-spacing:-.02em}
+    .pot span{font-size:11px;color:#cfe8dc;font-weight:700}
+
+    .board{display:flex;flex-direction:column;align-items:center;gap:7px;padding:12px 0}
+    .board .label{font-size:11.5px;font-weight:800;color:#b9e0cd;letter-spacing:.04em}
+    .row{display:flex;gap:7px;justify-content:center}
+
+    /* ── 카드 ──────────────────────────────────────────────── */
+    .card{position:relative;width:var(--card-w);aspect-ratio:5/7;border-radius:10px;background:var(--paper);
+      border:1px solid var(--line);box-shadow:0 4px 10px rgba(0,0,0,.28);display:grid;place-items:center;
+      font-weight:900;color:var(--ink);font-size:calc(var(--card-w)*.62);line-height:1}
+    .card.small{--card-w:clamp(38px,11vw,48px)}
+    .card.back{background:repeating-linear-gradient(45deg,#3f4f9c 0 6px,#5566c2 6px 12px);
+      border-color:#2c3877;color:#dfe4ff;font-size:calc(var(--card-w)*.42)}
+    .card .corner{position:absolute;top:4px;left:5px;font-size:calc(var(--card-w)*.22);opacity:.55}
+    .card.win{box-shadow:0 0 0 3px var(--gold),0 6px 14px rgba(0,0,0,.3)}
+
+    /* ── 액션 영역 ─────────────────────────────────────────── */
+    .actions{padding:10px 12px calc(12px + env(safe-area-inset-bottom));background:rgba(0,0,0,.2);
+      display:flex;flex-direction:column;gap:9px}
+    .hint{font-size:12.5px;font-weight:700;color:#d9efe4;text-align:center;min-height:18px}
+    .btn-row{display:flex;gap:8px;flex-wrap:wrap}
+    .button{flex:1;min-width:82px;min-height:48px;padding:10px 12px;border:0;border-radius:14px;color:#fff;
+      background:var(--felt);box-shadow:0 4px 0 var(--felt-dark);font-weight:900;letter-spacing:-.01em}
+    .button:active{transform:translateY(2px);box-shadow:0 2px 0 var(--felt-dark)}
+    .button:disabled{opacity:.45;box-shadow:none}
+    .button.go{background:var(--gold);color:#4a3300;box-shadow:0 4px 0 #a97c17}
+    .button.danger{background:var(--coral);box-shadow:0 4px 0 #ab4a5b}
+    .button.ghost{background:rgba(255,255,255,.14);box-shadow:0 4px 0 rgba(0,0,0,.2)}
+    .bet-panel{display:flex;flex-direction:column;gap:8px;padding:10px;border-radius:14px;background:rgba(255,255,255,.1)}
+    .bet-head{display:flex;align-items:center;justify-content:space-between;color:#eaf7f0;font-size:13px;font-weight:800}
+    .bet-head output{font-size:19px;color:#ffe9a8}
+    input[type=range]{width:100%;accent-color:var(--gold);height:34px}
+    .quick{display:flex;gap:6px}
+    .quick button{flex:1;min-height:36px;border:0;border-radius:10px;background:rgba(255,255,255,.16);
+      color:#eaf7f0;font-size:12px;font-weight:800}
+
+    /* ── Choice 패널 ───────────────────────────────────────── */
+    .choice{display:flex;flex-direction:column;gap:10px;padding:12px;border-radius:18px;
+      background:linear-gradient(180deg,rgba(255,233,168,.22),rgba(255,255,255,.08));
+      box-shadow:0 0 0 2px rgba(255,233,168,.4)}
+    .choice h2{margin:0;font-size:15px;text-align:center;color:#fff6da;letter-spacing:-.01em}
+    .choice p{margin:0;text-align:center;font-size:12px;color:#dceee4;line-height:1.5}
+    .choice-cards{display:flex;gap:12px;justify-content:center}
+    .choice-pick{display:flex;flex-direction:column;align-items:center;gap:7px;padding:10px 8px;border:0;
+      border-radius:16px;background:rgba(255,255,255,.14);color:#fff;font-weight:900;font-size:12.5px;flex:1}
+    .choice-pick .card{--card-w:clamp(62px,20vw,84px)}
+    .choice-pick:active{transform:translateY(2px)}
+    .choice-pick .tag{font-size:11px;font-weight:800;color:#ffe9a8}
+
+    /* ── 로그 ──────────────────────────────────────────────── */
+    .log{margin:0;padding:8px 12px;list-style:none;display:flex;flex-direction:column;gap:3px;
+      font-size:11.5px;color:#bfe0cf;min-height:38px}
+    .log li{opacity:.9}
+    .log li:last-child{color:#fff;font-weight:800;opacity:1}
+
+    /* ── 오버레이 ──────────────────────────────────────────── */
+    .overlay{position:fixed;inset:0;display:grid;place-items:center;padding:20px;
+      background:rgba(8,26,19,.72);backdrop-filter:blur(3px);z-index:20}
+    .sheet{width:min(100%,400px);padding:20px;border-radius:22px;background:var(--paper);box-shadow:var(--shadow);
+      display:flex;flex-direction:column;gap:12px;text-align:center}
+    .sheet h2{margin:0;font-size:21px;letter-spacing:-.02em}
+    .sheet .verdict{font-size:13px;color:var(--muted);font-weight:700;line-height:1.6}
+    .hand-row{display:flex;flex-direction:column;gap:6px;padding:10px;border-radius:14px;background:#eef6f0}
+    .hand-row .who{font-size:12px;font-weight:900;color:var(--muted)}
+    .hand-row .cards{display:flex;gap:5px;justify-content:center}
+    .hand-row .name{font-size:13.5px;font-weight:900;color:var(--felt-dark)}
+    .sheet .button{color:#fff}
+  </style>
+</head>
+<body>
+<div class="app">
+  <!-- 시작 화면 -->
+  <section class="screen intro active" id="screenIntro">
+    <h1>초이스 홀덤</h1>
+    <p class="sub">공용 3장 + 개인 2장 = 정확히 5장</p>
+    <div class="rules">
+      <b>Choice 가 이 게임의 전부입니다.</b>
+      <ol>
+        <li>Choice 카드 2장이 나옵니다. <b>선플레이어만 두 장을 다 봅니다.</b></li>
+        <li>선플레이어가 <b>한 장만 앞면으로 공개</b>합니다.</li>
+        <li>후플레이어가 <b>공개된 카드</b>와 <b>숫자를 모르는 카드</b> 중 하나를 고릅니다.</li>
+        <li>고르지 않은 나머지 한 장은 선플레이어가 갖습니다.</li>
+      </ol>
+      <div style="margin-top:10px">카드는 1~5 각 4장(문양 없음), 시작 칩 20개. 상대 칩을 모두 가져오면 승리합니다.</div>
+    </div>
+    <div class="btn-row">
+      <button class="button go" id="btnStart">게임 시작</button>
+      <button class="button ghost" id="btnIntroExit">나가기</button>
+    </div>
+  </section>
+
+  <!-- 게임 화면 -->
+  <section class="screen" id="screenGame">
+    <div class="topbar">
+      <span class="chip-pill" id="pillRound">1라운드</span>
+      <span class="chip-pill" id="pillBase">기본 1칩</span>
+      <span class="spacer"></span>
+      <button class="icon-button" id="btnExit" aria-label="나가기">✕</button>
+    </div>
+
+    <div class="table">
+      <div class="seat" id="seatBot">
+        <span class="who">
+          <span class="nm">🤖 말랑봇 <span class="badge" id="botRole">선</span></span>
+          <span class="st" id="botChips">20칩</span>
+        </span>
+        <span class="cards" id="botCards"></span>
+      </div>
+
+      <div class="board">
+        <div class="pot"><b id="potValue">0</b><span>팟 (칩)</span></div>
+        <div class="label">공용 카드</div>
+        <div class="row" id="communityCards"></div>
+      </div>
+
+      <div class="seat" id="seatMe">
+        <span class="who">
+          <span class="nm">🙂 나 <span class="badge second" id="myRole">후</span></span>
+          <span class="st" id="myChips">20칩</span>
+        </span>
+        <span class="cards" id="myCards"></span>
+      </div>
+    </div>
+
+    <ul class="log" id="log"></ul>
+
+    <div class="actions">
+      <div class="hint" id="hint"></div>
+
+      <!-- Choice 패널 -->
+      <div class="choice" id="choicePanel" hidden>
+        <h2 id="choiceTitle"></h2>
+        <p id="choiceDesc"></p>
+        <div class="choice-cards" id="choiceCards"></div>
+      </div>
+
+      <!-- 베팅 -->
+      <div class="bet-panel" id="betPanel" hidden>
+        <div class="bet-head"><span id="betLabel">베팅</span><output id="betValue">1</output></div>
+        <input type="range" id="betRange" min="1" max="1" value="1" step="1" aria-label="베팅 금액">
+        <div class="quick">
+          <button type="button" data-quick="min">최소</button>
+          <button type="button" data-quick="half">½ 팟</button>
+          <button type="button" data-quick="pot">팟</button>
+          <button type="button" data-quick="max">올인</button>
+        </div>
+        <div class="btn-row">
+          <button class="button go" id="btnBetConfirm">확인</button>
+          <button class="button ghost" id="btnBetCancel">취소</button>
+        </div>
+      </div>
+
+      <div class="btn-row" id="actionRow"></div>
+    </div>
+  </section>
+</div>
+
+<script src="/games/registry.js"></script>
+<script src="/shared/bootstrap.js"></script>
+<script type="module">
+import {
+  PHASE, ACTION, createGame, applyAction, viewFor,
+} from './engine/choice-holdem.js';
+import { decide } from './engine/bot.js';
+
+const ME = 'me';
+const BOT = 'bot';
+const BOT_DELAY = 780;
+
+const el = (id) => document.getElementById(id);
+const screens = { intro: el('screenIntro'), game: el('screenGame') };
+
+let state = null;
+let logLines = [];
+let pendingBet = null;   // { type, min, max } — 금액 입력 중인 액션
+let botTimer = null;
+let busy = false;        // 액션 처리 중 — 연타로 같은 버튼이 두 번 먹는 것을 막는다
+
+// ── 렌더 ────────────────────────────────────────────────────────────────────
+// 화면은 오직 viewFor(state, ME) 만 본다. 서버 권위형(멀티)으로 옮길 때 state 를 서버로 올리고
+// 이 자리에 서버가 보내준 view 를 꽂으면 되도록 의도적으로 이렇게 분리해 두었다.
+// 지금은 실험실 솔로 빌드라 state 가 브라우저 안에 있다 — 개발자 도구로 봇 패를 볼 수는 있지만
+// 상대가 사람이 아니므로 문제되지 않는다. 사람 대 사람은 반드시 서버 권위형으로 올려야 한다.
+
+function cardEl(card, { small = false, highlight = false } = {}) {
+  const div = document.createElement('div');
+  const known = card && card.rank != null;
+  div.className = 'card' + (small ? ' small' : '') + (known ? '' : ' back') + (highlight ? ' win' : '');
+  div.textContent = known ? String(card.rank) : '?';
+  if (known) {
+    const corner = document.createElement('span');
+    corner.className = 'corner';
+    corner.textContent = String(card.rank);
+    div.appendChild(corner);
+  }
+  div.setAttribute('aria-label', known ? `숫자 ${card.rank} 카드` : '뒷면 카드');
+  return div;
+}
+
+function fillCards(container, cards, opts) {
+  container.innerHTML = '';
+  for (const card of cards) container.appendChild(cardEl(card, opts));
+}
+
+function render() {
+  const view = viewFor(state, ME);
+
+  el('pillRound').textContent = `${view.round}라운드`;
+  el('pillBase').textContent = `기본 ${view.baseBet}칩`;
+  el('potValue').textContent = String(view.pot);
+  el('myChips').textContent = `${view.you.chips}칩`;
+  el('botChips').textContent = `${view.opponent.chips}칩`;
+
+  const iAmFirst = view.isFirstPlayer;
+  el('myRole').textContent = iAmFirst ? '선' : '후';
+  el('myRole').className = 'badge' + (iAmFirst ? '' : ' second');
+  el('botRole').textContent = iAmFirst ? '후' : '선';
+  el('botRole').className = 'badge' + (iAmFirst ? ' second' : '');
+
+  fillCards(el('communityCards'), view.community);
+  fillCards(el('myCards'), view.you.hole, { small: true });
+  const botHole = view.opponent.hole.length ? view.opponent.hole : [{ rank: null }];
+  fillCards(el('botCards'), botHole, { small: true });
+
+  const myTurn = isMyTurn(view);
+  el('seatMe').classList.toggle('turn', myTurn);
+  el('seatBot').classList.toggle('turn', !myTurn && !isTerminal(view));
+
+  el('log').innerHTML = '';
+  for (const line of logLines.slice(-3)) {
+    const li = document.createElement('li');
+    li.textContent = line;
+    el('log').appendChild(li);
+  }
+
+  renderActions(view);
+}
+
+function isTerminal(view) {
+  return view.phase === PHASE.GAME_OVER;
+}
+
+function isMyTurn(view) {
+  if (view.phase === PHASE.CHOICE_REVEAL) return view.isFirstPlayer;
+  if (view.phase === PHASE.CHOICE_SELECT) return !view.isFirstPlayer;
+  if (view.street) return view.street.turn === ME;
+  return false;
+}
+
+function renderActions(view) {
+  const row = el('actionRow');
+  row.innerHTML = '';
+  el('choicePanel').hidden = true;
+  el('betPanel').hidden = pendingBet === null;
+  if (pendingBet) return;
+
+  if (view.phase === PHASE.SETTLEMENT) {
+    el('hint').textContent = '';
+    return; // 정산 오버레이가 다음 라운드 버튼을 담당한다.
+  }
+
+  if (view.phase === PHASE.CHOICE_REVEAL) {
+    if (view.isFirstPlayer) return renderReveal(view);
+    el('hint').textContent = '말랑봇이 두 장을 확인하고 있어요…';
+    return;
+  }
+  if (view.phase === PHASE.CHOICE_SELECT) {
+    if (!view.isFirstPlayer) return renderSelect(view);
+    el('hint').textContent = '말랑봇이 두 장 중 하나를 고르는 중…';
+    return;
+  }
+
+  if (!view.street) { el('hint').textContent = ''; return; }
+  if (view.street.turn !== ME) {
+    el('hint').textContent = '말랑봇 차례…';
+    return;
+  }
+
+  const streetName = view.phase === PHASE.BETTING_1 ? '1차 베팅' : '2차 베팅';
+  el('hint').textContent = view.street.toCall > 0
+    ? `${streetName} — 콜하려면 ${view.street.toCall}칩`
+    : `${streetName} — 내 차례`;
+
+  for (const option of view.legalActions) {
+    const button = document.createElement('button');
+    button.className = 'button' + (option.type === ACTION.FOLD ? ' danger'
+      : option.type === ACTION.CALL || option.type === ACTION.CHECK ? '' : ' go');
+    button.textContent = actionLabel(option);
+    button.addEventListener('click', () => {
+      if (option.type === ACTION.BET || option.type === ACTION.RAISE) return openBetPanel(option, view);
+      submit({ type: option.type, playerId: ME });
+    });
+    row.appendChild(button);
+  }
+}
+
+function actionLabel(option) {
+  switch (option.type) {
+    case ACTION.CHECK: return '체크';
+    case ACTION.CALL: return `콜 ${option.amount}`;
+    case ACTION.BET: return '베팅';
+    case ACTION.RAISE: return '레이즈';
+    case ACTION.FOLD: return '폴드';
+    case ACTION.ALL_IN: return `올인 ${option.amount}`;
+    default: return option.type;
+  }
+}
+
+function renderReveal(view) {
+  const panel = el('choicePanel');
+  panel.hidden = false;
+  el('choiceTitle').textContent = '두 장 중 한 장만 공개하세요';
+  el('choiceDesc').textContent =
+    '나만 두 장을 다 봅니다. 공개한 카드와 뒷면 카드 중 하나를 말랑봇이 가져가고, 남은 한 장이 내 것이 됩니다.';
+  const box = el('choiceCards');
+  box.innerHTML = '';
+  for (const card of view.choice.cards) {
+    const pick = document.createElement('button');
+    pick.type = 'button';
+    pick.className = 'choice-pick';
+    pick.appendChild(cardEl(card));
+    const tag = document.createElement('span');
+    tag.className = 'tag';
+    tag.textContent = `${card.rank} 공개하기`;
+    pick.appendChild(tag);
+    pick.addEventListener('click', () => submit({ type: ACTION.REVEAL, playerId: ME, cardId: card.id }));
+    box.appendChild(pick);
+  }
+  const [first, second] = view.choice.cards;
+  el('hint').textContent = first.rank === second.rank
+    ? '두 장이 같은 숫자예요 — 무엇을 깔든 결과는 같습니다.'
+    : '좋은 카드를 미끼로 깔 수도, 나쁜 카드로 유도할 수도 있어요.';
+}
+
+function renderSelect(view) {
+  const panel = el('choicePanel');
+  panel.hidden = false;
+  el('choiceTitle').textContent = '어느 쪽을 가져갈까요?';
+  el('choiceDesc').textContent =
+    '말랑봇은 두 장을 모두 보고 한 장만 깠습니다. 내가 고르지 않은 카드는 말랑봇이 가져갑니다.';
+  const box = el('choiceCards');
+  box.innerHTML = '';
+  for (const card of view.choice.cards) {
+    const pick = document.createElement('button');
+    pick.type = 'button';
+    pick.className = 'choice-pick';
+    pick.appendChild(cardEl(card));
+    const tag = document.createElement('span');
+    tag.className = 'tag';
+    tag.textContent = card.faceUp ? `확실한 ${card.rank}` : '미지의 카드';
+    pick.appendChild(tag);
+    pick.addEventListener('click', () => submit({ type: ACTION.SELECT, playerId: ME, cardId: card.id }));
+    box.appendChild(pick);
+  }
+  el('hint').textContent = '확실한 카드 vs 알 수 없는 카드 — 봇이 왜 그 카드를 깠을까요?';
+}
+
+// ── 베팅 금액 패널 ──────────────────────────────────────────────────────────
+
+function openBetPanel(option, view) {
+  pendingBet = { type: option.type, min: option.min, max: option.max };
+  const range = el('betRange');
+  range.min = String(option.min);
+  range.max = String(option.max);
+  range.value = String(Math.min(option.max, Math.max(option.min, Math.round(view.pot / 2) || option.min)));
+  el('betLabel').textContent = option.type === ACTION.BET ? '베팅 금액' : '레이즈 총액';
+  el('betValue').textContent = range.value;
+  el('betPanel').dataset.pot = String(view.pot);
+  render();
+}
+
+function closeBetPanel() {
+  pendingBet = null;
+  render();
+}
+
+el('betRange').addEventListener('input', (e) => { el('betValue').textContent = e.target.value; });
+
+for (const button of document.querySelectorAll('.quick button')) {
+  button.addEventListener('click', () => {
+    if (!pendingBet) return;
+    const range = el('betRange');
+    const pot = Number(el('betPanel').dataset.pot || 0);
+    const target = { min: pendingBet.min, max: pendingBet.max, half: Math.round(pot / 2), pot }[button.dataset.quick];
+    range.value = String(Math.min(pendingBet.max, Math.max(pendingBet.min, target)));
+    el('betValue').textContent = range.value;
+  });
+}
+
+el('btnBetConfirm').addEventListener('click', () => {
+  if (!pendingBet) return;
+  const action = { type: pendingBet.type, playerId: ME, amount: Number(el('betRange').value) };
+  pendingBet = null;
+  submit(action);
+});
+el('btnBetCancel').addEventListener('click', closeBetPanel);
+
+// ── 진행 ────────────────────────────────────────────────────────────────────
+
+function submit(action) {
+  if (busy) return;
+  busy = true;
+  try {
+    const result = applyAction(state, action);
+    if (result.error) {
+      el('hint').textContent = result.error.message;
+      return;
+    }
+    state = result.state;
+    pushLog(result.events, action.playerId);
+    render();
+    afterAction();
+  } finally {
+    busy = false;
+  }
+}
+
+function afterAction() {
+  const view = viewFor(state, ME);
+  if (view.phase === PHASE.GAME_OVER) return showGameOver(view);
+  if (view.phase === PHASE.SETTLEMENT) return showSettlement(view);
+  if (!isMyTurn(view)) scheduleBot();
+}
+
+function scheduleBot() {
+  clearTimeout(botTimer);
+  botTimer = setTimeout(() => {
+    const botView = viewFor(state, BOT);
+    const action = decide(botView);
+    if (!action) return;
+    submit({ ...action, playerId: BOT });
+  }, BOT_DELAY);
+}
+
+function pushLog(events, actorId) {
+  const who = actorId === ME ? '나' : '말랑봇';
+  for (const event of events) {
+    switch (event.type) {
+      case 'ROUND_START': logLines.push(`— ${event.round}라운드 시작 (선: ${event.firstPlayerId === ME ? '나' : '말랑봇'})`); break;
+      case 'BASE_BET': logLines.push(`기본 베팅 ${event.baseBet}칩씩`); break;
+      case 'CHECK': logLines.push(`${who} 체크`); break;
+      case 'BET': logLines.push(`${who} 베팅 ${event.amount}칩`); break;
+      case 'CALL': logLines.push(`${who} 콜 ${event.amount}칩`); break;
+      case 'RAISE': logLines.push(`${who} 레이즈 ${event.amount}칩`); break;
+      case 'ALL_IN': logLines.push(`${who} 올인 ${event.amount}칩`); break;
+      case 'FOLD': logLines.push(`${who} 폴드`); break;
+      case 'CHOICE_DEALT': logLines.push('Choice 카드 2장 등장'); break;
+      case 'CHOICE_REVEALED': logLines.push(`${who} ${event.rank} 공개`); break;
+      case 'CHOICE_SELECTED': logLines.push(`${who} ${event.pickedHidden ? '뒷면' : '공개된 카드'} 선택`); break;
+      case 'BETTING_SKIPPED': logLines.push('올인 — 베팅 없이 진행'); break;
+      default: break;
+    }
+  }
+  logLines = logLines.slice(-30);
+}
+
+// ── 결과 오버레이 ───────────────────────────────────────────────────────────
+
+function overlay(build) {
+  const back = document.createElement('div');
+  back.className = 'overlay';
+  const sheet = document.createElement('div');
+  sheet.className = 'sheet';
+  build(sheet, () => back.remove());
+  back.appendChild(sheet);
+  document.body.appendChild(back);
+  return back;
+}
+
+function handRow(label, cards, handName, isWinner) {
+  const box = document.createElement('div');
+  box.className = 'hand-row';
+  const who = document.createElement('div');
+  who.className = 'who';
+  who.textContent = label;
+  const row = document.createElement('div');
+  row.className = 'cards';
+  for (const card of cards) row.appendChild(cardEl(card, { small: true, highlight: isWinner }));
+  const name = document.createElement('div');
+  name.className = 'name';
+  name.textContent = handName;
+  box.append(who, row, name);
+  return box;
+}
+
+function showSettlement(view) {
+  const result = view.lastResult;
+  overlay((sheet, close) => {
+    const title = document.createElement('h2');
+    const verdict = document.createElement('div');
+    verdict.className = 'verdict';
+
+    if (result.reason === 'FOLD') {
+      const iWon = result.winnerId === ME;
+      title.textContent = iWon ? '말랑봇 폴드!' : '폴드했어요';
+      verdict.textContent = `${iWon ? '내가' : '말랑봇이'} 팟 ${result.pot}칩을 가져갑니다.`;
+      sheet.append(title, verdict);
+    } else {
+      const tie = result.winnerId == null;
+      title.textContent = tie ? '완전 동점!' : result.winnerId === ME ? '내가 이겼어요 🎉' : '말랑봇이 이겼어요';
+      verdict.textContent = tie
+        ? `팟 ${result.pot}칩은 나누지 않고 다음 라운드로 이월됩니다.`
+        : `팟 ${result.pot}칩 획득.`;
+      sheet.append(title, verdict);
+      const cards = { [ME]: view.you.hole, [BOT]: view.opponent.hole };
+      sheet.appendChild(handRow('나', view.community.concat(cards[ME]), result.hands[ME].name, result.winnerId === ME));
+      sheet.appendChild(handRow('말랑봇', view.community.concat(cards[BOT]), result.hands[BOT].name, result.winnerId === BOT));
+    }
+
+    const next = document.createElement('button');
+    next.className = 'button go';
+    next.textContent = '다음 라운드';
+    next.addEventListener('click', () => { close(); submit({ type: ACTION.NEXT_ROUND, playerId: ME }); });
+    sheet.appendChild(next);
+    setTimeout(() => next.focus(), 0);
+  });
+}
+
+function showGameOver(view) {
+  const iWon = view.gameResult.winnerId === ME;
+  if (window.GameBoot) {
+    window.GameBoot.submitResult({ won: iWon, score: view.you.chips, round: view.round });
+  }
+  overlay((sheet) => {
+    const title = document.createElement('h2');
+    title.textContent = view.gameResult.winnerId == null ? '무승부' : iWon ? '승리! 🏆' : '패배…';
+    const verdict = document.createElement('div');
+    verdict.className = 'verdict';
+    verdict.textContent = `${view.round}라운드에서 결착. 최종 칩 ${view.you.chips} : ${view.opponent.chips}`;
+    const again = document.createElement('button');
+    again.className = 'button go';
+    again.textContent = '한 판 더';
+    again.addEventListener('click', () => location.reload());
+    const exit = document.createElement('button');
+    exit.className = 'button ghost';
+    exit.textContent = '나가기';
+    exit.addEventListener('click', () => window.GameBoot && window.GameBoot.exit());
+    sheet.append(title, verdict, again, exit);
+    setTimeout(() => again.focus(), 0);
+  });
+}
+
+// ── 시작 ────────────────────────────────────────────────────────────────────
+
+function startGame() {
+  const seed = (Date.now() ^ Math.floor(Math.random() * 0xffffffff)) | 0;
+  state = createGame({ players: [{ id: ME, name: '나' }, { id: BOT, name: '말랑봇' }], seed });
+  logLines = [];
+  pendingBet = null;
+  screens.intro.classList.remove('active');
+  screens.game.classList.add('active');
+  submit({ type: ACTION.START, playerId: ME });
+}
+
+el('btnStart').addEventListener('click', startGame);
+el('btnExit').addEventListener('click', () => window.GameBoot && window.GameBoot.exit());
+el('btnIntroExit').addEventListener('click', () => window.GameBoot && window.GameBoot.exit());
+</script>
+</body>
+</html>

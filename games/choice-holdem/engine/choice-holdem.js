@@ -160,6 +160,11 @@ function shuffleInPlace(state, arr) {
 /* 20장 덱 생성. state.stackedDecks 에 남은 항목이 있으면 그 숫자열을 덱 앞쪽에 그대로 배치한다
  * (테스트용 스택드 덱). 카드 id 는 덱 위치 기반이라 숫자를 노출하지 않는다. */
 function buildDeck(state) {
+  if (state.config.deckResetMode !== 'EVERY_ROUND') {
+    // 방송 규칙 확인 전까지 EVERY_ROUND 하나만 구현되어 있다. 다른 값이 들어오면
+    // 조용히 EVERY_ROUND 로 동작하는 대신 바로 실패시킨다(규칙이 틀린 채 배포되는 것 방지).
+    throw new Error(`deckResetMode "${state.config.deckResetMode}" 는 아직 구현되지 않았습니다.`);
+  }
   const pool = freshRanks();
   const stacked = state.stackedDecks.length ? state.stackedDecks.shift() : null;
   let ordered;

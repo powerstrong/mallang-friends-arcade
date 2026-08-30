@@ -1,3 +1,5 @@
+/* 엔진 본체는 games/choice-holdem/engine/choice-holdem.js 에 있다(브라우저가 그대로 import 하는
+ * 파일). 규칙은 CI 게이트를 받아야 하므로 테스트는 worker 스위트에 둔다. */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
@@ -15,7 +17,7 @@ import {
   finalCards,
   viewFor,
   potTotal,
-} from '../src/games/choice_holdem_engine.js';
+} from '../../games/choice-holdem/engine/choice-holdem.js';
 
 const A = 'alice';
 const B = 'bob';
