@@ -232,6 +232,9 @@
   </section>
 </div>
 
+<!-- config.js 가 window.WORKER_URL(API 워커 주소)을 정한다. 이게 없으면 정적 호스트로
+     /api/rooms 를 때려 방 생성·WebSocket 이 둘 다 실패한다. -->
+<script src="/shared/config.js"></script>
 <script src="/games/registry.js"></script>
 <script src="/shared/bootstrap.js"></script>
 <script type="module">
@@ -401,7 +404,7 @@ function renderActions(view) {
   const streetName = view.phase === PHASE.BETTING_1 ? '1차 베팅' : '2차 베팅';
   el('hint').textContent = view.street.toCall > 0
     ? `${streetName} — 콜하려면 ${view.street.toCall}칩`
-    : `${streetName} — 내 차례`;
+    : `${streetName} — 내 차례 (칩을 걸지 않고 넘기려면 패스)`;
 
   for (const option of view.legalActions) {
     const button = document.createElement('button');
@@ -418,7 +421,7 @@ function renderActions(view) {
 
 function actionLabel(option) {
   switch (option.type) {
-    case ACTION.CHECK: return '체크';
+    case ACTION.CHECK: return '패스';
     case ACTION.CALL: return `콜 ${option.amount}`;
     case ACTION.BET: return '베팅';
     case ACTION.RAISE: return '레이즈';
@@ -563,7 +566,7 @@ function pushLog(events) {
       case 'ROUND_START':
         logLines.push(`— ${event.round}라운드 시작 (선: ${whoIs(event.firstPlayerId)})`); break;
       case 'BASE_BET': logLines.push(`기본 베팅 ${event.baseBet}칩씩`); break;
-      case 'CHECK': logLines.push(`${who} 체크`); break;
+      case 'CHECK': logLines.push(`${who} 패스`); break;
       case 'BET': logLines.push(`${who} 베팅 ${event.amount}칩`); break;
       case 'CALL': logLines.push(`${who} 콜 ${event.amount}칩`); break;
       case 'RAISE': logLines.push(`${who} 레이즈 ${event.amount}칩`); break;
@@ -745,10 +748,24 @@ function showRules() {
     const body = el('rulesBlock').cloneNode(true);
     body.removeAttribute('id');
     body.classList.add('on-sheet');
+    // '체크가 뭐냐'는 질문을 받았다 — 규칙 화면에 베팅 액션 설명이 아예 없었다.
+    const acts = document.createElement('div');
+    acts.className = 'rules on-sheet';
+    acts.innerHTML = '<b>베팅 버튼</b>'
+      + '<div style="margin-top:6px">'
+      + '<b>패스</b> — 칩을 걸지 않고 차례를 넘깁니다. 둘 다 패스하면 그대로 다음 단계로 갑니다'
+      + '(포커에서 부르는 이름은 \u0027체크\u0027).<br>'
+      + '<b>베팅</b> — 칩을 겁니다. 상대는 콜하거나 포기해야 합니다.<br>'
+      + '<b>콜</b> — 상대가 건 만큼 맞춰 냅니다.<br>'
+      + '<b>레이즈</b> — 더 크게 올립니다. 한 베팅마다 1번까지.<br>'
+      + '<b>폴드</b> — 이 판을 포기합니다. 팟은 상대가 가져갑니다.<br>'
+      + '<b>올인</b> — 남은 칩을 전부 겁니다.'
+      + '</div>';
+
     const extra = document.createElement('div');
     extra.className = 'verdict';
     extra.textContent = '족보: 포카드 > 풀하우스 > 스트레이트(1·2·3·4·5) > 트리플 > 투페어 > 원페어. '
-      + '레이즈는 한 베팅마다 1번까지. 완전 동점이면 팟은 다음 라운드로 이월됩니다.';
+      + '완전 동점이면 팟은 다음 라운드로 이월됩니다.';
     const ok = document.createElement('button');
     ok.className = 'button go';
     ok.textContent = '닫기';
@@ -757,7 +774,7 @@ function showRules() {
       overlayNode = previous.node;
       overlayKind = previous.kind;
     });
-    sheet.append(title, body, extra, ok);
+    sheet.append(title, body, acts, extra, ok);
     setTimeout(() => ok.focus(), 0);
   });
 }
@@ -787,7 +804,9 @@ function startSolo() {
 
 // ── online ──────────────────────────────────────────────────────────────────
 
+// config.js 가 정상 로드되면 항상 값이 있다. 없으면 origin 폴백이 조용히 실패하므로 경고를 남긴다.
 const WORKER_URL = window.WORKER_URL || location.origin;
+if (!window.WORKER_URL) console.warn('[choice-holdem] WORKER_URL 없음 — /shared/config.js 로드 실패?');
 const tokenKey = () => `choiceHoldem:seat:${roomCode}`;
 
 function startOnline() {
@@ -898,6 +917,7 @@ async function createRoom() {
   el('introStatus').textContent = '방을 만드는 중…';
   try {
     const res = await fetch(`${WORKER_URL}/api/rooms`, { method: 'POST' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     if (!data || !data.code) throw new Error('no code');
     roomCode = data.code;
@@ -905,10 +925,11 @@ async function createRoom() {
     const url = new URL(location.href);
     url.searchParams.set('code', roomCode);
     history.replaceState(null, '', url);
+    el('introStatus').textContent = '';
     startOnline();
     setBanner(`방 코드 ${roomCode} — 친구에게 이 주소를 보내세요.`);
-  } catch {
-    el('introStatus').textContent = '방을 만들지 못했어요. 잠시 후 다시 시도해 주세요.';
+  } catch (err) {
+    el('introStatus').textContent = `방을 만들지 못했어요 (${err.message}). 잠시 후 다시 시도해 주세요.`;
   }
 }
 

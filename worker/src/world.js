@@ -20,6 +20,7 @@ const GAME_URLS = Object.freeze({
   'sseuk-sseuk': '/games/sseuk-sseuk/index.html',
   'mallang-stairs': '/games/mallang-stairs/index.html',
   'machine-animal-runner': '/games/machine-animal-runner/index.html',
+  'choice-holdem': '/games/choice-holdem/index.html',
 });
 
 const PROTOCOL_VERSION = 1;
