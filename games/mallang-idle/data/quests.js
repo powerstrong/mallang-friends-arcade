@@ -25,13 +25,14 @@
     { id: 'bossTries', metric: 'bossTries', name: '보스 도전',   emoji: '👑' },
   ];
 
-  function targetOf(q)  { return B.questTargets[q.id]; }
+  function targetOf(q,daily) { return daily && daily.targets ? daily.targets[q.id] : B.questTargets[q.id]; }
+  function targetsFor(stage) {var targets=B.questBands[0].targets;B.questBands.forEach(function(b){if(stage>=b.stage)targets=b.targets;});return Object.assign({},targets);}
   function rewardOf(q)  { return B.questRewards[q.id]; }
 
   /* 새 날의 과제 상태. base = 그 시점의 누적 stats 스냅숏. */
-  function freshDaily(dateStr, stats) {
+  function freshDaily(dateStr, stats, safeStage) {
     return {
-      date: dateStr,
+      date: dateStr, dayKey:dateStr, targets:safeStage === undefined ? Object.assign({},B.questTargets) : targetsFor(safeStage),
       base: {
         kills: stats.kills,
         upgrades: stats.upgrades,
@@ -49,16 +50,17 @@
     return Math.floor(p);
   }
 
-  function isDone(q, stats, daily)    { return progressOf(q, stats, daily) >= targetOf(q); }
+  function isDone(q, stats, daily)    { return progressOf(q, stats, daily) >= targetOf(q,daily); }
   function isClaimed(q, daily)        { return !!(daily && daily.claimed && daily.claimed[q.id]); }
 
   /* 보상 수령 — 성공하면 지급한 조각 수를 돌려준다. 중복 수령은 0. */
-  function claim(q, state, daily) {
-    if (!isDone(q, state.stats, daily) || isClaimed(q, daily)) return 0;
+  function claim(q, state, daily, early) {
+    if ((!early && !isDone(q, state.stats, daily)) || isClaimed(q, daily)) return 0;
     if (!daily.claimed || typeof daily.claimed !== 'object') daily.claimed = {};
     daily.claimed[q.id] = true;
     var r = rewardOf(q);
     state.shards += r;
+    if (state.stage >= B.friends.unlockStage && state.friends) state.friends.hearts += B.calendar.questHearts;
     return r;
   }
 
@@ -71,7 +73,7 @@
   }
 
   return {
-    QUESTS: QUESTS,
+    QUESTS: QUESTS, targetsFor:targetsFor,
     targetOf: targetOf, rewardOf: rewardOf,
     freshDaily: freshDaily, progressOf: progressOf,
     isDone: isDone, isClaimed: isClaimed, claim: claim,

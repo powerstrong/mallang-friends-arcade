@@ -10,14 +10,16 @@
 (function (root, factory) {
   var api = factory(
     typeof require === 'function' ? require('./combat.js') : root.MallangIdleCombat,
-    typeof require === 'function' ? require('./balance.js') : root.MallangIdleBalance
+    typeof require === 'function' ? require('./balance.js') : root.MallangIdleBalance,
+    typeof require === 'function' ? require('./friends.js') : root.MallangIdleFriends,
+    typeof require === 'function' ? require('./calendar.js') : root.MallangIdleCalendar
   );
   if (typeof module === 'object' && module.exports) module.exports = api;
   root.MallangIdleSave = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function (Combat, Bal) {
+})(typeof globalThis !== 'undefined' ? globalThis : this, function (Combat, Bal, Friends, Calendar) {
   'use strict';
 
-  var CURRENT_VERSION = 6;
+  var CURRENT_VERSION = 10;
   var STORAGE_KEY = 'mallang-idle-save';
 
   /* 상태 → 저장 객체. 파생값(전투력·DPS)은 저장하지 않는다. 저장은 원본 데이터만
@@ -26,23 +28,31 @@
     return {
       version: CURRENT_VERSION,
       lastSaveAt: nowMs,
+      offlineThroughAt: Math.max(nowMs, state.offlineThroughAt || 0),
+      progress: { maxClearedStage: Math.max(state.safeStage, state.progress && state.progress.maxClearedStage || 0) },
       stage: state.stage,
       safeStage: state.safeStage,
       mobIndex: state.mobIndex,
       farmMode: state.farmMode === true,
       gold: state.gold,
       up: { atk: state.up.atk, aspd: state.up.aspd, gold: state.up.gold },
+      friends: JSON.parse(JSON.stringify(state.friends)),
+      hatch: JSON.parse(JSON.stringify(state.hatch)),
+      selectedCompanion: state.selectedCompanion || null,
       party: Array.isArray(state.party) ? state.party.slice() : [],
       shards: state.shards,
       relics: {
+        hourglass:state.relics.hourglass || 0,
         hammer: state.relics.hammer,
         barn: state.relics.barn,
         compass: state.relics.compass,
       },
       collection: Array.isArray(state.collection) ? state.collection.slice() : [],
       storySeen: Array.isArray(state.storySeen) ? state.storySeen.slice() : [],
-      daily: state.daily || null,
-      dungeon: state.dungeon || null,
+      tutorialSeen: (state.tutorialSeen || []).slice(), preferences:{numberFormat:'ko'},
+      calendar: state.calendar ? JSON.parse(JSON.stringify(state.calendar)) : null, attendance:state.attendance ? JSON.parse(JSON.stringify(state.attendance)) : null, achievementClaimed:JSON.parse(JSON.stringify(state.achievementClaimed || {})),
+      daily: state.daily ? JSON.parse(JSON.stringify(state.daily)) : null,
+      dungeon: state.dungeon ? JSON.parse(JSON.stringify(state.dungeon)) : null,
       playtime: state.t,
       stats: {
         kills: state.stats.kills,
@@ -64,6 +74,8 @@
     var maxLv = B.maxUpgradeLevel;
 
     // stage 상한: mobHp 지수가 double 을 넘어 Infinity 로 번지는 것을 막는다(balance.maxStage 주석).
+    s.offlineThroughAt = num(save.offlineThroughAt, save.lastSaveAt || 0, 0);
+    s.progress = { maxClearedStage: int(save.progress && save.progress.maxClearedStage, save.safeStage || 0, 0, B.maxStage) };
     s.stage = int(save.stage, 1, 1, B.maxStage);
     s.safeStage = int(save.safeStage, 0, 0, s.stage);
     s.mobIndex = int(save.mobIndex, 0, 0, B.mobsPerStage);
@@ -145,6 +157,11 @@
     } else {
       s.dungeon = null;
     }
+    Friends.hydrate(s, save);
+    Calendar.hydrate(s,save);
+    s.tutorialSeen=Array.isArray(save.tutorialSeen)?save.tutorialSeen.filter(function(v,i,a){return ['intro','upgrade','hatch','grow','dungeon','code'].indexOf(v)>=0 && a.indexOf(v)===i;}):[];
+    s.preferences={numberFormat:'ko'};
+    s.relics.hourglass = Math.min(B.hourglass.maxLevel, s.relics.hourglass);
     return s;
   }
 
@@ -170,6 +187,29 @@
   /* 버전별 변환 함수. v1→v2 가 생기면 여기에 2 를 추가한다. 누적 적용되므로
    * 각 함수는 "바로 앞 버전에서 자기 버전으로" 만드는 일만 하면 된다. */
   var MIGRATIONS = {
+    10:function(save){
+      save.tutorialSeen=[];
+      if(save.playtime>0 || save.safeStage>0)save.tutorialSeen.push('intro');
+      if(save.stats && save.stats.upgrades>0)save.tutorialSeen.push('upgrade');
+      if(save.hatch && save.hatch.count>0)save.tutorialSeen.push('hatch');
+      if(save.friends && Object.values(save.friends.levels).some(function(lv){return lv>1;}))save.tutorialSeen.push('grow');
+      if(save.dungeon && (save.dungeon.best>0 || save.dungeon.charges<Bal.BALANCE.calendar.maxCharges))save.tutorialSeen.push('dungeon');
+      save.preferences={numberFormat:'ko'};return save;
+    },
+    9:function(save,context){save.relics=save.relics||{};save.relics.hourglass=0;return Calendar.migrate(save,context.nowMs === undefined ? save.lastSaveAt || 0 : context.nowMs);},
+    8: function(save) {
+      save.friends = Friends.initialFriends();
+      save.friends.hearts = save.safeStage || 0;
+      save.friends.rewardedThrough = save.safeStage || 0;
+      save.hatch = Friends.initialHatch(Friends.stableSeed(save));
+      save.selectedCompanion = null;
+      return save;
+    },
+    7: function (save) {
+      save.offlineThroughAt = save.lastSaveAt || 0;
+      save.progress = { maxClearedStage: save.safeStage || 0 };
+      return save;
+    },
     /* 1: version 필드가 없던 최초 세이브를 v1 으로 인정한다. 필드 구조가 같으므로
      * 변환할 것은 없지만, "변환 함수가 없으면 실패"라는 규칙을 지키기 위해
      * 명시적으로 등록해 둔다. */
@@ -217,7 +257,8 @@
 
   /* 알 수 없는 상위 버전을 만나면 덮어쓰지 않는다 — 신버전에서 저장한 데이터를
    * 구버전 코드가 뭉개는 사고를 막는다. 호출자가 백업 후 초기화하도록 신호를 준다. */
-  function migrateSave(save) {
+  function migrateSave(save, context) {
+    context = context || {};
     if (save == null) return { ok: true, save: null, note: 'empty' };
     // 배열·문자열·숫자 등 객체가 아닌 루트는 "빈 세이브"가 아니라 손상이다.
     if (typeof save !== 'object' || Array.isArray(save)) {
@@ -236,33 +277,48 @@
       return { ok: false, save: save, note: 'future-version', version: v };
     }
 
-    var out = save;
+    var out = JSON.parse(JSON.stringify(save));
     for (var target = v + 1; target <= CURRENT_VERSION; target++) {
       var fn = MIGRATIONS[target];
       // 버전은 올랐는데 변환 함수가 없으면 조용히 성공으로 위장하지 않는다.
       if (!fn) return { ok: false, save: save, note: 'migration-missing', version: target };
-      out = fn(out);
+      out = fn(out,context);
       out.version = target;
     }
     if (v === CURRENT_VERSION) out.version = CURRENT_VERSION;
     return { ok: true, save: out, note: v === CURRENT_VERSION ? 'current' : 'migrated', from: v };
   }
 
-  /* 문자열 → { ok, note, save, state }. 파싱 실패는 예외가 아니라 값으로 돌려준다.
+  /* 문자열 → { ok, note, save, state }. 파싱·마이그레이션·복원 실패는 값으로 돌려준다.
    * **손상은 ok:false 다.** 예전에는 깨진 JSON 을 빈 세이브로 취급해 새 게임을 만들었고,
    * 다음 자동저장이 원본을 덮어써서 복구할 길이 사라졌다. */
-  function load(text) {
+  function load(text,context) {
     if (text == null || text === '') return { ok: true, note: 'empty', save: null, state: Combat.createState() };
-    var parsed;
-    try { parsed = JSON.parse(text); }
-    catch (e) { return { ok: false, note: 'corrupt', save: null, state: null }; }
-    var res = migrateSave(parsed);
-    return { ok: res.ok, note: res.note, save: res.save, state: res.ok ? deserialize(res.save) : null };
+    var parsed = null;
+    try {
+      parsed = JSON.parse(text);
+      if (parsed === null) return {ok:false,note:'corrupt',save:null,state:null};
+      var res = migrateSave(parsed,context);
+      return { ok: res.ok, note: res.note, save: res.save, state: res.ok ? deserialize(res.save) : null };
+    } catch (e) {
+      return { ok: false, note: 'corrupt', save: parsed, state: null };
+    }
+  }
+
+  function settleOffline(save, nowMs) {
+    var state = deserialize(save);
+    var through = Math.max(save.offlineThroughAt || 0, save.lastSaveAt || 0);
+    var reward = Combat.offlineReward(state, Math.max(0, nowMs - through) / 1000);
+    state.gold += reward.gold;
+    state.stats.goldEarned += reward.gold;
+    state.offlineThroughAt = Math.max(through, nowMs);
+    return { payload: serialize(state, Math.max(through, nowMs)), reward: reward };
   }
 
   function dump(state, nowMs) { return JSON.stringify(serialize(state, nowMs)); }
 
   return {
+    settleOffline: settleOffline,
     CURRENT_VERSION: CURRENT_VERSION,
     STORAGE_KEY: STORAGE_KEY,
     serialize: serialize,

@@ -14,7 +14,7 @@
   'use strict';
 
   function create(seed) {
-    var a = (seed >>> 0) || 1;
+    var a = seed >>> 0;
     function next() {
       a |= 0; a = (a + 0x6D2B79F5) | 0;
       var t = Math.imul(a ^ (a >>> 15), 1 | a);
@@ -36,5 +36,5 @@
     };
   }
 
-  return { create: create };
+  return { create: create, restore: create };
 });

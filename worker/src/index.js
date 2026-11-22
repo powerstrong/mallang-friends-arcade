@@ -1,3 +1,4 @@
+import { handleIdleSave } from './idle-save.js';
 import { getWeekKey, getWeeklyLeaderboard, submitScore } from './leaderboard.js';
 
 export { GameRoom } from './room.js';
@@ -49,6 +50,8 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     const method = request.method;
+
+    if (url.pathname.startsWith('/api/idle/')) return handleIdleSave(request, env);
 
     // CORS preflight
     if (method === 'OPTIONS') {

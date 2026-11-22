@@ -1,0 +1,8 @@
+{
+  "source": "RENEWAL_PLAN.md section 6, pre-renewal measured v6 baseline; captured before renewal, not replayed with the new engine",
+  "balance": { "hammerPerLevel": 0.06, "compassPerLevel": 0.09, "dungeonGoldSeconds": 10 },
+  "5m": { "finalStage": 6, "firstUpgradeAt": 12.5, "firstBossAt": 30, "firstBossClearAt": 53.5, "avgStageDwell": 58.5, "longestWall": 46.5, "wallRatio": 0.155, "avgClearRatio": 1.13 },
+  "30m": { "finalStage": 54, "avgStageDwell": 33.4, "longestWall": 46.5, "wallRatio": 0.0258, "avgClearRatio": 2.02 },
+  "24h": { "finalStage": 210, "avgStageDwell": 403.4, "longestWall": 4022.5, "wallRatio": 0.8272, "avgClearRatio": 1.43 },
+  "15-120": { "finalStage": 170, "longestWall": 382.5, "activeWallRatio": 0.3158, "offlineGoldRatio": 0.7033 }
+}

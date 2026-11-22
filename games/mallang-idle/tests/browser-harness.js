@@ -36,9 +36,15 @@ var MIME = {
   '.json': 'application/json',
 };
 
-function serveStatic() {
+function serveStatic(apiOrigin) {
   return new Promise(function (resolve) {
     var server = http.createServer(function (req, res) {
+      if(apiOrigin && req.url.startsWith('/api/idle/')) {
+        var parts=[];req.on('data',function(b){parts.push(b);});req.on('end',async function(){try{
+          var upstream=await fetch(apiOrigin+req.url,{method:req.method,headers:{'Content-Type':'application/json',Authorization:req.headers.authorization||''},body:['GET','OPTIONS'].includes(req.method)?undefined:Buffer.concat(parts)});
+          res.writeHead(upstream.status,{'Content-Type':'application/json'});res.end(await upstream.text());
+        }catch(e){res.writeHead(503);res.end('{}');}});return;
+      }
       var p = decodeURIComponent(req.url.split('?')[0]);
       if (p.endsWith('/')) p += 'index.html';
       var file = path.join(ROOT, p);
@@ -129,7 +135,7 @@ function withPage(pagePath, fn, opts) {
   }
 
   return (async function () {
-    var server = await serveStatic();
+    var server = await serveStatic(opts.apiOrigin);
     var origin = 'http://127.0.0.1:' + server.address().port;
     var profile = fs.mkdtempSync(path.join(os.tmpdir(), 'mallang-idle-e2e-'));
     var browser = null, client = null;
@@ -137,11 +143,14 @@ function withPage(pagePath, fn, opts) {
     try {
       browser = await launchBrowser(exe, profile, opts.args);
       client = await cdp(browser.wsUrl);
-      var t = await client.send('Target.createTarget', { url: origin + pagePath });
+      var t = await client.send('Target.createTarget', { url: opts.initScript ? 'about:blank' : origin + pagePath });
       var att = await client.send('Target.attachToTarget', { targetId: t.targetId, flatten: true });
       var sid = att.sessionId;
       await client.send('Runtime.enable', {}, sid);
       await client.send('Page.enable', {}, sid);
+      if(opts.initScript) await client.send('Page.addScriptToEvaluateOnNewDocument',{source:opts.initScript},sid);
+      /* 최신 크로미움은 createTarget 의 url 로 이동하지 않고 about:blank 에 머무는 경우가 있다 */
+      await client.send('Page.navigate', { url: origin + pagePath }, sid);
 
       var pg = {
         origin: origin,
@@ -166,7 +175,7 @@ function withPage(pagePath, fn, opts) {
       };
       pg.clickEl = async function (domId) {
         var r = JSON.parse(await pg.eval(
-          '(function(){var r=document.getElementById(' + JSON.stringify(domId) + ').getBoundingClientRect();' +
+          '(function(){var b=document.getElementById(' + JSON.stringify(domId) + ');b.scrollIntoView({block:"center",inline:"center"});var r=b.getBoundingClientRect();' +
           'return JSON.stringify({x:r.left+r.width/2, y:r.top+r.height/2});})()'));
         await pg.click(r.x, r.y);
       };

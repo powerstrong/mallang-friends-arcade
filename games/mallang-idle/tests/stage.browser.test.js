@@ -47,6 +47,9 @@ function J(expr) { return 'JSON.stringify(' + expr + ')'; }
 async function main(pg) {
   await boot(pg);
 
+  var cheer = JSON.parse(await pg.eval(J('(function(){var H=window.__mallangIdle;var before=[H.state.gold,H.state.shards,H.state.enemyHp];document.getElementById("arena").click();return {same:JSON.stringify(before)===JSON.stringify([H.state.gold,H.state.shards,H.state.enemyHp])};})()')));
+  ok(cheer.same, '응원 탭은 피해와 재화를 바꾸지 않는다');
+
   // ── ① 무대가 큐를 통해 그려진다 ─────────────────────────────
   var wired = JSON.parse(await pg.eval(J(
     '({ hasStage: !!window.__mallangIdle.Stage,' +
@@ -624,11 +627,12 @@ async function main(pg) {
     ' if (H.state.stage < B2.dungeonUnlockStage) {' +      // 해금 보장 — 잠긴 버튼은 무음이다
     '   H.state.stage = B2.dungeonUnlockStage; H.state.safeStage = B2.dungeonUnlockStage - 1; }' +
     ' var go=document.getElementById("dungeonGo"); go.disabled=false;' +
-    ' var before={ runs:H.state.dungeon.runs };' +
+    ' window.MallangIdleCalendar.sync(H.state,Date.now());' +
+    ' var before={ charges:H.state.dungeon.charges };' +
     ' go.click();' +
     ' var during={ active:S.dungeonActive(),' +
     '   modalHidden:document.getElementById("dungeonModal").hidden,' +
-    '   runsUp:H.state.dungeon.runs === before.runs + 1 };' +
+    '   runsUp:H.state.dungeon.charges === before.charges - 1 };' +
     ' S.dungeonSkip();' +
     ' for (var i=0;i<80 && S.dungeonActive();i++) S.update(0.1,0,H.state);' +
     ' var after={ modalHidden:document.getElementById("dungeonModal").hidden };' +

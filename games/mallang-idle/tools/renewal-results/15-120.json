@@ -1,0 +1,186 @@
+{
+  "baseline": {
+    "duration": 86400,
+    "seed": 1,
+    "firstHatchAt": 150.5,
+    "heartEarned": 183,
+    "heartSpent": 183,
+    "questModel": "baseline",
+    "sessions": {
+      "activeSec": 900,
+      "gapSec": 7200
+    },
+    "firstUpgradeAt": 12.5,
+    "firstBossAt": 30,
+    "firstBossClearAt": 53.5,
+    "idleSeconds": 119,
+    "longestWall": 222.5,
+    "longestWallStage": 179,
+    "wallSeconds": 2801,
+    "returns": [
+      {
+        "gold": 489081.474014912,
+        "upgrades": 27,
+        "charges": 0
+      },
+      {
+        "gold": 1064375464.9318943,
+        "upgrades": 28,
+        "charges": 0
+      },
+      {
+        "gold": 142962086249.43106,
+        "upgrades": 25,
+        "charges": 0
+      },
+      {
+        "gold": 3491947918041.426,
+        "upgrades": 21,
+        "charges": 1
+      },
+      {
+        "gold": 29078990723795.918,
+        "upgrades": 27,
+        "charges": 0
+      },
+      {
+        "gold": 136811544925410.48,
+        "upgrades": 35,
+        "charges": 0
+      },
+      {
+        "gold": 683060781282757.6,
+        "upgrades": 43,
+        "charges": 0
+      },
+      {
+        "gold": 1582921030391689,
+        "upgrades": 48,
+        "charges": 1
+      },
+      {
+        "gold": 3628859282173684.5,
+        "upgrades": 52,
+        "charges": 0
+      },
+      {
+        "gold": 7476901132825451,
+        "upgrades": 55,
+        "charges": 0
+      }
+    ],
+    "offlineStageAdvances": 0,
+    "activeSeconds": 9899.99999999997,
+    "offlineGold": 22784951772876572,
+    "partyChanges": 63,
+    "dungeonRuns": 5,
+    "questShards": 11,
+    "unresolvedWall": 222.5,
+    "hatchCount": 6,
+    "uniqueCompanions": 6,
+    "maxFriendLevel": 12,
+    "starCount": 10,
+    "activeWallRatio": 0.28292929292929375,
+    "activeIdleRatio": 0.012020202020202056,
+    "offlineGoldRatio": 0.8005613505661338,
+    "idleRatio": 0.0013773148148148147,
+    "wallRatio": 0.03241898148148148,
+    "avgStageDwell": 53.74157303370775,
+    "bossFailCount": 35,
+    "avgClearRatio": 4.233395486710566,
+    "finalStage": 179,
+    "finalSafeStage": 178
+  },
+  "upper": {
+    "duration": 86400,
+    "seed": 1,
+    "firstHatchAt": 150.5,
+    "heartEarned": 183,
+    "heartSpent": 183,
+    "questModel": "upper",
+    "sessions": {
+      "activeSec": 900,
+      "gapSec": 7200
+    },
+    "firstUpgradeAt": 12.5,
+    "firstBossAt": 30,
+    "firstBossClearAt": 53.5,
+    "idleSeconds": 119,
+    "longestWall": 222.5,
+    "longestWallStage": 179,
+    "wallSeconds": 2801,
+    "returns": [
+      {
+        "gold": 489081.474014912,
+        "upgrades": 27,
+        "charges": 0
+      },
+      {
+        "gold": 1064375464.9318943,
+        "upgrades": 28,
+        "charges": 0
+      },
+      {
+        "gold": 142962086249.43106,
+        "upgrades": 25,
+        "charges": 0
+      },
+      {
+        "gold": 3491947918041.426,
+        "upgrades": 21,
+        "charges": 1
+      },
+      {
+        "gold": 29078990723795.918,
+        "upgrades": 27,
+        "charges": 0
+      },
+      {
+        "gold": 136811544925410.48,
+        "upgrades": 35,
+        "charges": 0
+      },
+      {
+        "gold": 683060781282757.6,
+        "upgrades": 43,
+        "charges": 0
+      },
+      {
+        "gold": 1582921030391689,
+        "upgrades": 48,
+        "charges": 1
+      },
+      {
+        "gold": 3628859282173684.5,
+        "upgrades": 52,
+        "charges": 0
+      },
+      {
+        "gold": 7476901132825451,
+        "upgrades": 55,
+        "charges": 0
+      }
+    ],
+    "offlineStageAdvances": 0,
+    "activeSeconds": 9899.99999999997,
+    "offlineGold": 22784951772876572,
+    "partyChanges": 63,
+    "dungeonRuns": 5,
+    "questShards": 11,
+    "unresolvedWall": 222.5,
+    "hatchCount": 6,
+    "uniqueCompanions": 6,
+    "maxFriendLevel": 12,
+    "starCount": 10,
+    "activeWallRatio": 0.28292929292929375,
+    "activeIdleRatio": 0.012020202020202056,
+    "offlineGoldRatio": 0.8005613505661338,
+    "idleRatio": 0.0013773148148148147,
+    "wallRatio": 0.03241898148148148,
+    "avgStageDwell": 53.74157303370775,
+    "bossFailCount": 35,
+    "avgClearRatio": 4.233395486710566,
+    "finalStage": 179,
+    "finalSafeStage": 178
+  }
+}

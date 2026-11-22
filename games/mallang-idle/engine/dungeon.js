@@ -14,18 +14,20 @@
 (function (root, factory) {
   var api = factory(
     typeof require === 'function' ? require('./balance.js') : root.MallangIdleBalance,
-    typeof require === 'function' ? require('./combat.js') : root.MallangIdleCombat
+    typeof require === 'function' ? require('./combat.js') : root.MallangIdleCombat,
+    typeof require === 'function' ? require('./calendar.js') : root.MallangIdleCalendar
   );
   if (typeof module === 'object' && module.exports) module.exports = api;
   root.MallangIdleDungeon = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function (Bal, Combat) {
+})(typeof globalThis !== 'undefined' ? globalThis : this, function (Bal, Combat, Calendar) {
   'use strict';
 
   var B = Bal.BALANCE;
 
   /* 현재 상태의 전투력으로 시련을 끝까지 돌린 결과.
    * 같은 상태면 언제나 같은 결과 — 시뮬레이터·테스트·화면이 모두 이 함수를 쓴다. */
-  function simulate(state) {
+  function simulate(state, nowMs) {
+    if(nowMs !== undefined) state = Object.assign({},state,{trialRule:Calendar.rule(nowMs)});
     var baseStage = state.safeStage > 0 ? state.safeStage : 1;
     var dps = Combat.bossDps(state);
     /* 별사탕(shardMul) 편성은 던전 조각에도 적용 — 본편 보스와 같은 규칙 */
@@ -69,5 +71,6 @@
     state.stats.goldEarned += gold;
   }
 
-  return { simulate: simulate, applyReward: applyReward };
+  function enter(state,nowMs) {if(!Calendar.consume(state,nowMs))return null;var result=simulate(state,nowMs);applyReward(state,result);state.dungeon.best=Math.max(state.dungeon.best,result.kills);return result;}
+  return { enter:enter, simulate: simulate, applyReward: applyReward };
 });

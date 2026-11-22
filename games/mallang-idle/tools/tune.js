@@ -22,20 +22,20 @@ var B = Bal.BALANCE;
 var GOALS = [
   { key: 'm5',  seconds: 300,   checks: {
       firstUpgradeAt:   { max: 15 },
-      firstBossAt:      { min: 40, max: 90 },
-      firstBossClearAt: { max: 180 },
-      avgStageDwell:    { min: 20, max: 60 },
+      firstBossAt:      { min: 30, max: 60 },
+      firstBossClearAt: { max: 90 },
+      avgStageDwell:    { min: 35, max: 65 },
       idleRatio:        { max: 0.30 },
   }},
   /* 최장 벽에 **하한**을 둔다. 상한만 보면 "벽이 아예 없는" 곡선이 만점을 받는데,
    * 그건 코어 루프(막힘 → 성장 → 돌파)가 사라졌다는 뜻이다. P2 편성을 넣자
    * 실제로 30분 구간의 벽이 0초가 되었고 상한만으로는 잡히지 않았다. */
   { key: 'm30', seconds: 1800,  checks: {
-      avgStageDwell:    { min: 20, max: 90 },
-      longestWall:      { min: 25, max: 300 },
+      avgStageDwell:    { min: 25, max: 45 },
+      longestWall:      { min: 25, max: 180 },
       bossFailCount:    { min: 1 },
       idleRatio:        { max: 0.30 },
-      avgClearRatio:    { min: 1.0, max: 1.7 },
+      avgClearRatio:    { min: 1.0, max: 2.0 },
   }},
   { key: 'h2',  seconds: 7200,  checks: {
       longestWall:      { min: 40, max: 600 },
@@ -44,10 +44,10 @@ var GOALS = [
       avgClearRatio:    { min: 1.0, max: 1.7 },
   }},
   { key: 'h24', seconds: 86400, checks: {
-      longestWall:      { max: 3600 },   // 성장축이 3개뿐인 v1 의 구조적 한계 — BALANCE.md 참고
+      longestWall:      { max: 4200 },   // 성장축이 3개뿐인 v1 의 구조적 한계 — BALANCE.md 참고
       idleRatio:        { max: 0.30 },
       avgClearRatio:    { min: 1.0, max: 1.7 },
-      finalStage:       { min: 150 },    // 하루 만에 진행이 죽지 않아야 한다
+      finalStage:       { min: 210, max:250 },    // 하루 만에 진행이 죽지 않아야 한다
   }},
 ];
 
@@ -140,5 +140,28 @@ function main() {
   }
 }
 
-if (require.main === module) main();
-module.exports = { evaluate: evaluate, GOALS: GOALS };
+// Renewal search keeps character/egg/calendar specification fixed. Only the old relic
+// combat coefficients and trial gold budget vary; failed early curves are pruned.
+function renewalSearch(top) {
+  var original={hammer:B.relics.hammer.perLv,compass:B.relics.compass.perLv,gold:B.dungeonGoldSeconds};
+  var rows=[];
+  try {
+    [0.055,0.06].forEach(function(hammer){[0.09,0.10].forEach(function(compass){[4,6,8].forEach(function(gold){
+      B.relics.hammer.perLv=hammer;B.relics.compass.perLv=compass;B.dungeonGoldSeconds=gold;
+      var a=Sim.run({seconds:1800,questModel:'baseline'}),b=Sim.run({seconds:7200,questModel:'upper'});
+      var score=penalty(a.avgClearRatio,{min:1,max:2})+penalty(b.avgClearRatio,{min:1,max:1.7});
+      if(score>0)return;
+      var c=Sim.run({seconds:86400,sessions:{activeSec:900,gapSec:7200},questModel:'baseline'});
+      score+=penalty(c.longestWall,{max:360})+penalty(c.activeWallRatio,{max:0.30})+penalty(c.offlineGoldRatio,{min:.65,max:.85});
+      var d=Sim.run({seconds:86400,questModel:'baseline'});
+      score+=penalty(d.longestWall,{max:4200})+penalty(d.wallRatio,{max:.82})+penalty(d.finalStage,{min:210,max:250});
+      rows.push({hammer:hammer,compass:compass,dungeonGoldSeconds:gold,score:score,ratio30:a.avgClearRatio,ratio2h:b.avgClearRatio,sessionStage:c.finalStage,sessionWall:c.longestWall,activeWallRatio:c.activeWallRatio,stage24:d.finalStage,wall24:d.longestWall,wallRatio24:d.wallRatio});
+    });});});
+  } finally {B.relics.hammer.perLv=original.hammer;B.relics.compass.perLv=original.compass;B.dungeonGoldSeconds=original.gold;}
+  rows.sort(function(a,b){return a.score-b.score;});return rows.slice(0,top||5);
+}
+if (require.main === module) {
+  if(process.argv.includes('--renewal'))console.log(JSON.stringify(renewalSearch(Number((process.argv.find(function(s){return s.indexOf('--top=')===0;})||'').split('=')[1])||5),null,2));
+  else main();
+}
+module.exports = { evaluate: evaluate, GOALS: GOALS, renewalSearch:renewalSearch };

@@ -181,6 +181,21 @@ test('참조하는 에셋 파일이 전부 존재한다', function () {
   assert.ok(Object.keys(uniq).length >= 30, '에셋 참조가 비정상적으로 적다: ' + Object.keys(uniq).length);
 });
 
+test('리뉴얼 저장·목표·알·출석·형식 UI 계약', function () {
+  ['saveStatus','saveOpen','restoreCode','introRestore','hatchOpen','hatchGrid','hatchResult','attendance','achievements','nextGoal'].forEach(function(id){assert.ok(html.indexOf('id="'+id+'"')>=0,id+' 누락');});
+  assert.ok(html.indexOf('render/format.js')<html.indexOf('game.js'));
+  assert.ok(/fmtCost\(cost\)/.test(gameJs));
+  assert.ok(/Stage\.heartBurst\(\)/.test(gameJs));
+  assert.ok(/saveBlocked = true; suppressPersist = true; gameStarted = false/.test(gameJs));
+  assert.ok(/Stage\.restoreSnapshot/.test(gameJs));
+});
+test('새 경제와 날짜는 엔진 소유이며 시뮬과 같은 API를 쓴다', function () {
+  assert.ok(/Dungeon\.enter\(state, Date\.now\(\)\)/.test(gameJs));
+  assert.ok(/Calendar\.sync\(state, Date\.now\(\)\)/.test(gameJs));
+  ['engine/friends.js','engine/calendar.js','engine/save-contract.js'].forEach(function(file){assert.ok(!/Date\.|new Date|document\.|localStorage|Math\.random/.test(read(file)),file+' 경계 위반');});
+  var data=read('data/companions.js');(data.match(/assets\/[A-Za-z0-9_.-]+\.png/g)||[]).forEach(function(asset){assert.ok(fs.existsSync(path.join(__dirname,'..',asset)),asset);});
+});
+
 var pass = 0, fail = 0;
 tests.forEach(function (t) {
   try { t.fn(); console.log('  ok   ' + t.name); pass++; }

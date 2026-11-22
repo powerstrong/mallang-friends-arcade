@@ -46,6 +46,13 @@ H.withPage('/games/mallang-idle/index.html?dev=1', async function (pg) {
   ok(disp.intro === 'flex', '새 origin 진입 직후 intro=flex', disp);
   ok(disp.story === 'none', '새 origin 진입 직후 storyOverlay=none (컷신이 인트로를 덮지 않는다)', disp);
 
+  var renewal = JSON.parse(await pg.eval('JSON.stringify({width:document.documentElement.scrollWidth, viewport:innerWidth, goal:document.getElementById("nextGoal").textContent, status:document.getElementById("saveStatus").textContent})'));
+  ok(renewal.width <= renewal.viewport, '390px 화면에서 가로 넘침 없음', renewal);
+  ok(!!renewal.goal && !!renewal.status, '다음 목표와 저장 상태 표시', renewal);
+  await pg.clickEl('introRestore');
+  ok(await pg.eval('getComputedStyle(document.getElementById("saveModal")).display') !== 'none', '첫 화면 코드 이어하기 실좌표 클릭');
+  await pg.clickEl('saveClose');
+
   // 2. 시작 버튼 중앙의 실제 클릭 대상
   var target = await pg.eval(
     '(function(){var b=document.getElementById("introStart");var r=b.getBoundingClientRect();' +

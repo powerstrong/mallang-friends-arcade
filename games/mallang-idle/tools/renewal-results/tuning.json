@@ -1,0 +1,72 @@
+[
+  {
+    "hammer": 0.055,
+    "compass": 0.1,
+    "dungeonGoldSeconds": 4,
+    "score": 0,
+    "ratio30": 1.957756647378061,
+    "ratio2h": 1.673302480618791,
+    "sessionStage": 179,
+    "sessionWall": 222.5,
+    "activeWallRatio": 0.2819191919191928,
+    "stage24": 212,
+    "wall24": 4109,
+    "wallRatio24": 0.8099479166666667
+  },
+  {
+    "hammer": 0.055,
+    "compass": 0.1,
+    "dungeonGoldSeconds": 6,
+    "score": 0,
+    "ratio30": 1.9792291659678365,
+    "ratio2h": 1.6816977510448687,
+    "sessionStage": 179,
+    "sessionWall": 222.5,
+    "activeWallRatio": 0.28292929292929375,
+    "stage24": 212,
+    "wall24": 4109,
+    "wallRatio24": 0.8101099537037038
+  },
+  {
+    "hammer": 0.055,
+    "compass": 0.09,
+    "dungeonGoldSeconds": 6,
+    "score": 0.0882996632996657,
+    "ratio30": 1.9622259720485469,
+    "ratio2h": 1.6644213658783344,
+    "sessionStage": 179,
+    "sessionWall": 387,
+    "activeWallRatio": 0.3039898989898997,
+    "stage24": 211,
+    "wall24": 4181.5,
+    "wallRatio24": 0.8192361111111112
+  },
+  {
+    "hammer": 0.06,
+    "compass": 0.1,
+    "dungeonGoldSeconds": 4,
+    "score": 0.09065656565656766,
+    "ratio30": 1.9822069619985963,
+    "ratio2h": 1.6855386673168677,
+    "sessionStage": 180,
+    "sessionWall": 385,
+    "activeWallRatio": 0.30636363636363695,
+    "stage24": 213,
+    "wall24": 3937.5,
+    "wallRatio24": 0.80890625
+  },
+  {
+    "hammer": 0.055,
+    "compass": 0.09,
+    "dungeonGoldSeconds": 8,
+    "score": 0.09137205387205462,
+    "ratio30": 1.983218564520112,
+    "ratio2h": 1.6710434935113878,
+    "sessionStage": 179,
+    "sessionWall": 387.5,
+    "activeWallRatio": 0.3044949494949497,
+    "stage24": 211,
+    "wall24": 4189,
+    "wallRatio24": 0.8194155092592592
+  }
+]

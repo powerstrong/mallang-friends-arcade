@@ -1,0 +1,96 @@
+{
+  "baseline": {
+    "duration": 86400,
+    "seed": 1,
+    "firstHatchAt": 150.5,
+    "heartEarned": 55,
+    "heartSpent": 53,
+    "questModel": "baseline",
+    "sessions": {
+      "activeSec": 600,
+      "gapSec": 42600
+    },
+    "firstUpgradeAt": 12.5,
+    "firstBossAt": 30,
+    "firstBossClearAt": 53.5,
+    "idleSeconds": 0,
+    "longestWall": 46.5,
+    "longestWallStage": 5,
+    "wallSeconds": 46.5,
+    "returns": [
+      {
+        "gold": 316919.07306653605,
+        "upgrades": 35,
+        "charges": 1
+      }
+    ],
+    "offlineStageAdvances": 0,
+    "activeSeconds": 1200,
+    "offlineGold": 544710714.3881953,
+    "partyChanges": 3,
+    "dungeonRuns": 4,
+    "questShards": 11,
+    "unresolvedWall": 0,
+    "hatchCount": 3,
+    "uniqueCompanions": 3,
+    "maxFriendLevel": 7,
+    "starCount": 3,
+    "activeWallRatio": 0.03875,
+    "activeIdleRatio": 0,
+    "offlineGoldRatio": 0.9910192340818957,
+    "idleRatio": 0,
+    "wallRatio": 0.0005381944444444444,
+    "avgStageDwell": 23.67,
+    "bossFailCount": 1,
+    "avgClearRatio": 10.433816197237183,
+    "finalStage": 51,
+    "finalSafeStage": 50
+  },
+  "upper": {
+    "duration": 86400,
+    "seed": 1,
+    "firstHatchAt": 150.5,
+    "heartEarned": 55,
+    "heartSpent": 53,
+    "questModel": "upper",
+    "sessions": {
+      "activeSec": 600,
+      "gapSec": 42600
+    },
+    "firstUpgradeAt": 12.5,
+    "firstBossAt": 30,
+    "firstBossClearAt": 53.5,
+    "idleSeconds": 0,
+    "longestWall": 46.5,
+    "longestWallStage": 5,
+    "wallSeconds": 46.5,
+    "returns": [
+      {
+        "gold": 316919.07306653605,
+        "upgrades": 35,
+        "charges": 1
+      }
+    ],
+    "offlineStageAdvances": 0,
+    "activeSeconds": 1200,
+    "offlineGold": 544710714.3881953,
+    "partyChanges": 3,
+    "dungeonRuns": 4,
+    "questShards": 11,
+    "unresolvedWall": 0,
+    "hatchCount": 3,
+    "uniqueCompanions": 3,
+    "maxFriendLevel": 7,
+    "starCount": 3,
+    "activeWallRatio": 0.03875,
+    "activeIdleRatio": 0,
+    "offlineGoldRatio": 0.9910192340818957,
+    "idleRatio": 0,
+    "wallRatio": 0.0005381944444444444,
+    "avgStageDwell": 23.67,
+    "bossFailCount": 1,
+    "avgClearRatio": 10.433816197237183,
+    "finalStage": 51,
+    "finalSafeStage": 50
+  }
+}

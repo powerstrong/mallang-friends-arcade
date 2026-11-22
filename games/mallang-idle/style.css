@@ -1356,3 +1356,13 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .hero.walking, .hero.attacking, .enemy.hurt img, .toast { animation: none; }
 }
+
+.save-strip{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:4px 10px;background:#fff4e5;font-size:11px;flex-shrink:0}.save-strip button{border:0;border-radius:9px;padding:6px;background:#ffe0ad}.save-card{max-height:85dvh;overflow:auto}.save-card button,.save-card input{margin:5px 0;max-width:100%;min-height:36px}.save-card input{width:100%;box-sizing:border-box;font:inherit}#saveCode{overflow-wrap:anywhere;user-select:all}#backupList{display:grid;gap:4px}
+
+.friend-grow{width:100%;padding:9px;border:0;background:#fbe5f0;border-radius:9px;color:#653e51;font:inherit;font-size:12px}.hatch-card{padding:10px;background:#fff3de;border-radius:14px;margin-bottom:12px}.hatch-card p{font-size:12px}.hatch-card button{min-height:40px;border-radius:12px;border:1px solid #e9c5b9}#hatchGrid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}.companion{display:flex;flex-direction:column;align-items:center;background:#eee;font-size:10px}.companion img{width:48px;height:48px;object-fit:contain;filter:grayscale(1);opacity:.35}.companion.owned{border:2px solid #eea7be;background:#fff2f5}.companion.owned img{filter:none;opacity:1}.companion.selected{box-shadow:0 0 0 2px #a48adc}.egg-opening{animation:eggOpen 1s ease}@keyframes eggOpen{0%{transform:scale(.7)}60%{transform:scale(1.08)}100%{transform:scale(1)}}@media(prefers-reduced-motion:reduce){.egg-opening{animation:none}}
+
+.daily-extras{padding:10px;background:#fff2e4;border-radius:12px;font-size:12px;margin:8px 0}.daily-extras button{padding:7px;margin:3px;border:1px solid #ddc7da;border-radius:8px;background:#fff}.complete{border:3px double #eaba5a;border-radius:12px;padding:6px}#attendance{padding:8px 0}
+
+.next-goal{flex:none;border:0;border-bottom:1px solid #ead7cb;background:#fff9ed;color:#6b4c52;padding:7px 12px;font:inherit;font-size:12px;text-align:left;min-height:34px}.save-card button:focus-visible,button:focus-visible,.arena:focus-visible{outline:3px solid #8754c2;outline-offset:2px}.save-card p{font-size:12px}.save-card label{display:block;font-size:13px}.save-card input{user-select:text}.hud-power{display:none}.modal-card{max-width:min(370px,calc(100vw - 24px))}.save-card{position:relative;z-index:90}#saveModal{z-index:100}#introRestore{background:#fff5df;color:#68485b;border:1px solid #e8c8ba;margin-bottom:8px}.panel{min-height:180px}#hatchResult{min-height:20px;font-weight:bold}
+
+.synergy-preview{font-size:11px;line-height:1.7;color:#7c6475;margin:5px 0 8px}

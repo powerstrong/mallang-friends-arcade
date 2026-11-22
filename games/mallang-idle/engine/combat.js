@@ -16,11 +16,12 @@
 (function (root, factory) {
   var api = factory(
     typeof require === 'function' ? require('./balance.js') : root.MallangIdleBalance,
-    typeof require === 'function' ? require('../data/characters.js') : root.MallangIdleCharacters
+    typeof require === 'function' ? require('../data/characters.js') : root.MallangIdleCharacters,
+    typeof require === 'function' ? require('./friends.js') : root.MallangIdleFriends
   );
   if (typeof module === 'object' && module.exports) module.exports = api;
   root.MallangIdleCombat = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function (Bal, Chars) {
+})(typeof globalThis !== 'undefined' ? globalThis : this, function (Bal, Chars, Friends) {
   'use strict';
 
   var B = Bal.BALANCE;
@@ -43,8 +44,9 @@
       var c = Chars.byId(party[i]);
       if (!c || !c.skill) continue;
       if (out[c.skill.key] === undefined) continue;
-      out[c.skill.key] += c.skill.value;
+      out[c.skill.key] += c.skill.value * Friends.multiplier(s, c.id) * (s.trialRule === c.skill.key ? B.calendar.ruleMultiplier : 1);
     }
+    B.synergies.forEach(function(pair){if(pair.ids.every(function(id){return party.indexOf(id)!==-1;}))out[pair.key]+=pair.value;});
     return out;
   }
 
@@ -69,7 +71,7 @@
   function buyRelic(s, id) {
     var def = B.relics[id];
     if (!def) return false;
-    if (relicLv(s, id) >= B.maxRelicLevel) return false;
+    if (relicLv(s, id) >= (id === 'hourglass' ? B.hourglass.maxLevel : B.maxRelicLevel)) return false;
     var cost = relicCost(s, id);
     if (!(s.shards >= cost)) return false;
     s.shards -= cost;
@@ -89,7 +91,7 @@
 
   function advanceSeconds(s) {
     var mul = 1 - partyBonus(s).advanceMul;
-    if (!(mul > 0.1)) mul = 0.1;
+    if (!(mul > B.minAdvanceMul)) mul = B.minAdvanceMul;
     return B.advanceSeconds * mul;
   }
 
@@ -156,8 +158,11 @@
   }
 
   // ── 상태 ────────────────────────────────────────────────────
-  function createState() {
+  function createState(seed) {
     return {
+      tutorialSeen:[],preferences:{numberFormat:'ko'},
+      friends: Friends.initialFriends(), hatch: Friends.initialHatch(seed), selectedCompanion: null,
+      progress: {maxClearedStage:0}, offlineThroughAt:0,
       t: 0,                 // 누적 플레이 시간(초)
       stage: 1,
       safeStage: 0,         // 보스를 돌파한 최고 스테이지 (오프라인 보상 기준)
@@ -172,7 +177,7 @@
       up: { atk: 1, aspd: 1, gold: 1 },
       party: Chars ? [Chars.CHARACTERS[0].id] : [],   // 편성된 캐릭터 (슬롯 순서)
       shards: 0,                                       // 별조각 — 보스가 주는 유물 재화
-      relics: { hammer: 0, barn: 0, compass: 0 },
+      relics: { hammer: 0, barn: 0, compass: 0, hourglass:0 },
       collection: [],                                  // 도감 — 만난 몬스터/보스 id
       storySeen: [],                                   // 스토리 — 본 장면 id
       daily: null,                                     // 일일 과제 { date, base, claimed } — game.js 가 관리
@@ -278,6 +283,9 @@
     if (kind === 'boss_kill') {
       s.enemyHp = 0;
       s.safeStage = s.stage;
+      s.progress = s.progress || {maxClearedStage:0};
+      s.progress.maxClearedStage = Math.max(s.progress.maxClearedStage, s.stage);
+      Friends.rewardClear(s, s.stage);
       /* 별사탕(shardMul) 편성 시 조각 수입이 늘어난다 — floor 로 정수 유지 */
       var clearShards = Math.floor((1 + Math.floor(s.stage / B.shardClearDiv)) * (1 + partyBonus(s).shardMul));
       s.shards += clearShards;
@@ -392,15 +400,17 @@
   // ── 오프라인 보상 ────────────────────────────────────────────
   /* elapsedSec 은 호출자가 (now - lastSaveAt) 으로 계산해 넘긴다. 엔진은 시계를
    * 읽지 않는다. 음수(시계 역행)는 0, 상한은 offlineMaxHours 로 자른다. */
+  function offlineSettings(s) {var lv=Math.min(B.hourglass.maxLevel,relicLv(s,'hourglass'));return {maxHours:B.offlineMaxHours+Math.min(B.hourglass.extraHours,Math.floor(lv*B.hourglass.extraHours/B.hourglass.maxLevel)),efficiency:B.offlineEfficiency+lv*B.hourglass.perLevel};}
   function offlineReward(s, elapsedSec) {
     var e = elapsedSec;
     if (!(e > 0)) e = 0;
-    var cap = B.offlineMaxHours * 3600;
+    var hours = offlineSettings(s);
+    var cap = hours.maxHours * 3600;
     var clamped = Math.min(e, cap);
     // 안정적으로 파밍 가능한 구간 = 보스를 돌파한 최고 스테이지.
     // 아직 첫 보스를 못 넘었으면 1스테이지 기준.
     var farmStage = s.safeStage > 0 ? s.safeStage : 1;
-    var gold = goldPerSec(s, farmStage) * clamped * B.offlineEfficiency;
+    var gold = goldPerSec(s, farmStage) * clamped * hours.efficiency;
     // 손상되거나 조작된 세이브(극대 레벨)에서 Infinity/NaN 이 골드로 새어 들어가면
     // 이후 모든 계산이 오염된다. 마지막 관문에서 막는다.
     if (!isFinite(gold) || gold < 0) gold = 0;
@@ -422,7 +432,7 @@
     mobHp: mobHp, bossHp: bossHp, mobGold: mobGold, goldPerSec: goldPerSec,
     upgradeCost: upgradeCost, bulkCost: bulkCost, affordable: affordable,
     buy: buy, canBuyAnything: canBuyAnything,
-    offlineReward: offlineReward,
+    offlineReward: offlineReward, offlineSettings:offlineSettings,
     setFarmMode: setFarmMode, challengeNow: challengeNow,
   };
 });

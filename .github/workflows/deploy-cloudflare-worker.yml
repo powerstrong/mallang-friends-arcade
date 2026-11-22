@@ -42,6 +42,8 @@ jobs:
           # 0004는 ALTER ADD COLUMN 이라 idempotent 하지 않음 — 이미 적용된 경우의 재실행 실패만 허용
           npx wrangler d1 execute web-game-lab-scores --remote --file=migrations/0004_add_character_to_scores.sql || echo "0004 already applied"
 
+          npx wrangler d1 execute web-game-lab-scores --remote --file=migrations/0005_create_idle_saves.sql
+
       - name: Deploy to Cloudflare
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

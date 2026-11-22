@@ -21,7 +21,9 @@
     <button class="mute-btn" id="muteBtn" aria-label="소리">🔊</button>
   </header>
 
-  <section class="arena" id="arena">
+  <div class="save-strip"><span id="saveStatus" role="status">이 기기에 저장</span><button id="saveOpen">저장 · 이어하기</button></div>
+  <button class="next-goal" id="nextGoal" aria-live="polite">골드를 모아 첫 강화를 해 봐요</button>
+  <section class="arena" id="arena" aria-label="친구 응원하기. 전투 힘이나 보상은 바뀌지 않아요" tabindex="0">
     <!-- 카메라 — 무대(배경·액터·이펙트)만 감싼다. HUD(진행도·보스 타이머)는 밖에 두어
          화면이 흔들려도 숫자는 읽힌다. render/stage.js 가 이 요소의 transform 을 소유한다. -->
     <div class="stage-cam" id="stageCam">
@@ -87,7 +89,7 @@
 
   <nav class="tabs" id="tabs">
     <button data-tab="upgrade" class="on">강화</button>
-    <button data-tab="party">편성 <i class="dot" id="partyDot" hidden></i></button>
+    <button data-tab="party">친구 <i class="dot" id="partyDot" hidden></i></button>
     <button data-tab="relic">유물 <i class="dot" id="relicDot" hidden></i></button>
     <button data-tab="battle">도전 <i class="dot" id="battleDot" hidden></i></button>
     <button data-tab="book">도감</button>
@@ -104,7 +106,7 @@
     </div>
     <div class="upgrades" id="upgrades"></div>
     <div class="panel-foot">
-      <span class="dps-hint" id="dpsHint">DPS 0</span>
+      <span class="dps-hint" id="dpsHint">1초의 힘 0</span>
       <button class="exit" id="exitBtn">나가기</button>
     </div>
   </section>
@@ -131,6 +133,7 @@
       </div>
       <button class="dungeon-go" id="dungeonGo">입장</button>
     </div>
+    <details class="daily-extras"><summary>출석과 나의 배지</summary><div id="attendance"></div><div id="achievements"></div></details>
     <div class="quests" id="questList"></div>
     <div class="panel-foot">
       <span class="dps-hint">매일 자정에 새로워져요</span>
@@ -142,7 +145,8 @@
     <div class="panel-head">
       <span class="panel-title">도감 <b id="bookCount"></b></span>
     </div>
-    <div class="book-grid" id="bookGrid"></div>
+    <section class="hatch-card"><h3>말랑 알 · 산책 친구</h3><p id="heartCount"></p><p id="hatchInfo"></p><button id="hatchOpen">🥚 알 열기</button><details id="hatchAgain"><summary>알 한 번 더 열기</summary><p>모두 같은 확률이에요. 전투 힘은 바뀌지 않아요.</p></details><p id="hatchResult" role="status" aria-live="polite"></p><div id="hatchGrid"></div></section>
+      <div class="book-grid" id="bookGrid"></div>
     <div class="panel-foot">
       <span class="dps-hint" id="bookHint"></span>
       <button class="exit" id="exitBtn5">나가기</button>
@@ -151,9 +155,10 @@
 
   <section class="panel" id="panelParty" hidden>
     <div class="panel-head">
-      <span class="panel-title">편성 <b id="partySlots">1 / 1</b></span>
+      <span class="panel-title">친구 <b id="partySlots">1 / 1</b></span>
       <span class="party-hint" id="partyHint">탭해서 넣고 빼요</span>
     </div>
+    <p id="synergyPreview" class="synergy-preview"></p>
     <div class="party-list" id="partyList"></div>
     <div class="panel-foot">
       <span class="dps-hint" id="partyBonusHint"></span>
@@ -167,7 +172,8 @@
 <div class="intro" id="intro" hidden>
   <img class="intro-logo" src="assets/title-logo.png" alt="말랑프렌즈 키우기" />
   <h1 class="intro-title">말랑프렌즈 키우기</h1>
-  <button id="introStart">시작하기</button>
+  <button id="introRestore">코드로 이어하기</button>
+    <button id="introStart">새 산책 시작</button>
 </div>
 
 <!-- 스토리 컷신 — 탭해서 진행, 건너뛰기 가능. 떠 있는 동안 게임 시간 정지. -->
@@ -209,10 +215,18 @@
     <p class="modal-sub" id="offlineSub">자리를 비운 동안 친구들이 열심히 모았어요.</p>
     <div class="modal-gold"><i class="coin"></i><b id="offlineGold">0</b></div>
     <p class="modal-sub offline-hint" id="offlineHint" hidden></p>
-    <button id="offlineOk">받기</button>
+    <button id="offlineOk">강화하러 가기</button>
   </div>
 </div>
 
+<div class="modal" id="saveModal" hidden><div class="modal-card save-card">
+<h2>산책을 안전하게 보관해요</h2><p>코드는 보호자와 보관해요. 친구에게 공개하지 마세요.</p>
+<p id="saveCode">연결되면 코드를 만들어요</p><button id="codeCopy">코드 복사</button><button id="codeFile">코드 파일 보관</button>
+<label for="restoreCode">이어하기 코드</label><input id="restoreCode" autocomplete="off" spellcheck="false" maxlength="40"><button id="restoreGo">코드로 이어하기</button>
+<button id="saveRetry">다시 연결</button><button id="exportSave">백업 파일 내보내기</button>
+<label>백업 파일 가져오기<input type="file" id="importSave" accept="application/json,.json"></label>
+<button id="serverBackups">구름의 이전 백업 보기</button><div id="backupList"></div>
+<button id="saveClose">닫기</button></div></div>
 <div class="devpanel" id="devPanel" hidden>
   <div class="dev-title">DEV</div>
   <div class="dev-row">
@@ -250,13 +264,21 @@
 <script src="engine/rng.js"></script>
 <script src="data/chapters.js"></script>
 <script src="data/characters.js"></script>
+<script src="data/companions.js"></script>
+<script src="engine/friends.js"></script>
 <script src="engine/combat.js"></script>
-<script src="engine/save.js"></script>
-<script src="engine/dungeon.js"></script>
 <script src="data/quests.js"></script>
+<script src="engine/calendar.js"></script>
+<script src="data/achievements.js"></script>
+<script src="engine/save.js"></script>
+<script src="engine/save-contract.js"></script>
+<script src="/shared/config.js"></script>
+<script src="cloud-save.js"></script>
+<script src="engine/dungeon.js"></script>
 <script src="data/story.js"></script>
 <script src="audio.js"></script>
 <!-- 표현 계층 — queue 는 stage 보다, stage 는 game 보다 먼저 온다. -->
+<script src="render/format.js"></script>
 <script src="render/queue.js"></script>
 <script src="render/stage.js"></script>
 <script src="game.js"></script>

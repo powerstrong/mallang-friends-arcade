@@ -655,14 +655,16 @@
 
     /* 구출 연출 — 챕터 피날레에서 하트가 쏟아진다 (game.js 가 컷신 종료 때 부른다) */
     function heartBurst() {
-      for (var i = 0; i < 8; i++) {
+      for (var i = 0; i < (reducedMotion ? 1 : 8); i++) {
+        if (fxCount >= FX_CAP) break;
+        fxCount++;
         var h = document.createElement('i');
         h.className = 'fx-heartp';
         h.style.left = (30 + Math.random() * 45) + '%';
         h.style.top = (30 + Math.random() * 25) + '%';
         h.style.setProperty('--hd', (Math.random() * 1.2) + 's');
         el.arena.appendChild(h);
-        (function (node) { setTimeout(function () { node.remove(); }, 2400); })(h);
+        (function (node) { setTimeout(function () { node.remove(); fxCount=Math.max(0,fxCount-1); }, 2400); })(h);
       }
     }
 
@@ -1437,6 +1439,7 @@
         }
         queue.push(events);
       },
+      restoreSnapshot: function(state) { if(dungeon) dungeonSkip(); queue.reset(); camera.reset(); view.phase=null; syncTo(state); syncParty(state); },
       update: update,
       setChapter: setChapter,
       syncParty: syncParty,

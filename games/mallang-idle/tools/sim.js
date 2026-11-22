@@ -20,6 +20,9 @@ var Bal = require('../engine/balance.js');
 var Chars = require('../data/characters.js');
 var Dungeon = require('../engine/dungeon.js');
 var Quests = require('../data/quests.js');
+var Friends = require('../engine/friends.js');
+var Calendar = require('../engine/calendar.js');
+var Companions = require('../data/companions.js');
 var B = Bal.BALANCE;
 var AXES = Bal.AXES;
 var POLICY = Bal.SIM_POLICY;
@@ -42,7 +45,7 @@ function bestParty(state, stuck) {
   var unlocked = Chars.unlockedAt(state.stage);
   if (unlocked.length <= slots) return unlocked.slice();
 
-  var probe = { up: state.up, stage: state.stage, relics: state.relics, party: [] };
+  var probe = { up: state.up, stage: state.stage, relics: state.relics, friends:state.friends, trialRule:state.trialRule, party: [] };
   var best = null;
   combinations(unlocked, slots).forEach(function (combo) {
     probe.party = combo;
@@ -74,7 +77,7 @@ function bestAxis(state, dpsOnly) {
      * 각각 실제로 터졌던 버그다. */
     var probeUp = { atk: state.up.atk, aspd: state.up.aspd, gold: state.up.gold };
     probeUp[axis] += 1;
-    var probe = { up: probeUp, party: state.party, relics: state.relics, stage: stage };
+    var probe = { up: probeUp, party: state.party, relics: state.relics, friends:state.friends, trialRule:state.trialRule, stage: stage };
     var gain = Combat.goldPerSec(probe, stage) - base;
     if (!(gain > 0)) continue;
 
@@ -169,10 +172,10 @@ function run(opts) {
   }
   var dt = POLICY.decisionInterval;
 
-  var s = Combat.createState();
+  var s = Combat.createState(opts.seed === undefined ? 1 : opts.seed);
 
   var m = {
-    duration: duration,
+    duration: duration, seed:opts.seed === undefined ? 1 : opts.seed, firstHatchAt:null, heartEarned:0, heartSpent:0,
     questModel: questModel,
     sessions: sessions,    // null 이면 연속 플레이(기존) 모델
     firstUpgradeAt: null,
@@ -189,21 +192,17 @@ function run(opts) {
     wallSeconds: 0,        // 벽에 막혀 있던 총 시간 — 장기 정체감의 정직한 지표
     clearRatios: [],       // 돌파 시점의 (dps * bossTimeLimit) / bossHp
     goldPerMinSamples: [],
-    activeSeconds: 0,      // 총 활동 시간 — 루프 종료 후 s.t 로 확정
+    returns:[], offlineStageAdvances:0, activeSeconds: 0,      // 총 활동 시간 — 루프 종료 후 s.t 로 확정
     offlineGold: 0,        // 오프라인 보상으로 받은 골드 총량
   };
 
   m.partyChanges = 0;
   m.dungeonRuns = 0;
   m.questShards = 0;
-  /* 던전 보상 — 해금(stage≥dungeonUnlockStage) 후 매 시뮬 일마다 3회 (결정론이라 정확) */
-  var questShardsPerDay = 0;
-  Quests.QUESTS.forEach(function (q) { questShardsPerDay += Quests.rewardOf(q); });
-  var nextDailyAt = 0;
-  /* baseline 과제 상태 — 실제 게임과 같은 스냅숏 방식. 하루가 바뀌면 다시 깐다. */
-  var simDay = 0;
-  var simDaily = Quests.freshDaily('day0', s.stats);
-  var nextQuestDayAt = 86400;
+  var epoch = Date.UTC(2026,10,21,15); // Fixed Sunday midnight in KST; caller can override for day experiments.
+  if(opts.startAt !== undefined) epoch=opts.startAt;
+  var rewardIncome=0, heartSpent=0;
+  var heartBefore=s.friends.hearts;
   var lastPartyKey = '';
   var stageEnteredAt = 0;
   var firstFailAt = null;      // 현재 스테이지에서 처음 보스에 실패한 시각
@@ -223,15 +222,20 @@ function run(opts) {
      * 전투·스테이지·s.t 는 멈춘 채 엔진의 오프라인 보상만 골드로 들어온다. */
     if (sessions && sessionActiveT >= sessions.activeSec) {
       var gap = Math.min(sessions.gapSec, duration - (s.t + offlineSec));
+      var offStage=s.stage;
       var off = Combat.offlineReward(s, gap);
       s.gold += off.gold;
       s.stats.goldEarned += off.gold;
       m.offlineGold += off.gold;
       offlineSec += gap;
       sessionActiveT = 0;
+      m.offlineStageAdvances+=s.stage-offStage;
+      if(s.t+offlineSec<duration){Calendar.sync(s,epoch+(s.t+offlineSec)*1000);m.returns.push({gold:off.gold,upgrades:Math.max.apply(null,AXES.map(function(a){return Combat.affordable(s,a.id,null);})),charges:s.dungeon?s.dungeon.charges:0});}
       continue;    // 벽시계가 흘렀다 — 종료·일일 콘텐츠 조건을 새로 평가한다
     }
 
+    var nowMs=epoch+(s.t+offlineSec)*1000;
+    Calendar.sync(s,nowMs);
     var dpsOnly = POLICY.bossStuckDpsOnly && stuck;
 
     /* 유휴 = 다음 강화까지 대기가 임계를 넘는 시간.
@@ -271,7 +275,7 @@ function run(opts) {
     s.events.length = 0;
 
     // 해금·슬롯 상황이 바뀌었으면 편성을 다시 짠다.
-    var key = s.stage + '|' + (dpsOnly ? 'b' : 'f');
+    var key = Calendar.rule(nowMs) + '|' + s.stage + '|' + JSON.stringify(s.friends.levels) + '|' + (dpsOnly ? 'b' : 'f');
     if (key !== lastPartyKey) {
       lastPartyKey = key;
       var want = bestParty(s, dpsOnly);
@@ -281,41 +285,33 @@ function run(opts) {
       }
     }
 
-    // 하루 단위 콘텐츠 보상 — 던전은 해금된 날부터 하루에 한 번 (두 모델 공통).
-    // "하루"의 기준은 벽시계다 — 오프라인으로 흘러도 날짜는 간다(연속 모드에서는
-    // s.t == 벽시계라 기존과 동일). 다음 날을 "지금 + 24h"로 다시 잡으므로
-    // 며칠을 건너뛰어도 지난 날의 던전 횟수가 몰아서 지급되지는 않는다(실제 게임과 같다).
-    if (s.stage >= B.dungeonUnlockStage && s.t + offlineSec >= nextDailyAt) {
-      nextDailyAt = s.t + offlineSec + 86400;
-      for (var dr = 0; dr < B.dungeonRunsPerDay; dr++) {
-        var dres = Dungeon.simulate(s);
-        Dungeon.applyReward(s, dres);
-        m.dungeonRuns++;
+    if (s.stage >= B.dungeonUnlockStage) {
+      Calendar.sync(s,nowMs);
+      while(s.dungeon && s.dungeon.charges>0) {
+        var dres=Dungeon.enter(s,nowMs); if(!dres)break; m.dungeonRuns++;
       }
-      if (questModel === 'upper') {
-        s.shards += questShardsPerDay;
-        m.questShards += questShardsPerDay;
-      }
+      for(var qi=0;qi<Quests.QUESTS.length;qi++)m.questShards+=Quests.claim(Quests.QUESTS[qi],s,s.daily,questModel==='upper');
     }
 
-    // baseline 과제 — 실제 진행도로 판정하고, 채운 순간 수령한다 (game.js 와 같은 API)
-    if (questModel === 'baseline') {
-      /* 날짜 리셋도 벽시계 기준. while 인 이유: 세션 모델의 긴 gap 은 하루 경계를
-       * 한 번에 여러 개 넘을 수 있는데, if 로 하루씩만 따라가면 리셋이 벽시계에
-       * 뒤처져 이후 접속마다 반복 발화한다. 연속 모드에서는 dt(0.5s)가 하루를
-       * 넘을 수 없어 두 번 돌 일이 없다 — 기존 if 와 동일하게 동작한다. */
-      while (s.t + offlineSec >= nextQuestDayAt) {
-        simDay++;
-        simDaily = Quests.freshDaily('day' + simDay, s.stats);
-        nextQuestDayAt += 86400;
-      }
-      for (var qi = 0; qi < Quests.QUESTS.length; qi++) {
-        var got = Quests.claim(Quests.QUESTS[qi], s, simDaily);
-        if (got > 0) m.questShards += got;
-      }
+    rewardIncome+=s.friends.hearts-heartBefore;
+    var beforeSpend=s.friends.hearts;
+    if (Friends.giftReady(s)) { Friends.open(s); if(m.firstHatchAt===null)m.firstHatchAt=s.t; }
+    var desiredHatches = Math.min(Companions.length, POLICY.hatchInitialTarget + Math.floor(s.safeStage/POLICY.hatchStageInterval));
+    if (s.stage >= B.hatch.unlockStage && s.hatch.count < desiredHatches && s.friends.hearts >= B.hatch.cost) Friends.open(s);
+    var reserve = s.hatch.count < desiredHatches ? B.hatch.cost : 0;
+    if(s.stage >= B.friends.unlockStage) for(var growth=0;growth<POLICY.friendGrowthPerDecision;growth++) {
+      var ordered=Chars.CHARACTERS.filter(function(c){return s.party.indexOf(c.id)>=0;}).sort(function(a,b){return Friends.level(s,a.id)-Friends.level(s,b.id);});
+      var target=ordered[0];if(!target || s.friends.hearts-reserve < Friends.cost(s,target.id) || !Friends.grow(s,target.id))break;
     }
-
+    heartSpent+=beforeSpend-s.friends.hearts;heartBefore=s.friends.hearts;
     var bought = decide(s, dpsOnly);
+    if(sessions && Combat.relicLv(s,'hourglass')<B.hourglass.maxLevel){
+      var offProbe=Combat.clone(s);offProbe.relics.hourglass++;
+      var offGain=Combat.offlineReward(offProbe,sessions.gapSec).gold-Combat.offlineReward(s,sessions.gapSec).gold;
+      var regularProbe=Combat.clone(s);regularProbe.relics.barn++;
+      var regularGain=(Combat.goldPerSec(regularProbe,s.safeStage||1)-Combat.goldPerSec(s,s.safeStage||1))*sessions.activeSec;
+      if(offGain/Combat.relicCost(s,'hourglass')>=regularGain/Combat.relicCost(s,'barn'))Combat.buyRelic(s,'hourglass');
+    }
     spendShards(s, dpsOnly);
     if (bought > 0 && m.firstUpgradeAt == null) m.firstUpgradeAt = s.t;
 
@@ -338,6 +334,11 @@ function run(opts) {
     m.unresolvedWall = 0;
   }
 
+  m.hatchCount=s.hatch.count; m.uniqueCompanions=s.hatch.owned.length;
+  m.maxFriendLevel=Math.max.apply(null,Object.values(s.friends.levels));
+  m.starCount=Object.values(s.friends.levels).reduce(function(n,lv){return n+Friends.stars(lv);},0);
+  m.heartEarned=rewardIncome; m.heartSpent=heartSpent;
+  m.activeWallRatio=m.wallSeconds/s.t; m.activeIdleRatio=m.idleSeconds/s.t;
   m.activeSeconds = s.t;   // 총 활동 시간 — 세션 모델에서는 duration(벽시계)보다 작다
   m.offlineGoldRatio = s.stats.goldEarned > 0 ? m.offlineGold / s.stats.goldEarned : 0;
   m.idleRatio = m.idleSeconds / duration;
@@ -403,6 +404,7 @@ function report(m) {
     lines.push('활동 시간       ' + fmtTime(m.activeSeconds) + '  (벽시계의 ' + (m.activeSeconds / m.duration * 100).toFixed(1) + '%)');
     lines.push('오프라인 골드   ' + fmtNum(m.offlineGold) + '  (총 골드의 ' + (m.offlineGoldRatio * 100).toFixed(1) + '%)');
   }
+  lines.push('알 '+m.hatchCount+'회 · 산책 친구 '+m.uniqueCompanions+'종 · 최고 친구 Lv.'+m.maxFriendLevel+' · 별 '+m.starCount);
   lines.push('총 골드         ' + fmtNum(s.stats.goldEarned));
   lines.push('유물            망치 ' + s.relics.hammer + ' · 곳간 ' + s.relics.barn + ' · 나침반 ' + s.relics.compass + '  (조각 ' + Math.floor(s.shards) + ')');
   lines.push('최종 DPS        ' + fmtNum(Combat.dps(s)));
@@ -415,7 +417,8 @@ function parseArgs(argv) {
   var o = { seconds: 300, json: false, model: 'both', sessions: null };
   argv.forEach(function (a) {
     var mm;
-    if ((mm = a.match(/^--minutes=([\d.]+)$/))) o.seconds = parseFloat(mm[1]) * 60;
+    if ((mm = a.match(/^--seed=(\d+)$/))) o.seed=Number(mm[1]);
+    else if ((mm = a.match(/^--minutes=([\d.]+)$/))) o.seconds = parseFloat(mm[1]) * 60;
     else if ((mm = a.match(/^--hours=([\d.]+)$/))) o.seconds = parseFloat(mm[1]) * 3600;
     else if ((mm = a.match(/^--seconds=([\d.]+)$/))) o.seconds = parseFloat(mm[1]);
     // --sessions=15/120 : "15분 접속 + 120분 오프라인" 반복 (분 단위, 시뮬 정책 인자)
@@ -441,7 +444,7 @@ if (require.main === module) {
   var opts = parseArgs(process.argv.slice(2));
   var models = opts.model === 'both' ? ['baseline', 'upper'] : [opts.model];
   var results = models.map(function (qm) {
-    return run({ seconds: opts.seconds, questModel: qm, sessions: opts.sessions });
+    return run({ seconds: opts.seconds, questModel: qm, sessions: opts.sessions, seed:opts.seed });
   });
   if (opts.json) {
     var out = {};

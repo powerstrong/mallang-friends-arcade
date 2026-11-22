@@ -188,7 +188,7 @@ test('세이브 v2 → v3 마이그레이션 (유물 도입)', function () {
   assert.ok(res.ok, 'v2 세이브를 읽을 수 있어야 한다');
   assert.strictEqual(res.state.stage, 30, '진행도 보존');
   assert.strictEqual(res.state.shards, 0, '조각은 0 으로 시작');
-  assert.deepStrictEqual(res.state.relics, { hammer: 0, barn: 0, compass: 0 }, '유물은 0 레벨');
+  assert.deepStrictEqual(res.state.relics, { hammer: 0, barn: 0, compass: 0, hourglass:0 }, '기존 유물과 신규 모래시계는 0 레벨');
   // 손상된 유물 값도 정리된다
   var bad = Save.load(JSON.stringify({ version: 3, stage: 5, shards: -50, relics: { hammer: 2.7, barn: -1, compass: 1e308 } }));
   assert.ok(bad.ok);
@@ -826,6 +826,39 @@ test('세이브 v5 → v6 마이그레이션 (파밍 모드)', function () {
   assert.strictEqual(round.state.farmMode, true, '파밍 상태 왕복 보존');
   var dirty = Save.load(JSON.stringify({ version: 6, farmMode: 'yes' }));
   assert.strictEqual(dirty.state.farmMode, false, 'boolean 이 아니면 꺼짐으로 강제');
+});
+
+test('시뮬 알 구매 주기와 친구 성장 횟수는 SIM_POLICY를 따른다', function () {
+  var policy = Bal.SIM_POLICY, previous = Object.assign({}, policy);
+  try {
+    var baseline = Sim.run({seconds:1800});
+    policy.hatchStageInterval = 1;
+    policy.friendGrowthPerDecision = 0;
+    var eggs = Sim.run({seconds:1800});
+    assert.ok(eggs.hatchCount > baseline.hatchCount, '알 구매 주기를 바꾸면 실제 구매가 늘어난다');
+    assert.ok(Object.values(eggs.state.friends.levels).every(function(lv){return lv === 1;}), '정책으로 성장을 멈출 수 있다');
+    policy.hatchInitialTarget = 0;
+    policy.hatchStageInterval = 1e6;
+    assert.strictEqual(Sim.run({seconds:1800}).hatchCount, 1, '선물 외 구매 목표를 정책으로 조절한다');
+  } finally {
+    Object.keys(policy).forEach(function(k){delete policy[k];});
+    Object.assign(policy, previous);
+  }
+});
+
+test('부분 손상 v6 마이그레이션과 역직렬화 예외는 실패 결과로 반환한다', function () {
+  [
+    { version: 6, relics: 'broken' },
+    { version: 8, relics: 123 },
+    { version: 10, calendar: { lastDayKey: {toString:null} } },
+  ].forEach(function (partial) {
+    var input = Object.assign(Save.serialize(Combat.createState(), 1000), partial);
+    var raw = JSON.stringify(input), result = Save.load(raw, {nowMs:1000});
+    assert.strictEqual(result.ok, false);
+    assert.strictEqual(result.state, null);
+    assert.deepStrictEqual(result.save, input, '진단에 쓸 원본 객체를 보존한다');
+    assert.strictEqual(JSON.stringify(input), raw);
+  });
 });
 
 // ── 실행 ──────────────────────────────────────────────────────

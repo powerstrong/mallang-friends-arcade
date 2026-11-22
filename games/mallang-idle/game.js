@@ -10,11 +10,15 @@
 
   var Combat = window.MallangIdleCombat;
   var Save = window.MallangIdleSave;
+  var Friends = window.MallangIdleFriends;
+  var Companions = window.MallangIdleCompanions;
   var Chapters = window.MallangIdleChapters;
   var Chars = window.MallangIdleCharacters;
   var Bal = window.MallangIdleBalance;
   var Dungeon = window.MallangIdleDungeon;
   var Quests = window.MallangIdleQuests;
+  var Calendar = window.MallangIdleCalendar;
+  var Achievements = window.MallangIdleAchievements;
   var Story = window.MallangIdleStory;
   var Audio = window.MallangIdleAudio;
 
@@ -38,7 +42,7 @@
   var params = new URLSearchParams(location.search);
   var DEV = params.get('dev') === '1';
 
-  var state = Combat.createState();
+  var state = Combat.createState(crypto.getRandomValues(new Uint32Array(1))[0]);
   var bulk = 1;              // 1 | 10 | 'max'
   var speedMul = 1;          // DEV 전용 배속
   var lastFrame = 0;
@@ -91,15 +95,8 @@
 
   // ── 숫자 표기 ────────────────────────────────────────────────
   // 표기는 UI 계층의 일이다. 엔진은 계속 Number 로만 계산한다.
-  var UNITS = ['', 'K', 'M', 'B', 'T', 'aa', 'ab', 'ac', 'ad', 'ae', 'af'];
-  /* fmt 는 아래에서 정의되지만 Stage 생성 시점에는 함수 선언 호이스팅으로 이미 유효하다. */
-  function fmt(n) {
-    if (!isFinite(n)) return '∞';
-    if (n < 1000) return String(Math.floor(n));
-    var u = 0;
-    while (n >= 1000 && u < UNITS.length - 1) { n /= 1000; u++; }
-    return (n < 10 ? n.toFixed(2) : n < 100 ? n.toFixed(1) : Math.floor(n)) + UNITS[u];
-  }
+  function fmt(n) { return window.MallangIdleFormat.number(n); }
+  function fmtCost(n) { return window.MallangIdleFormat.cost(n); }
   function fmtDuration(sec) {
     var h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60);
     if (h > 0) return h + '시간 ' + m + '분';
@@ -174,6 +171,7 @@
   }
 
   function finishTutorial() {
+    markTutorial('upgrade');
     if (tutDone) return;
     tutDone = true;
     try { localStorage.setItem(TUT_KEY, '1'); } catch (e) {}
@@ -181,6 +179,7 @@
   }
 
   function syncCoach() {
+    try {if (cloud && !cloud.ready() && !DEV && localStorage.getItem(window.MallangIdleCloudSave.KEY)) return;} catch(e) {}
     if (tutDone || state.stats.upgrades > 0) { finishTutorial(); return; }
     for (var i = 0; i < AXES.length; i++) {
       var n = upNodes[AXES[i].id];
@@ -194,11 +193,12 @@
   function aspdMaxed() { return Combat.effAspd(state) >= B.aspdCap - 1e-9; }
 
   function onBuy(axisId) {
+    if(suppressPersist || saveBlocked)return;
     if (axisId === 'aspd' && aspdMaxed()) return;
     var n = plannedCount(axisId);
     if (n <= 0) return;
     var got = Combat.buy(state, axisId, n);
-    if (got > 0) { sfx('upgrade'); finishTutorial(); renderPanel(); renderBattle(); }
+    if (got > 0) { sfx('upgrade'); finishTutorial(); persist(true); if(!state.tutorialSeen.includes('code')){markTutorial('code');toast('이어하기 코드를 보호자와 함께 보관해요');}  renderPanel(); renderBattle(); }
   }
 
   function effectText(axisId) {
@@ -277,6 +277,14 @@
         '</div>';
       if (isUnlocked) card.addEventListener('click', function () { toggleMember(c.id); });
       el.partyList.appendChild(card);
+      if (isUnlocked) {
+        var grow = document.createElement('button'); grow.className = 'friend-grow';
+        var lv = Friends.level(state,c.id);
+        grow.textContent = c.name.split(' ')[0] + ' Lv.' + lv + ' ' + '★'.repeat(Friends.stars(lv)) + ' · 마음방울 ' + Friends.cost(state,c.id) + '개로 키우기';
+        grow.disabled = state.stage < B.friends.unlockStage || lv >= B.friends.maxLevel || state.friends.hearts < Friends.cost(state,c.id);
+        grow.onclick = function(){if(suppressPersist || saveBlocked)return;if(Friends.grow(state,c.id)){markTutorial('grow');persist(true);partyDirty=true;renderParty();renderPanel();renderHatch();}};
+        el.partyList.appendChild(grow);
+      }
     });
 
     var pb = Combat.partyBonus(state);
@@ -287,7 +295,9 @@
     if (pb.bossMul)    parts.push('보스 +' + Math.round(pb.bossMul * 100) + '%');
     if (pb.advanceMul) parts.push('이동 -' + Math.round(pb.advanceMul * 100) + '%');
     if (pb.shardMul)   parts.push('별조각 +' + Math.round(pb.shardMul * 100) + '%');
-    el.partyBonusHint.textContent = parts.join(' · ') || '보너스 없음';
+    var pairs = B.synergies.filter(function(p){return p.ids.every(function(id){return state.party.indexOf(id)>=0;});});
+    $('synergyPreview').textContent=B.synergies.map(function(pair){return pair.name+' · '+pair.ids.map(function(id){return Chars.byId(id).name.split(' ')[0];}).join(' + ')+' · '+Math.round(pair.value*100)+'%';}).join(' / ');
+    el.partyBonusHint.textContent = '마음방울 ' + fmt(state.friends.hearts) + '개 · ' + parts.join(' · ') + (pairs.length ? ' · 짝꿍: ' + pairs.map(function(p){return p.name;}).join(', ') : ' · 짝꿍은 친구 둘이 만나면 생겨요');
   }
 
   /* 새 친구가 해금되거나 슬롯이 열리면 편성 탭에 점을 찍어 알린다. */
@@ -323,7 +333,7 @@
         '<div class="up-eff"></div></div>' +
         '<div><div class="up-cost shard">⭐<span></span></div></div>';
       btn.addEventListener('click', function () {
-        if (Combat.buyRelic(state, r.id)) { sfx('relic'); renderRelics(); renderPanel(); persist(); }
+        if (Combat.buyRelic(state, r.id)) { persist(true); sfx('relic'); renderRelics(); renderPanel(); }
       });
       el.relicList.appendChild(btn);
       relicNodes[r.id] = {
@@ -346,7 +356,8 @@
       if (can) anyAffordable = true;
       n.lv.textContent = 'Lv.' + lv;
       n.eff.textContent = r.bonusText + ' ×' + Combat.relicMul(state, r.id).toFixed(2);
-      n.cost.textContent = fmt(cost);
+      if(r.id === 'hourglass') { var off=Combat.offlineSettings(state); n.eff.textContent='선물 '+Math.round(off.efficiency*100)+'% · '+off.maxHours+'시간 보관'; can=can && lv<B.hourglass.maxLevel; }
+      n.cost.textContent = fmtCost(cost);
       n.btn.disabled = !can;
       n.btn.classList.toggle('can', can);
     });
@@ -355,22 +366,9 @@
   }
 
   // ── 일일 리셋 · 던전 · 과제 (P4) ─────────────────────────────
-  function todayStr() {
-    var d = new Date();
-    return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate();
-  }
-
-  /* 날짜가 바뀌었으면 과제·던전을 새로 깐다. 프레임마다 불러도 싸다. */
   function syncDaily() {
-    var today = todayStr();
-    if (!state.daily || state.daily.date !== today) {
-      state.daily = Quests.freshDaily(today, state.stats);
-      renderBattle();
-    }
-    if (!state.dungeon || state.dungeon.date !== today) {
-      state.dungeon = { date: today, runs: 0, best: (state.dungeon && state.dungeon.best) || 0 };
-      renderBattle();
-    }
+    if (Calendar.sync(state, Date.now())) { persist(true); partyDirty = true; renderParty(); renderHatch(); }
+    renderBattle();
   }
 
   var questNodes = {};
@@ -390,9 +388,10 @@
         syncDaily();   // 자정 직후 전날 과제를 수령하는 틈을 막는다
         var got = Quests.claim(q, state, state.daily);
         if (got > 0) {
+          persist(true); partyDirty=true;
           sfx('relic');
           toast('⭐ +' + got, 'win');
-          renderBattle(); renderRelics(); persist();
+          renderBattle(); renderRelics(); renderParty(); renderHatch();
         }
       });
       el.questList.appendChild(row);
@@ -409,9 +408,9 @@
    * 진짜 선택이 된다. simulate 는 싸지만 프레임마다 돌릴 이유는 없어 메모한다. */
   var dgPrevKey = '', dgPrevText = '';
   function dungeonPreviewText() {
-    var key = state.safeStage + '|' + Math.round(Combat.bossDps(state));
+    var key = Calendar.rule(Date.now())+'|'+JSON.stringify(state.friends.levels)+'|'+state.party.join(',')+'|'+state.safeStage+'|'+Math.round(Combat.bossDps(state));
     if (key !== dgPrevKey) {
-      var r = Dungeon.simulate(state);
+      var r = Dungeon.simulate(state, Date.now());
       dgPrevKey = key;
       dgPrevText = r.baseStage + '층 기준 · 예상 ' + r.kills + '연승 ⭐' + fmt(r.shards);
     }
@@ -419,25 +418,26 @@
   }
 
   function renderBattle() {
-    if (!state.daily || !state.dungeon) return;
+    if (!state.daily) return;
+    renderDailyExtras();
     var locked = state.stage < B.dungeonUnlockStage;
     var card = el.dungeonGo.closest('.dungeon-card');
     if (card) card.classList.toggle('locked', locked);
     if (locked) {
       el.dungeonRuns.textContent = '스테이지 ' + B.dungeonUnlockStage + ' 도달 시 열려요';
-      el.dungeonBest.textContent = state.dungeon.best;
+      el.dungeonBest.textContent = state.dungeon ? state.dungeon.best : 0;
       el.dungeonGo.disabled = true;
       el.dungeonGo.textContent = '잠김';
       el.dungeonPreview.hidden = true;
       return renderQuests();
     }
-    var left = B.dungeonRunsPerDay - state.dungeon.runs;
-    el.dungeonRuns.textContent = '오늘 ' + Math.max(0, left) + '회 남음';
-    el.dungeonBest.textContent = state.dungeon.best;
+    var left = state.dungeon ? state.dungeon.charges : 0;
+    el.dungeonRuns.textContent = Math.max(0,left)+'회 보관 · '+(left<B.calendar.maxCharges ? '다음 충전 '+fmtDuration(Calendar.rechargeSeconds(state,Date.now())) : '가득 찼어요');
+    el.dungeonBest.textContent = state.dungeon ? state.dungeon.best : 0;
     el.dungeonGo.disabled = left <= 0;
-    el.dungeonGo.textContent = left > 0 ? '입장' : '내일 다시';
+    el.dungeonGo.textContent = left > 0 ? '입장' : '충전 중';
     el.dungeonPreview.hidden = left <= 0;
-    if (left > 0) el.dungeonPreview.textContent = dungeonPreviewText();
+    if (left > 0) el.dungeonPreview.textContent = dungeonPreviewText() + ' · 오늘: ' + ({bossMul:'보스 힘',aspdMul:'공격 속도',shardMul:'별조각'}[Calendar.rule(Date.now())] || '기본 규칙') + (Calendar.rule(Date.now()) ? ' 친구 효과 1.5배' : '');
     renderQuests();
   }
 
@@ -447,13 +447,13 @@
     Quests.QUESTS.forEach(function (q) {
       var n = questNodes[q.id];
       var prog = Quests.progressOf(q, state.stats, state.daily);
-      var target = Quests.targetOf(q);
+      var target = Quests.targetOf(q,state.daily);
       var done = Quests.isDone(q, state.stats, state.daily);
       var claimed = Quests.isClaimed(q, state.daily);
       n.prog.textContent = Math.min(prog, target) + ' / ' + target;
       n.bar.style.width = Math.min(100, prog / target * 100) + '%';
       n.btn.disabled = !done || claimed;
-      n.btn.textContent = claimed ? '완료' : '⭐ ' + Quests.rewardOf(q);
+      n.btn.textContent = claimed ? '완료' : '⭐ ' + Quests.rewardOf(q) + (state.stage>=B.friends.unlockStage?' · 💗1':'');
       n.btn.classList.toggle('claimed', claimed);
       if (done && !claimed) claimable++;
     });
@@ -465,17 +465,23 @@
    * → 보스 러시 → 결과 배너 → 결과 팝업. 탭하면 스킵.
    * (구버전 "누르자마자 결과 팝업"은 사용자 판정으로 폐기 — "콘텐츠를 하는 느낌"이
    * 없다. 성의 3요소: 진입 전환·시작 신호·과정 가시화.) */
+  function renderDailyExtras() {
+    if(!$('attendance'))return;
+    $('attendance').textContent = state.stage < B.friends.unlockStage ? '10층부터 출석 선물을 받아요' : '누적 출석 ' + Array.from({length:B.calendar.attendanceDays},function(_,i){return i<state.attendance.count?'🌸':'○';}).join(' ') + ' · 오늘 마음방울 2개';
+    $('attendance').classList.toggle('complete',state.attendance.count>=B.calendar.attendanceDays);
+    $('achievements').textContent='';
+    Achievements.ALL.forEach(function(a){var b=document.createElement('button'),got=!!state.achievementClaimed[a.id];b.textContent=(got?'🏅 ':'')+a.name+(got?'': ' · 배지 받기');b.disabled=got||!a.test(state);b.onclick=function(){if(Achievements.claim(state,a.id)){persist(true);renderDailyExtras();}};$('achievements').appendChild(b);});
+  }
+
   function runDungeon() {
     if (!el.dungeonModal.hidden) return;   // 결과 확인 전 재진입 방지
     if (Stage.dungeonActive && Stage.dungeonActive()) return;   // 리플레이 중 재진입 방지
     syncDaily();
+    if (suppressPersist) return;
     if (state.stage < B.dungeonUnlockStage) return;   // 해금 전 — 초반 경제 우회 차단
-    if (state.dungeon.runs >= B.dungeonRunsPerDay) return;
-    state.dungeon.runs++;
-    var result = Dungeon.simulate(state);
-    Dungeon.applyReward(state, result);
-    if (result.kills > state.dungeon.best) state.dungeon.best = result.kills;
-    renderBattle(); renderRelics(); renderPanel(); persist();
+    var result = Dungeon.enter(state, Date.now());
+    if (!result) return;
+    markTutorial('dungeon');persist(true); renderBattle(); renderRelics(); renderPanel();
     var showResult = function () {
       el.dungeonSub.textContent = result.baseStage + '층 기준 연속 격파';
       el.dungeonKills.textContent = result.kills + '연승!';
@@ -514,6 +520,7 @@
   }
 
   function renderBook() {
+    renderHatch();
     if (!bookDirty) return;
     bookDirty = false;
     if (!BOOK_ENTRIES) BOOK_ENTRIES = allBookEntries();
@@ -531,6 +538,31 @@
     el.bookCount.textContent = seen + ' / ' + BOOK_ENTRIES.length;
     el.bookHint.textContent = seen >= BOOK_ENTRIES.length ? '모두 만났어요!' : '새 친구는 다음 챕터에';
   }
+
+  function renderHatch() {
+    if (!$('hatchGrid')) return;
+    $('heartCount').textContent = '마음방울 ' + fmt(state.friends.hearts) + '개';
+    var remaining = Companions.length - state.hatch.owned.length, gift = Friends.giftReady(state);
+    $('hatchInfo').textContent = gift ? '첫 알은 선물이에요!' : remaining ? '남은 ' + remaining + '종 중 하나 · 각각 1/' + remaining + ' · 마음방울 ' + B.hatch.cost + '개' : '모두 모았어요! 다시 열면 마음방울 2개를 돌려받아요.';
+    $('hatchOpen').disabled = !gift && (state.stage < B.hatch.unlockStage || state.friends.hearts < B.hatch.cost);
+    $('hatchOpen').hidden = remaining === 0 && !$('hatchAgain').open;
+    $('hatchAgain').hidden = remaining > 0;
+    var box = $('hatchGrid'); box.textContent = '';
+    Companions.forEach(function(c){
+      var owned = state.hatch.owned.indexOf(c.id)>=0, btn = document.createElement('button');
+      btn.className = 'companion' + (owned?' owned':'') + (state.selectedCompanion===c.id?' selected':'');
+      btn.disabled = !owned; btn.innerHTML = '<img src="'+c.art+'" alt=""><span>'+ (owned?c.name:'아직 알 속에 있어요') +'</span>';
+      btn.onclick = function(){if(Friends.select(state,c.id)){persist(true);renderHatch();}};box.appendChild(btn);
+    });
+  }
+  $('hatchOpen').onclick = function(){
+    if(suppressPersist || saveBlocked)return;
+    var result = Friends.open(state);if(!result)return;
+    markTutorial('hatch');persist(true);partyDirty=true;renderHatch();renderParty();
+    $('hatchResult').textContent = result.name + (result.duplicate?'와 또 만났어요 · 마음방울 2개':'와 친구가 됐어요!');
+    $('hatchResult').classList.remove('egg-opening');void $('hatchResult').offsetWidth;$('hatchResult').classList.add('egg-opening');
+  };
+  $('hatchAgain').ontoggle = renderHatch;
 
   // ── 스토리 — 짧고, 스킵 가능하고, 진행을 오래 막지 않는다 ─────
   /* 컷신이 떠 있는 동안 게임 시간이 멈춘다(storyActive → 프레임 루프 게이트).
@@ -660,6 +692,7 @@
   }
 
   function renderHud() {
+    renderNextGoal();
     Stage.syncParty(state);
     el.stageNum.textContent = state.stage;
     el.goldNum.textContent = fmt(state.gold);
@@ -691,7 +724,7 @@
 
       n.lv.textContent = 'Lv.' + lv;
       n.eff.textContent = effectText(axis.id);
-      n.cost.textContent = maxed ? '—' : fmt(cost);
+      n.cost.textContent = maxed ? '—' : fmtCost(cost);
       n.cnt.textContent = maxed
         ? '최대 도달'
         : (bulk === 'max')
@@ -700,7 +733,7 @@
       n.btn.disabled = !can;
       n.btn.classList.toggle('can', can);
     });
-    el.dpsHint.textContent = 'DPS ' + fmt(Combat.dps(state));
+    el.dpsHint.textContent = '1초의 힘 ' + fmt(Combat.dps(state));
     syncTabVisibility();
     syncCoach();
     renderHud();
@@ -721,7 +754,7 @@
     tabBtns.party.hidden = Chars.unlockedAt(state.stage).length <= 1;
     tabBtns.relic.hidden = !(state.shards > 0 || (r && (r.hammer || r.barn || r.compass)));
     tabBtns.battle.hidden = state.stage < B.dungeonUnlockStage;
-    tabBtns.book.hidden = (state.collection || []).length < 3;
+    tabBtns.book.hidden = state.safeStage < B.hatch.giftStage && (state.collection || []).length < 3;
   }
 
   /* 무대(배경·액터·적·이펙트)는 render/stage.js 가 소유한다. 여기 남은 것은
@@ -770,7 +803,7 @@
       // "왜 졌는지"를 숫자로 — 필요 DPS 대비 내 DPS 를 상시 표시(codex 리뷰)
       var needDps = Combat.bossHp(state.stage) / B.bossTimeLimit;
       var mine = Combat.bossDps(state);
-      el.bossNeed.textContent = '필요 DPS ' + fmt(needDps) + ' · 내 DPS ' + fmt(mine);
+      el.bossNeed.textContent = '필요한 힘 ' + fmt(needDps) + ' · 우리 힘 ' + fmt(mine);
       el.bossNeed.classList.toggle('lack', mine < needDps);
     } else if (state.mobIndex !== lastMobIndex || lastPipCount !== B.mobsPerStage) {
       lastMobIndex = state.mobIndex;
@@ -831,6 +864,9 @@
           partyDirty = true;
         }
         checkUnlocks();
+        partyDirty = true;
+        renderParty();
+        renderHatch();
         renderRelics();
         renderBattle();
         syncBgm();
@@ -877,6 +913,7 @@
       dailyTimer += dt;
       if (dailyTimer > 1) { syncDaily(); dailyTimer = 0; }
       Combat.step(state, simDt);
+      if(state.events.some(function(e){return e.type==='boss_clear'||e.type==='boss_fail';}))persist(true);
       /* 사건을 무대에 먼저 넘기고(연출 큐), 그 다음 로직을 즉시 처리한다.
        * consumeEvents 가 state.events 를 비우므로 순서가 뒤집히면 무대가 굶는다. */
       Stage.push(state.events);
@@ -889,8 +926,9 @@
       Stage.update(dt, simDt, state);
 
       saveTimer += dt;
-      if (saveTimer > 5) { persist(); saveTimer = 0; }
+      if (saveTimer > B.save.localSec) { persist(); saveTimer = 0; }
     }
+    if (cloud && !suppressPersist && gameStarted) cloud.tick();
     requestAnimationFrame(frame);
   }
   var dailyTimer = 0;
@@ -922,14 +960,20 @@
     el.tabModal.hidden = false;
   }
 
-  function persist() {
+  var cloud = null;
+  var saveBlocked = false;
+  function saveStatus(text) { $('saveStatus').textContent = text; if(cloud && cloud.code())$('saveCode').textContent=cloud.code(); }
+  function persist(critical) {
+    if (saveBlocked) return;
     if (suppressPersist) return;
     if (otherTabTookOver()) { pauseForOtherTab(); return; }
-    var now = Date.now();
+    var now = Math.max(Date.now(), lastWroteAt);
     try {
       localStorage.setItem(Save.STORAGE_KEY, Save.dump(state, now));
       lastWroteAt = now;
-    } catch (e) { /* 저장 불가 — 진행은 계속한다 */ }
+      state.offlineThroughAt = Math.max(now, state.offlineThroughAt || 0);
+      if (cloud) cloud.changed(critical === true);
+    } catch (e) { saveStatus('저장 공간이 부족해요 · 백업 파일을 보관해 주세요'); }
   }
 
   /* storage 이벤트는 "다른 탭"에서만 발화한다 — 5초 persist 주기를 기다리지 않고
@@ -944,21 +988,27 @@
     try { raw = localStorage.getItem(Save.STORAGE_KEY); } catch (e) { raw = null; }
     if (!raw) return;
 
-    var res = Save.load(raw);
+    var res = Save.load(raw, {nowMs: Date.now()});
+    if (res.ok && res.save && !window.MallangIdleSaveContract.validate(res.save,{nowMs:Date.now()}).ok) res.ok=false;
     if (!res.ok) {
-      /* 손상·상위버전 세이브는 절대 덮어쓰지 않는다. 백업을 남기고 새 게임으로 시작하되,
-       * 자동저장이 원본을 지우지 못하게 백업 키를 따로 둔다. */
+      /* 손상·상위 버전은 원문을 보관하고 플레이·자동 저장을 멈춘다. */
       try { localStorage.setItem(Save.STORAGE_KEY + '-backup-' + Date.now(), raw); } catch (e) {}
-      toast('저장 파일을 읽지 못해 백업했어요', 'fail');
+      saveBlocked = true; suppressPersist = true; gameStarted = false;
+      saveStatus('저장 파일을 읽지 못했어요 · 백업을 가져와 주세요');
+      toast('저장 파일 원문을 보관했어요', 'fail');
       return;
     }
     if (!res.state) return;
+    if (res.note === 'migrated') {try {backupLocal(raw,'migration');}catch(e){saveStatus('백업 공간이 부족해요 · 파일로 보관해 주세요');}}
     state = res.state;
 
     var lastAt = res.save && res.save.lastSaveAt;
     if (lastAt) {
       lastWroteAt = lastAt;      // 멀티탭 가드 기준점 — 이 시각 이후의 타 탭 저장을 감지
-      grantOffline((Date.now() - lastAt) / 1000);
+      var settled = Save.settleOffline(res.save, Date.now());
+      state = Save.deserialize(settled.payload);
+      persist();
+      if (settled.reward.seconds >= B.offlineMinSeconds) showOffline(settled.reward);
     }
   }
 
@@ -977,7 +1027,7 @@
     el.offlineGold.textContent = fmt(reward.gold);
     el.offlineSub.textContent =
       fmtDuration(reward.seconds) + ' 동안 ' + reward.farmStage + '스테이지에서 모았어요' +
-      (reward.cappedBy === 'max' ? ' (최대 ' + B.offlineMaxHours + '시간)' : '');
+      (reward.cappedBy === 'max' ? ' (최대 ' + Combat.offlineSettings(state).maxHours + '시간)' : '');
     /* 복귀를 행동으로 잇는다(codex 리뷰 #8) — 받은 골드로 지금 몇 레벨을 올릴 수
      * 있는지 보여준다. 골드는 grantOffline 에서 이미 더해진 상태다. */
     var best = 0;
@@ -1020,6 +1070,7 @@
     el.panelRelic.hidden = tab !== 'relic';
     el.panelBattle.hidden = tab !== 'battle';
     el.panelBook.hidden = tab !== 'book';
+    el.goldNum.parentElement.hidden = tab !== 'upgrade';
     sfx('tap');
     if (Audio) Audio.warm();
     if (tab === 'party') { el.partyDot.hidden = true; partyDirty = true; renderParty(); }
@@ -1038,7 +1089,8 @@
   el.dungeonOk.addEventListener('click', function () { el.dungeonModal.hidden = true; });
   // 던전 리플레이 중 무대 탭 = 스킵 (의식은 남기되 반복 피로는 스킵으로 푼다)
   el.arena.addEventListener('click', function () {
-    if (Stage.dungeonSkip) Stage.dungeonSkip();
+    if (Stage.dungeonActive && Stage.dungeonActive()) { Stage.dungeonSkip(); return; }
+    Stage.heartBurst(); sfx('tap');
   });
 
   /* R1 벽 결정권 — 파밍 모드(보스 미루고 벌기) ↔ 지금 도전(즉시 보스).
@@ -1088,6 +1140,7 @@
 
   el.offlineOk.addEventListener('click', function () {
     el.offlineModal.hidden = true;
+    openTab('upgrade');
     renderPanel();
   });
 
@@ -1128,7 +1181,11 @@
       hiddenAt = Date.now();
     } else if (hiddenAt) {
       // 시작 전(인트로)에는 게임 시간이 없으므로 오프라인 보상도 없다
-      if (gameStarted) grantOffline((Date.now() - hiddenAt) / 1000);
+      if (gameStarted && !suppressPersist) {
+        var settled = Save.settleOffline(Save.serialize(state, state.offlineThroughAt || hiddenAt), Date.now());
+        state = Save.deserialize(settled.payload); persist();
+        if (settled.reward.seconds >= B.offlineMinSeconds) showOffline(settled.reward);
+      }
       hiddenAt = 0;
       lastFrame = 0;          // 복귀 첫 프레임의 dt 를 0 으로 — 큰 dt 가 한 번에 밀리지 않게
     }
@@ -1211,11 +1268,100 @@
     });
   }
 
+  function download(name, content) {
+    var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([content], {type:'application/json'}));
+    a.download = name; a.click(); setTimeout(function(){URL.revokeObjectURL(a.href);}, 1000);
+  }
+  function backupLocal(payload, kind) {
+    var prefix = Save.STORAGE_KEY + '-backup-';
+    var slot = kind === 'conflict' ? 'conflict' : String(Math.floor(Date.now()/86400000));
+    localStorage.setItem(prefix + slot, typeof payload === 'string' ? payload : JSON.stringify(payload));
+    var keys = Object.keys(localStorage).filter(function(k){return k.indexOf(prefix)===0 && k!==prefix+'conflict';}).sort().reverse();
+    keys.slice(B.save.backupCount).forEach(function(k){localStorage.removeItem(k);});
+  }
+  function applyCloud(payload) {
+    var nextState=Save.deserialize(payload), appliedAt=Date.now();
+    localStorage.setItem(Save.STORAGE_KEY, Save.dump(nextState,appliedAt));
+    state=nextState;lastWroteAt=appliedAt;partyDirty=true;bookDirty=true;saveBlocked=false;suppressPersist=false;
+    storyQueue.length = 0; storyActive = false; el.storyOverlay.hidden = true; el.dungeonModal.hidden=true;
+    state.collection.forEach(function(k){collectionSet[k]=true;});
+    Chars.unlockedAt(state.stage).forEach(function(id){seenUnlocks[id]=true;});
+    el.intro.hidden = true; gameStarted = true; tutDone = state.stats.upgrades > 0;
+    Stage.restoreSnapshot(state); el.dungeonModal.hidden=true; syncDaily(); renderPanel(); renderParty(); renderRelics(); renderBattle(); renderBook();
+  }
+  function setupCloud() {
+    cloud = window.MallangIdleCloudSave.create({
+      storage:localStorage, fetch:window.fetch.bind(window), base:window.WORKER_URL,
+      now:Date.now, disabled:DEV,
+      randomBytes:function(n){return crypto.getRandomValues(new Uint8Array(n));},
+      snapshot:function(){return Save.serialize(state, state.offlineThroughAt || Date.now());},
+      owner:function(){return (saveBlocked || !suppressPersist) && !otherTabTookOver();},
+      status:saveStatus, backup:backupLocal, apply:applyCloud, settle:Save.settleOffline,
+      restored:function(reward){if(reward && reward.seconds>=B.offlineMinSeconds)showOffline(reward);}
+    });
+    function open(){ $('saveModal').hidden=false; $('saveCode').textContent=cloud.code()||'연결되면 코드를 만들어요'; $('restoreCode').focus(); }
+    $('saveOpen').onclick=open;
+    if($('introRestore'))$('introRestore').onclick=open;
+    $('saveClose').onclick=function(){$('saveModal').hidden=true;};
+    $('saveRetry').onclick=function(){cloud.changed(true);cloud.tick();};
+    $('codeCopy').onclick=function(){if(cloud.code())navigator.clipboard.writeText(cloud.code()).catch(function(){saveStatus('코드를 길게 눌러 복사해 주세요');});};
+    $('codeFile').onclick=function(){if(cloud.code())download('말랑-이어하기-코드.txt',cloud.code());};
+    $('restoreGo').onclick=async function(){try{await cloud.restore($('restoreCode').value);$('saveModal').hidden=true;}catch(e){saveStatus(e.message);}};
+    $('exportSave').onclick=function(){download('말랑-산책-백업.json',saveBlocked ? localStorage.getItem(Save.STORAGE_KEY) : Save.dump(state,Date.now()));};
+    $('importSave').onchange=async function(e){try{
+      var file=e.target.files[0]; if(!file||file.size>B.save.maxBytes)throw Error('파일이 너무 커요');
+      var text=await file.text(), valid=window.MallangIdleSaveContract.validate(JSON.parse(text),{nowMs:Date.now()});
+      if(!valid.ok)throw Error('이 백업 파일을 읽지 못했어요');
+      var old=localStorage.getItem(Save.STORAGE_KEY); if(old)backupLocal(old,'import');
+      applyCloud(valid.save); cloud.changed(true); $('saveModal').hidden=true;
+    }catch(error){saveStatus(error.message);}};
+    $('serverBackups').onclick=async function(){
+      var box=$('backupList');box.textContent='';
+      try {
+      Object.keys(localStorage).filter(function(k){return k.indexOf(Save.STORAGE_KEY+'-backup-')===0;}).forEach(function(k){var btn=document.createElement('button');btn.textContent='이 기기의 이전 백업 내려받기';btn.onclick=function(){download('말랑-기기-백업.json',localStorage.getItem(k));};box.appendChild(btn);});
+      } catch(e) { saveStatus(e.message); }
+      try {
+        var current=await cloud.inspect();
+        (current.backups||[]).forEach(function(b){var btn=document.createElement('button');btn.textContent='백업 '+b.revision+' 내려받기';btn.onclick=async function(){try{var result=await cloud.backup(b.revision);download('말랑-이전-백업.json',JSON.stringify(result.payload));}catch(e){saveStatus(e.message);}};box.appendChild(btn);});
+      } catch(e) { saveStatus(e.message); }
+    };
+    window.addEventListener('pagehide',function(){if(cloud && !suppressPersist)cloud.flush();});
+  }
+
+  function markTutorial(id) {
+    if(state.tutorialSeen.indexOf(id)<0)state.tutorialSeen.push(id);
+  }
+  function openTab(id) {
+    var button=el.tabs.querySelector('[data-tab="'+id+'"]');if(button&&!button.hidden)button.click();
+  }
+  var nextTab='upgrade';
+  function renderNextGoal() {
+    if(!$('nextGoal'))return;
+    var text;
+    if(Friends.giftReady(state)){text='선물 알이 도착했어요! 도감에서 열어 봐요';nextTab='book';}
+    else if(state.stats.upgrades===0){var price=Combat.upgradeCost('atk',state.up.atk);text='첫 강화 · 공격력을 '+fmtCost(price)+'골드로 올려 봐요';nextTab='upgrade';}
+    else if(state.stage>=B.friends.unlockStage && !state.tutorialSeen.includes('grow')){
+      var id=state.party[0],cost=Friends.cost(state,id);text='친구 키우기 · 마음방울 '+cost+'개 ('+state.friends.hearts+'개 있어요)';nextTab='party';
+    }else if(state.stage>=B.dungeonUnlockStage && state.dungeon && state.dungeon.charges>0 && !state.tutorialSeen.includes('dungeon')){text='별빛 시련에 가 봐요 · '+state.dungeon.charges+'번 도전할 수 있어요';nextTab='battle';}
+    else {var next=Chars.CHARACTERS.find(function(c){return c.unlockStage>state.stage;});text=next?next.unlockStage+'층에서 '+next.name.split(' ')[0]+'와 만나요':'다음 길 '+state.stage+'층에 함께 도전해요';nextTab='upgrade';}
+    var selected=Companions.find(function(c){return c.id===state.selectedCompanion;});
+    $('nextGoal').textContent=(selected?'♡ '+selected.name+'와 산책 · ':'')+text;
+  }
+  $('nextGoal').onclick=function(){openTab(nextTab);};
+  el.arena.addEventListener('keydown',function(e){if((e.key==='Enter'||e.key===' ')&&e.target===el.arena){e.preventDefault();el.arena.click();}});
+  el.tabs.addEventListener('keydown',function(e){if(!['ArrowLeft','ArrowRight','Home','End'].includes(e.key))return;e.preventDefault();var buttons=Array.from(el.tabs.children).filter(function(b){return !b.hidden;});var index=buttons.indexOf(document.activeElement);index=e.key==='Home'?0:e.key==='End'?buttons.length-1:(index+(e.key==='ArrowLeft'?-1:1)+buttons.length)%buttons.length;buttons[index].focus();buttons[index].click();});
+  document.addEventListener('keydown',function(e){if(e.key==='Escape')$('saveModal').hidden=true;if(e.key==='Tab'&&!$('saveModal').hidden){var buttons=Array.from($('saveModal').querySelectorAll('button,input')).filter(function(b){return !b.disabled&&!b.hidden;});var first=buttons[0],last=buttons[buttons.length-1];if(e.shiftKey&&document.activeElement===first){last.focus();e.preventDefault();}else if(!e.shiftKey&&document.activeElement===last){first.focus();e.preventDefault();}}});
+
   // ── 시작 ────────────────────────────────────────────────────
   buildUpgrades();
   buildRelics();
   buildQuests();
   restore();
+  try {
+    if(localStorage.getItem(TUT_KEY)==='1')markTutorial('upgrade');
+    if(localStorage.getItem(Save.STORAGE_KEY+'-seen')==='1')markTutorial('intro');
+  } catch(e) {}
+  tutDone=state.tutorialSeen.indexOf('upgrade')>=0;
   Combat.sanitizeParty(state);
   Chars.unlockedAt(state.stage).forEach(function (id) { seenUnlocks[id] = true; });
   state.collection.forEach(function (k) { collectionSet[k] = true; });
@@ -1240,11 +1386,14 @@
    * 안 드러나면 그냥 구경만 하다 나간다 — 강화하라는 말을 처음에 한 번은 해야 한다. */
   var seenIntro = false;
   try { seenIntro = localStorage.getItem(Save.STORAGE_KEY + '-seen') === '1'; } catch (e) {}
-  if (!seenIntro) {
+  if (state.tutorialSeen.indexOf('intro')>=0 || state.t > 0 || state.safeStage > 0) seenIntro=true;
+  if (saveBlocked) { gameStarted=false; $('saveModal').hidden=false; }
+  if (!seenIntro && !saveBlocked) {
     el.intro.hidden = false;
     gameStarted = false;          // 시작 버튼 전에는 t=0, gold=0 그대로
     el.introStart.addEventListener('click', function () {
       el.intro.hidden = true;
+      markTutorial('intro');
       gameStarted = true;
       lastFrame = 0;              // 인트로를 보던 시간이 첫 dt 로 밀리지 않게
       if (Audio) Audio.warm();
@@ -1254,11 +1403,12 @@
       queuePendingRescues();
       syncBgm();
     });
-  } else {
+  } else if (!saveBlocked) {
     // 복귀 유저 — 현재 챕터 컷신을 아직 못 봤다면(구세이브) 지금 보여준다
     queueStory('chapter', Chapters.chapterFor(state.stage).id);
     queuePendingRescues();
   }
+  setupCloud();
   bannerReady = true;
 
   requestAnimationFrame(frame);

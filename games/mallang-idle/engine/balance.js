@@ -12,6 +12,24 @@
   'use strict';
 
   var BALANCE = {
+    achievements: {firstHatchCount:1,collectionCount:3,starCount:1,clearStage:30,trialBest:10},
+    calendar: {kstOffsetHours:9,maxCharges:3,rechargeHours:8,ruleMultiplier:1.5,weekdayRules:[null,'bossMul','aspdMul','shardMul','bossMul','aspdMul','shardMul'],attendanceDays:7,attendanceHearts:2,questHearts:1},
+    questBands: [{stage:0,targets:{kills:100,upgrades:10,bossTries:5}},{stage:30,targets:{kills:150,upgrades:15,bossTries:7}},{stage:90,targets:{kills:200,upgrades:20,bossTries:10}}],
+    hourglass: {maxLevel:7,extraHours:4,perLevel:0.05},
+    characters: {
+      rabbit: {unlockStage:1,key:'atkMul',value:0.20}, chick:{unlockStage:5,key:'aspdMul',value:0.18},
+      hamster:{unlockStage:22,key:'goldMul',value:0.25}, latte:{unlockStage:55,key:'bossMul',value:0.35},
+      mintcat:{unlockStage:90,key:'advanceMul',value:0.40}, otter:{unlockStage:120,key:'shardMul',value:0.35}
+    },
+    slotUnlocks: [1,10,40], minAdvanceMul: 0.1,
+    friends: {unlockStage:10,maxLevel:20,costBase:2,costStep:5,perLevel:0.02,perStar:0.04,maxMultiplier:1.5,starLevels:[5,10,20],heartPerClear:1},
+    hatch: {giftStage:3,unlockStage:10,cost:10,refund:2},
+    synergies: [
+      {ids:['rabbit','latte'],key:'bossMul',value:0.05,name:'용감한 앞발'},
+      {ids:['hamster','mintcat'],key:'goldMul',value:0.05,name:'도시락 산책'},
+      {ids:['chick','otter'],key:'shardMul',value:0.10,name:'반짝 수색대'}
+    ],
+    save: { localSec: 5, cloudSec: 30, criticalSec: 2, maxBytes: 65536, backupCount: 3, conflictBackupCount: 1, retrySec: [5,15,60,300] },
     // ── 플레이어 ──────────────────────────────────────────────
     baseAtk: 10,
     atkGrowth: 1.12,        // 지수 (레벨당)
@@ -64,9 +82,10 @@
      * 30분 여유비를 2.44 까지 밀어올렸다(보스가 관문 구실 상실). 골드/과제/유물을
      * 함께 낮춰 여유비 1.90(30분)·1.57(2시간)으로 회복 — tools/sim.js 프로브 측정. */
     relics: {
-      hammer:  { costBase: 8, costGrowth: 1.6, perLv: 0.06 },  // 공격 ×1.06/Lv
+      hourglass: {costBase:12,costGrowth:1.8,perLv:0},
+      hammer:  { costBase: 8, costGrowth: 1.6, perLv: 0.055 },  // 공격 ×1.06/Lv
       barn:    { costBase: 8, costGrowth: 1.6, perLv: 0.06 },  // 골드 ×1.06/Lv
-      compass: { costBase: 6, costGrowth: 1.5, perLv: 0.09 },  // 보스 피해 ×1.09/Lv
+      compass: { costBase: 6, costGrowth: 1.5, perLv: 0.10 },  // 보스 피해 ×1.09/Lv
     },
     maxRelicLevel: 10000,
 
@@ -77,7 +96,7 @@
     dungeonStartMul: 0.35,    // 첫 보스 = 본편 보스의 35% — 방금 그 층을 깬 유저가
                               // 몇 연승은 하고 벽을 만나야 첫 경험이 성립한다
     dungeonHpGrowth: 1.35,    // 연전마다 HP 배율
-    dungeonGoldSeconds: 10,   // 격파당 골드 = 파밍 10초치 (30초는 해금일 일시금이 과했다)
+    dungeonGoldSeconds: 6,   // 격파당 골드 = 파밍 10초치 (30초는 해금일 일시금이 과했다)
     dungeonMaxBosses: 200,    // 폭주 방지 상한
 
     // ── 일일 과제 (P4) ────────────────────────────────────────
@@ -105,6 +124,7 @@
 
   // 유물 축 — UI·시뮬레이터·테스트가 공유. bonus 키는 combat.partyBonus 와 같은 체계.
   var RELIC_AXES = [
+    { id: 'hourglass', name:'말랑 모래시계', icon:'assets/icon-relic-compass.png', bonusText:'방치 선물', effect:'offline' },
     { id: 'hammer',  name: '별의 망치',   icon: 'assets/icon-relic-hammer.png',  bonusText: '공격력',    effect: 'atk' },
     { id: 'barn',    name: '별의 곳간',   icon: 'assets/icon-relic-barn.png',    bonusText: '골드 획득', effect: 'gold' },
     { id: 'compass', name: '별의 나침반', icon: 'assets/icon-relic-compass.png', bonusText: '보스 피해', effect: 'boss' },
@@ -117,6 +137,9 @@
     decisionInterval: 0.5,    // 초 — 구매 판단 주기
     bossStuckDpsOnly: true,   // 보스에 한 번 실패하면 DPS 축 우선
     maxBulkPerDecision: 50,   // 한 번의 판단에서 살 최대 개수
+    hatchInitialTarget: 1,
+    hatchStageInterval: 20,   // 돌파층마다 추가 알 구매 목표
+    friendGrowthPerDecision: 20,
 
     /* "유휴"의 정의 — 방치형에서 골드가 모이는 짧은 대기는 정상이다.
      * 문제가 되는 것은 다음 강화까지 하염없이 기다리는 구간이므로,
