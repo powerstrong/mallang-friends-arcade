@@ -1366,3 +1366,63 @@ body {
 .next-goal{flex:none;border:0;border-bottom:1px solid #ead7cb;background:#fff9ed;color:#6b4c52;padding:7px 12px;font:inherit;font-size:12px;text-align:left;min-height:34px}.save-card button:focus-visible,button:focus-visible,.arena:focus-visible{outline:3px solid #8754c2;outline-offset:2px}.save-card p{font-size:12px}.save-card label{display:block;font-size:13px}.save-card input{user-select:text}.hud-power{display:none}.modal-card{max-width:min(370px,calc(100vw - 24px))}.save-card{position:relative;z-index:90}#saveModal{z-index:100}#introRestore{background:#fff5df;color:#68485b;border:1px solid #e8c8ba;margin-bottom:8px}.panel{min-height:180px}#hatchResult{min-height:20px;font-weight:bold}
 
 .synergy-preview{font-size:11px;line-height:1.7;color:#7c6475;margin:5px 0 8px}
+
+/* Friends: three explicit positions, with a separate action inside each card. */
+#panelParty{overflow-y:auto;max-height:55dvh;padding-bottom:16px}
+#panelParty .panel-head{align-items:flex-start;gap:8px}
+.party-bar{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin:6px 0}
+.party-slot{min-height:98px;min-width:0;border:2px solid #e9d6e4;border-radius:14px;background:#fff8fb;color:#755068;font:inherit;font-size:11px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px}
+.party-slot:first-child{border-color:#e9b851;background:#fff8df}
+.party-slot img{width:42px;height:42px;object-fit:contain}
+.party-slot small{font-size:10px;line-height:1.5}
+.party-choice{display:flex;justify-content:space-between;align-items:center;min-height:38px;font-size:12px;color:#925575}
+.party-choice button,.party-actions button{min-height:44px;border:1px solid #dbc4dc;border-radius:10px;background:#fff1f7;padding:7px 12px;font:inherit;font-size:12px}
+.party-actions{display:flex;gap:8px;margin-bottom:6px}
+#partyList{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;max-height:none;overflow:visible}
+#partyList .party-card{display:flex;flex-direction:column;padding:7px;gap:4px;min-width:0}
+.friend-pick{display:flex;flex-direction:column;align-items:center;gap:4px;width:100%;min-height:125px;padding:0;border:0;background:none;color:inherit;font:inherit}
+.friend-pick .pc-name{font-size:12px}.friend-pick .pc-skill{font-size:10px}.friend-pick small{font-size:11px}
+.friend-pick .pc-in{font-size:10px;margin:0}.friend-grow{min-height:44px;font-weight:bold}
+.leader-effect,.boss-leader-hint{font-size:11px;line-height:1.6;margin:4px 0}
+.element-cycle{display:inline-block;border-radius:50%;padding:8px 12px;background:#fff3da;font-size:15px}
+.synergy-preview{display:flex;flex-wrap:wrap;gap:4px}
+.synergy-chip{padding:4px 7px;border:1px solid #e0d8e1;border-radius:10px;background:#f6f1f6;font-size:10px}
+.synergy-chip small{display:block;font-size:9px}.synergy-chip.active{background:#fff2c7;border-color:#e3bb58;color:#775022}
+#partyBonusHint{line-height:1.7;overflow-wrap:anywhere}
+.replacing .party-slot:not(:disabled){border-color:#d16d9b;animation:slotWiggle .6s ease-in-out infinite}
+@keyframes slotWiggle{50%{transform:rotate(2deg)}}
+.actor-emote{position:absolute;top:-12px;left:45%;font-size:32px;background:#fff8;border-radius:24px;padding:2px 9px;line-height:1.2}
+.hero.friend-action,.follower.friend-action,.follower.friend-attack{animation:friendTap .62s ease-in-out !important}
+.hero.action-sheet,.follower.action-sheet{animation:none !important}
+.hero.act-hop,.follower.act-hop{animation:friendHop .85s ease-in-out !important}
+.hero.act-spin,.follower.act-spin{animation:friendSpin .85s ease-in-out !important}
+.hero.act-wiggle,.follower.act-wiggle{animation:friendWiggle .85s ease-in-out !important}
+.hero.act-look,.follower.act-look{animation:friendLook .85s ease-in-out !important}
+@keyframes friendTap{50%{translate:12px -5px;rotate:5deg}}
+@keyframes friendHop{45%{translate:0 -28px;scale:1.04 .96}}
+@keyframes friendSpin{50%{rotate:360deg}}
+@keyframes friendWiggle{25%{rotate:-9deg}75%{rotate:9deg}}
+@keyframes friendLook{50%{scale:-1 1}}
+.field-companion{position:absolute;left:3%;bottom:9%;width:35px;height:35px;object-fit:contain;z-index:3;animation:companionHop 1.15s ease-in-out infinite;pointer-events:none}
+.field-companion.companion-love{filter:drop-shadow(0 0 5px #ef8eb0);animation:companionSpin 1.2s ease-in-out infinite}
+@keyframes companionHop{50%{transform:translateY(-10px) scale(.9,1.1)}90%{transform:scale(1.12,.85)}}
+@keyframes companionSpin{50%{transform:translateY(-12px) rotate(360deg)}}
+.favorable::after{content:' 유리!';color:#238c68;font-size:10px}
+.element-advantage .fx-dmg{color:#d7ffea;-webkit-text-stroke-color:#26855c}
+@media(prefers-reduced-motion:reduce){
+  .hero.friend-action,.follower.friend-action,.follower.friend-attack,.hero.action-sheet,.follower.action-sheet,.field-companion,.replacing .party-slot:not(:disabled){animation:none !important}
+  .actor-emote{display:none}
+}
+.companion-heart{position:absolute;left:6%;bottom:19%;color:#e56899;font-size:14px;z-index:4;pointer-events:none}
+#panelParty{max-height:65dvh}
+.element-cycle{align-self:flex-start}
+.follower.friend-attack.action-sheet{animation:friendTap .62s ease-in-out !important}
+@media(prefers-reduced-motion:reduce){.follower.friend-attack.action-sheet{animation:none !important}}
+.element-cycle{position:relative;width:58px;height:50px;padding:0;border-radius:50%;font-size:14px}
+.element-cycle span,.element-cycle i{position:absolute;font-style:normal}
+.element-cycle span:nth-child(1){top:0;left:21px}
+.element-cycle span:nth-child(2){bottom:2px;right:3px}
+.element-cycle span:nth-child(3){bottom:2px;left:3px}
+.element-cycle i{top:18px;left:24px;color:#997651;font-size:12px}
+#panelParty>*{flex-shrink:0}
+.party-actions:empty{display:none}

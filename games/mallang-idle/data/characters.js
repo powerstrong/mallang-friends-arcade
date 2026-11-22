@@ -25,6 +25,8 @@
    * atk(단일 포즈)는 시트 부재 시 폴백으로 남긴다. 스킬 '수치'는 불변. */
   var CHARACTERS = [
     {
+      cheer: 'assets/hero-rabbit-cheer.png', cheerW: 148, cheerN: 6,
+      cute: 'assets/hero-rabbit-cute.png', cuteW: 142, cuteN: 6,
       id: 'rabbit', name: '모찌 토끼',
       walk: 'assets/hero-rabbit-walk.png', frameW: 172, walkN: 6,
       run: 'assets/hero-rabbit-run.png', runW: 152, runN: 6,
@@ -37,6 +39,8 @@
       desc: '한 방이 묵직한 기본기형',
     },
     {
+      cheer: 'assets/hero-chick-cheer.png', cheerW: 186, cheerN: 6,
+      cute: 'assets/hero-chick-cute.png', cuteW: 184, cuteN: 6,
       id: 'chick', name: '피치 병아리',
       walk: 'assets/hero-chick-walk.png', frameW: 188, walkN: 6,
       run: 'assets/hero-chick-run.png', runW: 242, runN: 6,
@@ -53,6 +57,8 @@
      * 늘려 "다음 복귀에 무엇이 열리는가"가 첫 주 내내 남아 있게 한다.
      * 컷신 화자-해금 정합(챕터 경계 31/71/131/211)은 무결성 테스트가 지킨다. */
     {
+      cheer: 'assets/hero-hamster-cheer.png', cheerW: 188, cheerN: 6,
+      cute: 'assets/hero-hamster-cute.png', cuteW: 176, cuteN: 6,
       id: 'hamster', name: '푸딩 햄스터',
       walk: 'assets/hero-hamster-walk.png', frameW: 194, walkN: 6,
       run: 'assets/hero-hamster-run.png', runW: 290, runN: 6,
@@ -65,6 +71,8 @@
       desc: '볼주머니 가득 모으는 살림꾼',
     },
     {
+      cheer: 'assets/hero-latte-cheer.png', cheerW: 184, cheerN: 6,
+      cute: 'assets/hero-latte-cute.png', cuteW: 194, cuteN: 6,
       id: 'latte', name: '라떼 퍼피',
       walk: 'assets/hero-latte-walk.png', frameW: 202, walkN: 6,
       run: 'assets/hero-latte-run.png', runW: 224, runN: 6,
@@ -77,6 +85,8 @@
       desc: '큰 상대일수록 신나는 돌파형',
     },
     {
+      cheer: 'assets/hero-mintcat-cheer.png', cheerW: 188, cheerN: 6,
+      cute: 'assets/hero-mintcat-cute.png', cuteW: 202, cuteN: 6,
       id: 'mintcat', name: '민트 키튼',
       walk: 'assets/hero-mintcat-walk.png', frameW: 208, walkN: 6,
       run: 'assets/hero-mintcat-run.png', runW: 286, runN: 6,
@@ -92,6 +102,8 @@
      * 별조각 축은 "벽에서 라떼(즉시 돌파력)냐 별사탕(유물 성장)이냐"라는
      * 새 갈림길을 만든다 — 코어 루프의 긴장 2번을 깊게 하는 축. */
     {
+      cheer: 'assets/hero-otter-cheer.png', cheerW: 182, cheerN: 6,
+      cute: 'assets/hero-otter-cute.png', cuteW: 150, cuteN: 6,
       id: 'otter', name: '별사탕 수달',
       walk: 'assets/hero-otter-walk.png', frameW: 182, walkN: 6,
       run: 'assets/hero-otter-run.png', runW: 276, runN: 6,
@@ -106,7 +118,7 @@
   ];
 
   /* 파티 슬롯도 진행에 따라 열린다. 처음부터 셋을 주면 편성이 선택이 아니라 나열이 된다. */
-  CHARACTERS.forEach(function(c){var def=Bal.BALANCE.characters[c.id];c.unlockStage=def.unlockStage;c.skill={key:def.key,value:def.value};});
+  CHARACTERS.forEach(function(c){var def=Bal.BALANCE.characters[c.id];c.unlockStage=def.unlockStage;c.skill={key:def.key,value:def.value};c.el={rabbit:'leaf',hamster:'leaf',chick:'fire',latte:'fire',mintcat:'water',otter:'water'}[c.id];});
   var SLOT_UNLOCKS = Bal.BALANCE.slotUnlocks;   // 슬롯 1·2·3 이 열리는 스테이지
 
   function byId(id) {
@@ -132,6 +144,8 @@
     CHARACTERS: CHARACTERS,
     SLOT_UNLOCKS: SLOT_UNLOCKS,
     byId: byId,
+    elements: {fire:'🔥',leaf:'🍃',water:'💧'},
+    beats: {fire:'leaf',leaf:'water',water:'fire'},
     slotsFor: slotsFor,
     unlockedAt: unlockedAt,
   };

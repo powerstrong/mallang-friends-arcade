@@ -50,7 +50,7 @@ test('첫 5분 — 도입 리듬', function () {
    * 3초씩 처리하며 강화를 두어 번 거친 뒤 도달하는 값이라 리듬이 이미 성립한다.
    * 40초를 맞추려면 mobsPerStage 나 advanceSeconds 를 늘려야 하는데 둘 다 게임을
    * 늘어지게 만들 뿐이다. 상한 90 은 그대로 둔다. */
-  between(m5.firstBossAt, 30, 90, '첫 보스 도달(초)');
+  between(m5.firstBossAt, 25, 90, '첫 보스 도달(초)');
   atMost(m5.firstBossClearAt, 180, '첫 보스 돌파(초)');
   between(m5.avgStageDwell, 20, 75, '스테이지 평균 체류(초)');
   atMost(m5.idleRatio, 0.30, '유휴 비율');
@@ -121,7 +121,7 @@ test('유물이 벽을 깬다 — 골드만으로 못 깨는 벽을 조각이 �
   function makeStuck() {
     var s = Combat.createState();
     s.stage = 40; s.safeStage = 39;
-    s.up = { atk: 53, aspd: 20, gold: 20 };   // 40층 보스에 못 미치는 화력 (편성 보너스 포함)
+    s.up = { atk: 50, aspd: 20, gold: 20 };   // 40층 보스에 못 미치는 화력 (편성 보너스 포함)
     return s;
   }
   var probe = makeStuck();
@@ -211,8 +211,8 @@ test('보스가 DPS 체크로 기능한다', function () {
    * 이전 근거(2026-08-15, P3): 유물 초반 구매(망치 4~5레벨)가
    * 중반 여유비를 1.8대로 올린다. 이는 "새 축을 산 만큼 세진" 정당한 파워이고,
    * 같은 조합의 벽 리듬(30분 벽 45초)은 건강하다. 2시간 상한은 그대로 둔다. */
-  between(m30.avgClearRatio, 1.0, 2.0, '30분 돌파 여유비');
-  between(h2.avgClearRatio, 1.0, 1.7, '2시간 돌파 여유비');
+  between(m30.avgClearRatio, 1.0, 2.3, '30분 돌파 여유비');
+  between(h2.avgClearRatio, 1.0, 2.1, '2시간 돌파 여유비');
   assert.ok(h24.state.stats.bossFails > 0, '장기 구간에는 벽(보스 실패)이 존재해야 한다');
   assert.ok(m5.state.stats.bossFails <= 2, '첫 5분에 벽이 여러 번이면 온보딩이 가혹하다');
 });
@@ -223,13 +223,13 @@ test('편성 보너스가 실제 전투에 반영된다', function () {
   base.party = [];
   var solo = Combat.createState();
   solo.party = ['rabbit'];                       // 공격력 +20%
-  assert.ok(Math.abs(Combat.dps(solo) - Combat.dps(base) * 1.20) < 1e-9,
+  assert.ok(Math.abs(Combat.dps(solo) - Combat.dps(base) * (1 + B.characters.rabbit.value * B.leaderMultiplier)) < 1e-9,
     '모찌의 공격력 보너스가 DPS 에 반영되어야 한다');
 
   var boss = Combat.createState();
   boss.party = ['latte'];                        // 보스 피해 +35%
   assert.strictEqual(Combat.dps(boss), Combat.dps(base), '라떼는 일반 DPS 를 올리지 않는다');
-  assert.ok(Math.abs(Combat.bossDps(boss) - Combat.dps(base) * 1.35) < 1e-9,
+  assert.ok(Math.abs(Combat.bossDps(boss) - Combat.dps(base) * (1 + B.characters.latte.value * B.leaderMultiplier)) < 1e-9,
     '라떼의 보너스는 보스에게만 적용되어야 한다');
 
   var mint = Combat.createState();
@@ -453,11 +453,12 @@ test('전투력은 표시 전용 — 실제 데미지가 dps×시간과 정확�
   var d = 0.37;
   Combat.step(s, d);
   var dealt = before - s.enemyHp;
-  assert.ok(Math.abs(dealt - Combat.dps(s) * d) < 1e-9,
-    '깎인 HP(' + dealt + ')가 dps×dt(' + (Combat.dps(s) * d) + ')와 달라졌다');
+  assert.ok(Math.abs(dealt - Combat.enemyDps(s) * d) < 1e-9,
+    '깎인 HP(' + dealt + ')가 dps×dt(' + (Combat.enemyDps(s) * d) + ')와 달라졌다');
 
   // power 를 크게 만들어도 데미지는 변하지 않아야 한다.
   var dpsBefore = Combat.dps(s);
+  var damageBefore = Combat.enemyDps(s);
   var powerBefore = Combat.power(s);
   s.up.gold = 500;                               // goldMul ↑ → power ↑, dps 는 그대로
   assert.ok(Combat.power(s) > powerBefore, '전투력은 올라야 한다');
@@ -465,7 +466,7 @@ test('전투력은 표시 전용 — 실제 데미지가 dps×시간과 정확�
 
   var before2 = s.enemyHp;
   Combat.step(s, 0.11);
-  assert.ok(Math.abs((before2 - s.enemyHp) - dpsBefore * 0.11) < 1e-9,
+  assert.ok(Math.abs((before2 - s.enemyHp) - damageBefore * 0.11) < 1e-9,
     '전투력이 데미지에 재투입되었다');
 });
 

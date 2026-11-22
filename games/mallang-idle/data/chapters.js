@@ -27,11 +27,11 @@
       fg: 'assets/fg-meadow.png',
       accent: '#7fc99a',
       mobs: [
-        { id: 'acorn',     name: '말썽 도토리', art: 'assets/mob-acorn.png' },
-        { id: 'jelly',     name: '탱글 젤리',   art: 'assets/mob-jelly.png' },
-        { id: 'cloudpuff', name: '심술 구름',   art: 'assets/mob-cloudpuff.png' },
+        { id: 'acorn',     name: '말썽 도토리', art: 'assets/mob-acorn.png', el: 'leaf' },
+        { id: 'jelly',     name: '탱글 젤리',   art: 'assets/mob-jelly.png', el: 'water' },
+        { id: 'cloudpuff', name: '심술 구름',   art: 'assets/mob-cloudpuff.png', el: 'leaf' },
       ],
-      boss: { id: 'cottoncandy', name: '솜사탕 대왕', art: 'assets/boss-cottoncandy.png' },
+      boss: { id: 'cottoncandy', name: '솜사탕 대왕', art: 'assets/boss-cottoncandy.png', el: 'leaf' },
     },
     {
       id: 'gears',
@@ -42,11 +42,11 @@
       fg: 'assets/fg-meadow.png',
       accent: '#c9a87f',
       mobs: [
-        { id: 'gearbug',    name: '톱니 벌레',   art: 'assets/mob-gearbug.png' },
-        { id: 'springmouse', name: '태엽 생쥐',  art: 'assets/mob-springmouse.png' },
-        { id: 'bolthopper', name: '볼트 뭉치',   art: 'assets/mob-bolthopper.png' },
+        { id: 'gearbug',    name: '톱니 벌레',   art: 'assets/mob-gearbug.png', el: 'water' },
+        { id: 'springmouse', name: '태엽 생쥐',  art: 'assets/mob-springmouse.png', el: 'leaf' },
+        { id: 'bolthopper', name: '볼트 뭉치',   art: 'assets/mob-bolthopper.png', el: 'fire' },
       ],
-      boss: { id: 'clocktower', name: '시계탑 거인', art: 'assets/boss-clocktower.png' },
+      boss: { id: 'clocktower', name: '시계탑 거인', art: 'assets/boss-clocktower.png', el: 'water' },
     },
     {
       id: 'machine',
@@ -57,11 +57,11 @@
       fg: 'assets/fg-machine.png',
       accent: '#8fa6c9',
       mobs: [
-        { id: 'mech-chick',   name: '기계 병아리', art: 'assets/enemy-mech-chick.png' },
-        { id: 'mech-hamster', name: '기계 햄스터', art: 'assets/enemy-mech-hamster.png' },
-        { id: 'mech-latte',   name: '기계 퍼피',   art: 'assets/enemy-mech-latte.png' },
+        { id: 'mech-chick',   name: '기계 병아리', art: 'assets/enemy-mech-chick.png', el: 'fire' },
+        { id: 'mech-hamster', name: '기계 햄스터', art: 'assets/enemy-mech-hamster.png', el: 'leaf' },
+        { id: 'mech-latte',   name: '기계 퍼피',   art: 'assets/enemy-mech-latte.png', el: 'fire' },
       ],
-      boss: { id: 'mech-rabbit', name: '기계 토끼', art: 'assets/boss-mech-rabbit.png' },
+      boss: { id: 'mech-rabbit', name: '기계 토끼', art: 'assets/boss-mech-rabbit.png', el: 'leaf' },
     },
     {
       id: 'core',
@@ -72,11 +72,11 @@
       fg: 'assets/fg-machine.png',
       accent: '#7f8fc9',
       mobs: [
-        { id: 'mech-hamster', name: '강화 햄스터', art: 'assets/enemy-mech-hamster.png' },
-        { id: 'mech-latte',   name: '강화 퍼피',   art: 'assets/enemy-mech-latte.png' },
-        { id: 'mech-chick',   name: '강화 병아리', art: 'assets/enemy-mech-chick.png' },
+        { id: 'mech-hamster', name: '강화 햄스터', art: 'assets/enemy-mech-hamster.png', el: 'fire' },
+        { id: 'mech-latte',   name: '강화 퍼피',   art: 'assets/enemy-mech-latte.png', el: 'water' },
+        { id: 'mech-chick',   name: '강화 병아리', art: 'assets/enemy-mech-chick.png', el: 'leaf' },
       ],
-      boss: { id: 'mech-general', name: '기계군단 대장', art: 'assets/boss-mechgeneral.png' },
+      boss: { id: 'mech-general', name: '기계군단 대장', art: 'assets/boss-mechgeneral.png', el: 'water' },
     },
     {
       id: 'garden',
@@ -87,11 +87,11 @@
       fg: 'assets/fg-meadow.png',
       accent: '#ef9fc0',
       mobs: [
-        { id: 'petalfairy', name: '꽃잎 요정',   art: 'assets/mob-petalfairy.png' },
-        { id: 'honeybee',   name: '꿀벌 아기',   art: 'assets/mob-honeybee.png' },
-        { id: 'cloudsheep', name: '구름 양',     art: 'assets/mob-cloudsheep.png' },
+        { id: 'petalfairy', name: '꽃잎 요정',   art: 'assets/mob-petalfairy.png', el: 'leaf' },
+        { id: 'honeybee',   name: '꿀벌 아기',   art: 'assets/mob-honeybee.png', el: 'fire' },
+        { id: 'cloudsheep', name: '구름 양',     art: 'assets/mob-cloudsheep.png', el: 'water' },
       ],
-      boss: { id: 'flowerqueen', name: '꽃의 여왕', art: 'assets/boss-flowerqueen.png' },
+      boss: { id: 'flowerqueen', name: '꽃의 여왕', art: 'assets/boss-flowerqueen.png', el: 'leaf' },
     },
     /* ── 2막: 별조각의 근원을 찾아서 ─────────────────────────────
      * 정원 에필로그 뒤에 새 궁금증을 연다: 그 많던 별조각과 기계군단은
@@ -106,11 +106,11 @@
       fg: 'assets/fg-starsea.png',
       accent: '#7f9ce0',
       mobs: [
-        { id: 'stardrop',  name: '별똥 아기',   art: 'assets/mob-stardrop.png' },
-        { id: 'moonjelly', name: '달빛 해파리', art: 'assets/mob-moonjelly.png' },
-        { id: 'comet',     name: '꼬마 혜성',   art: 'assets/mob-comet.png' },
+        { id: 'stardrop',  name: '별똥 아기',   art: 'assets/mob-stardrop.png', el: 'water' },
+        { id: 'moonjelly', name: '달빛 해파리', art: 'assets/mob-moonjelly.png', el: 'leaf' },
+        { id: 'comet',     name: '꼬마 혜성',   art: 'assets/mob-comet.png', el: 'fire' },
       ],
-      boss: { id: 'starwhale', name: '별고래', art: 'assets/boss-starwhale.png' },
+      boss: { id: 'starwhale', name: '별고래', art: 'assets/boss-starwhale.png', el: 'water' },
     },
     {
       id: 'moonfactory',
@@ -121,11 +121,11 @@
       fg: 'assets/fg-moonfactory.png',
       accent: '#a89bc9',
       mobs: [
-        { id: 'scrapscout',  name: '부서진 정찰기', art: 'assets/mob-scrapscout.png' },
-        { id: 'boltsprite',  name: '나사 요정',     art: 'assets/mob-boltsprite.png' },
-        { id: 'dustpuff',    name: '달먼지 뭉치',   art: 'assets/mob-dustpuff.png' },
+        { id: 'scrapscout',  name: '부서진 정찰기', art: 'assets/mob-scrapscout.png', el: 'fire' },
+        { id: 'boltsprite',  name: '나사 요정',     art: 'assets/mob-boltsprite.png', el: 'leaf' },
+        { id: 'dustpuff',    name: '달먼지 뭉치',   art: 'assets/mob-dustpuff.png', el: 'water' },
       ],
-      boss: { id: 'moonoverseer', name: '달의 감독관', art: 'assets/boss-moonoverseer.png' },
+      boss: { id: 'moonoverseer', name: '달의 감독관', art: 'assets/boss-moonoverseer.png', el: 'fire' },
     },
   ];
 

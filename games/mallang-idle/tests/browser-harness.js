@@ -148,6 +148,7 @@ function withPage(pagePath, fn, opts) {
       var sid = att.sessionId;
       await client.send('Runtime.enable', {}, sid);
       await client.send('Page.enable', {}, sid);
+      if(opts.viewport) await client.send('Emulation.setDeviceMetricsOverride', {width:opts.viewport.width,height:opts.viewport.height,deviceScaleFactor:1,mobile:true},sid);
       if(opts.initScript) await client.send('Page.addScriptToEvaluateOnNewDocument',{source:opts.initScript},sid);
       /* 최신 크로미움은 createTarget 의 url 로 이동하지 않고 about:blank 에 머무는 경우가 있다 */
       await client.send('Page.navigate', { url: origin + pagePath }, sid);

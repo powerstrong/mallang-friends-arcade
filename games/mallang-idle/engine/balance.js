@@ -12,6 +12,7 @@
   'use strict';
 
   var BALANCE = {
+    leaderMultiplier: 1.5, elementAdvantage: 1.25,
     achievements: {firstHatchCount:1,collectionCount:3,starCount:1,clearStage:30,trialBest:10},
     calendar: {kstOffsetHours:9,maxCharges:3,rechargeHours:8,ruleMultiplier:1.5,weekdayRules:[null,'bossMul','aspdMul','shardMul','bossMul','aspdMul','shardMul'],attendanceDays:7,attendanceHearts:2,questHearts:1},
     questBands: [{stage:0,targets:{kills:100,upgrades:10,bossTries:5}},{stage:30,targets:{kills:150,upgrades:15,bossTries:7}},{stage:90,targets:{kills:200,upgrades:20,bossTries:10}}],
@@ -43,7 +44,8 @@
     // ── 적 ────────────────────────────────────────────────────
     mobBaseHp: 30,
     mobHpGrowth: 1.18,     // 스테이지당 지수 — goldGrowth 보다 높아야 벽이 생긴다
-    bossHpMultiplier: 12,
+    bossHpMultiplier: 14,
+    introBossHpMul: 0.9, // Keep the first boss within the introductory 90 seconds.
     bossTimeLimit: 25,      // 초
     mobsPerStage: 10,
     advanceSeconds: 0.6,    // 몹 사이 전진 시간 — 진행의 리듬
@@ -53,7 +55,7 @@
      * 경험하지 못한다. 6층 보스만 의도적으로 굵게 만들어 ~3분에 첫 벽을 놓는다.
      * 값은 시뮬로 맞춤: 첫 실패 후 강화 한두 번이면 다음 도전에 뚫리는 두께. */
     firstWallStage: 5,
-    firstWallHpMul: 1.3,
+    firstWallHpMul: 1.4,
 
     // ── 보상 ──────────────────────────────────────────────────
     goldBase: 6,

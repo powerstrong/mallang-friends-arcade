@@ -215,29 +215,53 @@
   var seenUnlocks = {};       // 새 친구 해금 뱃지를 한 번만 띄우기 위한 표시
   var partyDirty = true;
 
+  var replaceFriend = null, addFriend = null, selectedSlot = -1;
+  var partySlotCount = Chars.slotsFor(state.stage);
+  function resetPartyChoice() {
+    replaceFriend=null; addFriend=null; selectedSlot=-1;
+    partySlotCount=Chars.slotsFor(state.stage); partyDirty=true;
+  }
+  function syncPartySlots() {
+    var slots=Chars.slotsFor(state.stage);
+    if(slots===partySlotCount)return;
+    // 새 자리가 열리면 교체 대신 빈 자리에 추가하도록 안내한다.
+    var candidate=slots>partySlotCount ? replaceFriend : null;
+    resetPartyChoice(); addFriend=candidate;
+    return true;
+  }
+  function partyChanged() {
+    resetPartyChoice(); Combat.sanitizeParty(state);
+    partyDirty=true; Stage.syncParty(state); renderParty(); renderPanel(); persist();
+  }
   function toggleMember(id) {
-    var slots = Chars.slotsFor(state.stage);
-    var idx = state.party.indexOf(id);
-    if (idx >= 0) {
-      if (state.party.length <= 1) { toast('최소 한 명은 있어야 해요'); return; }
-      state.party.splice(idx, 1);
-    } else {
-      if (state.party.length >= slots) {
-        // 슬롯이 꽉 찼으면 가장 오래된 자리를 비운다 — 탭 한 번으로 교체되게.
-        var outc = Chars.byId(state.party.shift());
-        var inc = Chars.byId(id);
-        if (outc && inc) toast(outc.name + ' → ' + inc.name + ' 교체');
+    if(suppressPersist || saveBlocked) return;
+    syncPartySlots();
+    if(Chars.unlockedAt(state.stage).indexOf(id)<0)return;
+    addFriend=null;
+    var idx=state.party.indexOf(id);
+    if(idx>=0) {selectedSlot=idx;replaceFriend=null;}
+    else if(state.party.length>=Chars.slotsFor(state.stage)) {replaceFriend=id;selectedSlot=-1;}
+    else {state.party.push(id);partyChanged();return;}
+    partyDirty=true;renderParty();
+  }
+  function slotTapped(i) {
+    if(suppressPersist || saveBlocked)return;
+    syncPartySlots();
+    var slots=Chars.slotsFor(state.stage), candidate=replaceFriend || addFriend;
+    if(i<0 || i>=slots)return;
+    if(candidate) {
+      // 복원·진행 등으로 선택 당시의 해금/편성이 달라졌을 수 있다.
+      if(Chars.unlockedAt(state.stage).indexOf(candidate)<0 || state.party.indexOf(candidate)>=0) {
+        resetPartyChoice(); renderParty(); return;
       }
-      state.party.push(id);
+      if(i>=state.party.length) {state.party.push(candidate);partyChanged();return;}
+      if(replaceFriend) {state.party[i]=candidate;partyChanged();return;}
     }
-    Combat.sanitizeParty(state);
-    partyDirty = true;
-    renderParty();
-    renderPanel();
-    persist();
+    addFriend=null;selectedSlot=i;partyDirty=true;renderParty();
   }
 
   function renderParty() {
+    syncPartySlots();
     if (!partyDirty) return;
     partyDirty = false;
 
@@ -245,46 +269,37 @@
     var unlocked = Chars.unlockedAt(state.stage);
     el.partySlots.textContent = state.party.length + ' / ' + slots;
 
-    /* "한 명만 나오는 건가?"라는 오해를 막는다 — 편성 전원이 필드에 함께 서고,
-     * 자리는 진행으로 늘어난다는 사실을 패널에서 바로 보여준다. */
-    var nextSlotStage = null;
-    for (var s = 0; s < Chars.SLOT_UNLOCKS.length; s++) {
-      if (state.stage < Chars.SLOT_UNLOCKS[s]) { nextSlotStage = Chars.SLOT_UNLOCKS[s]; break; }
+    el.partyHint.textContent='맨 앞 친구가 대표예요';
+    var lead=Chars.byId(state.party[0]), boss=Chapters.bossFor(state.stage);
+    $('leaderEffect').textContent='대표 능력 '+B.leaderMultiplier+'배'+' · '+Chars.elements[lead.el]+'가 '+Chars.elements[Chars.beats[lead.el]]+'적에게 강해요';
+    $('bossLeaderHint').textContent=boss.name+'은 '+Chars.elements[boss.el]+'! '+Chars.elements[Object.keys(Chars.beats).filter(function(k){return Chars.beats[k]===boss.el;})[0]]+' 친구를 대표로';
+    $('partyChoiceHint').textContent=replaceFriend?(state.party.length<slots?'빈 자리에 추가하거나 바꿀 친구를 눌러요':'누구랑 바꿀까요?'):addFriend?'빈 자리를 눌러 함께 가요':'친구를 눌러 함께 가요';
+    $('partyCancel').hidden=!replaceFriend && !addFriend && selectedSlot<0;
+    $('partyCancel').onclick=function(){resetPartyChoice();renderParty();};
+    var bar=$('partyBar');bar.innerHTML='';bar.classList.toggle('replacing',!!replaceFriend);
+    for(var i=0;i<3;i++) (function(i){
+      var c=Chars.byId(state.party[i]),slot=document.createElement('button');
+      slot.className='party-slot';slot.disabled=i>=slots;slot.dataset.slot=i;
+      slot.innerHTML=i>=slots?'🔒<small>스테이지 '+Chars.SLOT_UNLOCKS[i]+'에서 열려요</small>':c?(i===0?'👑 대표':'함께 가요')+'<img src="'+c.portrait+'" alt=""><strong>'+Chars.elements[c.el]+' '+c.name.split(' ')[0]+'</strong>':'빈 자리';
+      slot.onclick=function(){slotTapped(i);};bar.appendChild(slot);
+    })(i);
+    var actions=$('partyActions');actions.innerHTML='';
+    if(selectedSlot>=0 && state.party[selectedSlot]) {
+      function action(text,fn){var b=document.createElement('button');b.textContent=text;b.onclick=function(){if(suppressPersist||saveBlocked)return;fn();partyChanged();};actions.appendChild(b);}
+      if(selectedSlot>0)action('대표로 정하기',function(){var id=state.party.splice(selectedSlot,1)[0];state.party.unshift(id);});
+      if(state.party.length>1)action('빼기',function(){state.party.splice(selectedSlot,1);});
     }
-    /* 다음 해금 예고(codex 리뷰 #2) — 복귀 목표가 항상 보이게 한다 */
-    var nextChar = null;
-    for (var c = 0; c < Chars.CHARACTERS.length; c++) {
-      if (state.stage < Chars.CHARACTERS[c].unlockStage) { nextChar = Chars.CHARACTERS[c]; break; }
-    }
-    var hints = [nextSlotStage ? '최대 3명 함께 싸워요 · 다음 자리 스테이지 ' + nextSlotStage : '편성 전원이 함께 싸워요'];
-    if (nextChar) hints.push('다음 친구는 스테이지 ' + nextChar.unlockStage + '에서 기다려요');
-    el.partyHint.textContent = hints.join(' · ');
-
-    el.partyList.innerHTML = '';
-    Chars.CHARACTERS.forEach(function (c) {
-      var isUnlocked = unlocked.indexOf(c.id) !== -1;
-      var inParty = state.party.indexOf(c.id) !== -1;
-
-      var card = document.createElement('button');
-      card.className = 'party-card' + (inParty ? ' on' : '') + (isUnlocked ? '' : ' locked');
-      card.disabled = !isUnlocked;
-      card.innerHTML =
-        '<img src="' + c.portrait + '" alt="" />' +
-        '<div class="pc-body">' +
-          '<div class="pc-name">' + c.name + (inParty ? ' <span class="pc-in">편성</span>' : '') + '</div>' +
-          '<div class="pc-skill">' + (isUnlocked ? c.skillText : '스테이지 ' + c.unlockStage + ' 에서 만나요') + '</div>' +
-          '<div class="pc-desc">' + (isUnlocked ? c.desc : '') + '</div>' +
-        '</div>';
-      if (isUnlocked) card.addEventListener('click', function () { toggleMember(c.id); });
-      el.partyList.appendChild(card);
-      if (isUnlocked) {
-        var grow = document.createElement('button'); grow.className = 'friend-grow';
-        var lv = Friends.level(state,c.id);
-        grow.textContent = c.name.split(' ')[0] + ' Lv.' + lv + ' ' + '★'.repeat(Friends.stars(lv)) + ' · 마음방울 ' + Friends.cost(state,c.id) + '개로 키우기';
-        grow.disabled = state.stage < B.friends.unlockStage || lv >= B.friends.maxLevel || state.friends.hearts < Friends.cost(state,c.id);
-        grow.onclick = function(){if(suppressPersist || saveBlocked)return;if(Friends.grow(state,c.id)){markTutorial('grow');persist(true);partyDirty=true;renderParty();renderPanel();renderHatch();}};
-        el.partyList.appendChild(grow);
-      }
+    el.partyList.innerHTML='';
+    Chars.CHARACTERS.forEach(function(c){
+      var open=unlocked.indexOf(c.id)>=0,idx=state.party.indexOf(c.id),lv=Friends.level(state,c.id);
+      var card=document.createElement('div');card.className='party-card'+(idx>=0?' on':'')+(!open?' locked':'');
+      var pick=document.createElement('button');pick.className='friend-pick';pick.disabled=!open;pick.dataset.friend=c.id;
+      pick.innerHTML='<img src="'+c.portrait+'" alt=""><span class="pc-name">'+Chars.elements[c.el]+' '+c.name+'</span><span class="pc-in">'+(!open?'잠김':idx===0?'대표':idx>0?'함께 가요':'쉬는 중')+'</span><span class="pc-skill">'+(open?c.skillText:'스테이지 '+c.unlockStage+'에서 만나요')+'</span><small>Lv.'+lv+' '+('★'.repeat(Friends.stars(lv))||'☆')+'</small>';
+      pick.onclick=function(){toggleMember(c.id);};card.appendChild(pick);
+      var grow=document.createElement('button');grow.className='friend-grow';grow.textContent='키우기 · ♥ '+Friends.cost(state,c.id);
+      grow.disabled=!open||state.stage<B.friends.unlockStage||lv>=B.friends.maxLevel||state.friends.hearts<Friends.cost(state,c.id);
+      grow.onclick=function(){if(suppressPersist||saveBlocked)return;if(Friends.grow(state,c.id)){if(Stage.celebrate)Stage.celebrate();markTutorial('grow');persist(true);partyDirty=true;renderParty();renderPanel();renderHatch();}};
+      card.appendChild(grow);el.partyList.appendChild(card);
     });
 
     var pb = Combat.partyBonus(state);
@@ -296,8 +311,9 @@
     if (pb.advanceMul) parts.push('이동 -' + Math.round(pb.advanceMul * 100) + '%');
     if (pb.shardMul)   parts.push('별조각 +' + Math.round(pb.shardMul * 100) + '%');
     var pairs = B.synergies.filter(function(p){return p.ids.every(function(id){return state.party.indexOf(id)>=0;});});
-    $('synergyPreview').textContent=B.synergies.map(function(pair){return pair.name+' · '+pair.ids.map(function(id){return Chars.byId(id).name.split(' ')[0];}).join(' + ')+' · '+Math.round(pair.value*100)+'%';}).join(' / ');
-    el.partyBonusHint.textContent = '마음방울 ' + fmt(state.friends.hearts) + '개 · ' + parts.join(' · ') + (pairs.length ? ' · 짝꿍: ' + pairs.map(function(p){return p.name;}).join(', ') : ' · 짝꿍은 친구 둘이 만나면 생겨요');
+    $('synergyPreview').innerHTML=B.synergies.map(function(pair){return '<span class="synergy-chip '+(pairs.indexOf(pair)>=0?'active':'')+'">'+pair.name+'<small>'+pair.ids.map(function(id){return Chars.byId(id).name.split(' ')[0];}).join(' + ')+' · +'+Math.round(pair.value*100)+'%</small></span>';}).join('');
+    el.partyBonusHint.textContent='마음방울 '+fmt(state.friends.hearts)+'개 · '+parts.join(' · ');
+
   }
 
   /* 새 친구가 해금되거나 슬롯이 열리면 편성 탭에 점을 찍어 알린다. */
@@ -714,6 +730,7 @@
   }
 
   function renderPanel() {
+    if(syncPartySlots())renderParty();
     AXES.forEach(function (axis) {
       var n = upNodes[axis.id];
       var lv = state.up[axis.id];
@@ -802,7 +819,7 @@
       el.bossTimerNum.textContent = left.toFixed(1);
       // "왜 졌는지"를 숫자로 — 필요 DPS 대비 내 DPS 를 상시 표시(codex 리뷰)
       var needDps = Combat.bossHp(state.stage) / B.bossTimeLimit;
-      var mine = Combat.bossDps(state);
+      var mine = Combat.bossDps(state) * Combat.elementMultiplier(state, Chapters.bossFor(state.stage));
       el.bossNeed.textContent = '필요한 힘 ' + fmt(needDps) + ' · 우리 힘 ' + fmt(mine);
       el.bossNeed.classList.toggle('lack', mine < needDps);
     } else if (state.mobIndex !== lastMobIndex || lastPipCount !== B.mobsPerStage) {
@@ -1060,6 +1077,7 @@
     var btn = e.target.closest ? e.target.closest('[data-tab]') : null;
     var tab = btn && btn.getAttribute('data-tab');
     if (!tab) return;
+    resetPartyChoice(); renderParty();
     Array.prototype.forEach.call(el.tabs.children, function (c) {
       var on = c.getAttribute('data-tab') === tab;
       c.classList.toggle('on', on);
@@ -1183,7 +1201,7 @@
       // 시작 전(인트로)에는 게임 시간이 없으므로 오프라인 보상도 없다
       if (gameStarted && !suppressPersist) {
         var settled = Save.settleOffline(Save.serialize(state, state.offlineThroughAt || hiddenAt), Date.now());
-        state = Save.deserialize(settled.payload); persist();
+        state = Save.deserialize(settled.payload); resetPartyChoice(); renderParty(); persist();
         if (settled.reward.seconds >= B.offlineMinSeconds) showOffline(settled.reward);
       }
       hiddenAt = 0;
@@ -1248,7 +1266,7 @@
         var input = window.prompt('세이브 붙여넣기');
         if (input) {
           var res = Save.load(input);
-          if (res.ok && res.state) { state = res.state; toast('불러왔어요'); }
+          if (res.ok && res.state) { state = res.state; resetPartyChoice(); renderParty(); toast('불러왔어요'); }
           else toast('불러오기 실패', 'fail');
         }
       }
@@ -1282,7 +1300,7 @@
   function applyCloud(payload) {
     var nextState=Save.deserialize(payload), appliedAt=Date.now();
     localStorage.setItem(Save.STORAGE_KEY, Save.dump(nextState,appliedAt));
-    state=nextState;lastWroteAt=appliedAt;partyDirty=true;bookDirty=true;saveBlocked=false;suppressPersist=false;
+    state=nextState;resetPartyChoice();lastWroteAt=appliedAt;partyDirty=true;bookDirty=true;saveBlocked=false;suppressPersist=false;
     storyQueue.length = 0; storyActive = false; el.storyOverlay.hidden = true; el.dungeonModal.hidden=true;
     state.collection.forEach(function(k){collectionSet[k]=true;});
     Chars.unlockedAt(state.stage).forEach(function(id){seenUnlocks[id]=true;});

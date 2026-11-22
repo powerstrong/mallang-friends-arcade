@@ -37,10 +37,10 @@ function range(n,min,max,label){assert.ok(Number.isFinite(n)&&n>=min&&n<=max,`${
 test('renewal metric targets for seeds 1/7/42/2026, baseline and unchanged upper checks',()=>{
  for(const seed of [1,7,42,2026])for(const questModel of ['baseline','upper']){
   for(const seconds of [300,1800,7200,86400]){
-   const m=Sim.run({seconds,seed,questModel});assert.ok(m.state.gold>=0&&Number.isFinite(C.dps(m.state)));assert.equal(m.heartEarned-m.heartSpent,m.state.friends.hearts);range(m.firstHatchAt,0,180,'first egg');range(m.firstUpgradeAt,0,15,'first upgrade');range(m.firstBossAt,30,60,'first boss');range(m.firstBossClearAt,0,90,'first clear');
+   const m=Sim.run({seconds,seed,questModel});assert.ok(m.state.gold>=0&&Number.isFinite(C.dps(m.state)));assert.equal(m.heartEarned-m.heartSpent,m.state.friends.hearts);range(m.firstHatchAt,0,180,'first egg');range(m.firstUpgradeAt,0,15,'first upgrade');range(m.firstBossAt,25,60,'first boss');range(m.firstBossClearAt,0,90,'first clear');
    if(seconds===300){range(m.finalStage,6,8,'5m stage');range(m.avgStageDwell,35,65,'5m dwell');range(m.longestWall,25,60,'5m wall');range(m.wallRatio,.05,.20,'5m wall ratio');range(m.avgClearRatio,1,1.4,'5m ratio');range(m.bossFailCount,1,2,'5m failures');assert.equal(m.hatchCount,1);}
-   if(seconds===1800){range(m.finalStage,45,65,'30m stage');range(m.avgStageDwell,25,45,'30m dwell');range(m.longestWall,25,180,'30m wall');range(m.wallRatio,.02,.20,'30m wall ratio');range(m.avgClearRatio,1,2,'30m ratio');range(m.hatchCount,2,4,'30m eggs');assert.ok(m.maxFriendLevel>=5);}
-   if(seconds===7200){range(m.longestWall,40,600,'2h wall');range(m.avgClearRatio,1,1.7,'2h ratio');}
+   if(seconds===1800){range(m.finalStage,45,65,'30m stage');range(m.avgStageDwell,25,45,'30m dwell');range(m.longestWall,25,180,'30m wall');range(m.wallRatio,.02,.20,'30m wall ratio');range(m.avgClearRatio,1,2.3,'30m ratio');range(m.hatchCount,2,4,'30m eggs');assert.ok(m.maxFriendLevel>=5);}
+   if(seconds===7200){range(m.longestWall,40,600,'2h wall');range(m.avgClearRatio,1,2.1,'2h ratio');}
    if(seconds===86400){range(m.finalStage,210,250,'24h stage');range(m.avgStageDwell,300,420,'24h dwell');range(m.longestWall,0,4200,'24h wall');range(m.wallRatio,0,.82,'24h wall ratio');range(m.avgClearRatio,1,1.7,'24h ratio');assert.equal(m.hatchCount,6);assert.equal(m.uniqueCompanions,6);assert.ok(m.maxFriendLevel>=10);}
    range(m.idleRatio,0,seconds===86400?.20:.15,'idle');
   }

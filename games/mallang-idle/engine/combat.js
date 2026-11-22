@@ -17,11 +17,12 @@
   var api = factory(
     typeof require === 'function' ? require('./balance.js') : root.MallangIdleBalance,
     typeof require === 'function' ? require('../data/characters.js') : root.MallangIdleCharacters,
-    typeof require === 'function' ? require('./friends.js') : root.MallangIdleFriends
+    typeof require === 'function' ? require('./friends.js') : root.MallangIdleFriends,
+    typeof require === 'function' ? require('../data/chapters.js') : root.MallangIdleChapters
   );
   if (typeof module === 'object' && module.exports) module.exports = api;
   root.MallangIdleCombat = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function (Bal, Chars, Friends) {
+})(typeof globalThis !== 'undefined' ? globalThis : this, function (Bal, Chars, Friends, Chapters) {
   'use strict';
 
   var B = Bal.BALANCE;
@@ -44,7 +45,7 @@
       var c = Chars.byId(party[i]);
       if (!c || !c.skill) continue;
       if (out[c.skill.key] === undefined) continue;
-      out[c.skill.key] += c.skill.value * Friends.multiplier(s, c.id) * (s.trialRule === c.skill.key ? B.calendar.ruleMultiplier : 1);
+      out[c.skill.key] += c.skill.value * (i === 0 ? B.leaderMultiplier : 1) * Friends.multiplier(s, c.id) * (s.trialRule === c.skill.key ? B.calendar.ruleMultiplier : 1);
     }
     B.synergies.forEach(function(pair){if(pair.ids.every(function(id){return party.indexOf(id)!==-1;}))out[pair.key]+=pair.value;});
     return out;
@@ -100,7 +101,7 @@
     /* 도입 첫 벽 — firstWallStage 보스만 의도적으로 굵다(balance.js 주석 참고).
      * 던전은 baseStage ≥ 9(해금 10)라 이 배수를 상속하지 않는다. */
     var mul = stage === B.firstWallStage ? B.firstWallHpMul : 1;
-    return mobHp(stage) * B.bossHpMultiplier * mul;
+    return mobHp(stage) * B.bossHpMultiplier * mul * (stage === 1 ? B.introBossHpMul : 1);
   }
   function mobGold(s, stage) {
     return B.goldBase * Math.pow(B.goldGrowth, stage - 1) * goldMul(s.up.gold)
@@ -138,12 +139,8 @@
       seen[id] = 1;
       out.push(id);
     }
-    /* 빈 슬롯은 해금된 친구로 채운다. 슬롯이 열렸는데 비워두면 유저가 편성 화면에
-     * 들어가기 전까지 손해만 보는데, 방치형에서 그런 마찰은 그냥 손실이다.
-     * 채워진 뒤에는 언제든 탭으로 바꿀 수 있다. */
-    for (var j = 0; j < unlocked.length && out.length < slots; j++) {
-      if (!seen[unlocked[j]]) { seen[unlocked[j]] = 1; out.push(unlocked[j]); }
-    }
+    // Keep intentional empty positions across save/load; only repair an empty party.
+    if (!out.length) out.push(unlocked[0] || 'rabbit');
     s.party = out;
     return out;
   }
@@ -153,7 +150,9 @@
   function goldPerSec(s, stage) {
     var d = dps(s);
     if (d <= 0) return 0;
-    var cycle = advanceSeconds(s) + mobHp(stage) / d;
+    var enemies=Chapters.chapterFor(stage).mobs;
+    var fight= enemies.reduce(function(sum,e){return sum + mobHp(stage)/(d*elementMultiplier(s,e));},0)/enemies.length;
+    var cycle = advanceSeconds(s) + fight;
     return mobGold(s, stage) / cycle;
   }
 
@@ -198,12 +197,20 @@
    * 종류를 여기서 확정하는 것이 핵심이다. 예전에는 시간만 반환하고 도착 후 HP 잔량으로
    * 승패를 다시 판정했는데, 보스를 제한시간에 딱 맞춰 잡는 구간에서 부동소수 오차가
    * 승패를 뒤집었다(같은 상황에서 dt=0.5 는 승리, dt=0.25 는 실패). */
+  function elementMultiplier(s, enemy) {
+    var lead = Chars.byId(s.party && s.party[0]);
+    return lead && enemy && Chars.beats[lead.el] === enemy.el ? B.elementAdvantage : 1;
+  }
+  function enemyDps(s) {
+    var boss = s.phase === PHASE_BOSS;
+    return (boss ? bossDps(s) : dps(s)) * elementMultiplier(s, boss ? Chapters.bossFor(s.stage) : Chapters.mobFor(s.stage, s.mobIndex || 0));
+  }
   function nextEvent(s) {
-    var d = dps(s);
+    var d = enemyDps(s);
     if (s.phase === PHASE_ADVANCE) return { t: advanceSeconds(s) - s.phaseT, kind: 'spawn' };
     if (s.phase === PHASE_FIGHT)   return { t: s.enemyHp / d, kind: 'kill' };
     if (s.phase === PHASE_BOSS) {
-      var tKill = s.enemyHp / bossDps(s);
+      var tKill = s.enemyHp / enemyDps(s);
       var tOut = B.bossTimeLimit - s.bossT;
       // 동시에 도달하면 플레이어에게 유리하게 — 제한시간 안에 잡은 것으로 본다.
       return tKill <= tOut ? { t: tKill, kind: 'boss_kill' } : { t: tOut, kind: 'boss_timeout' };
@@ -216,10 +223,10 @@
     if (s.phase === PHASE_ADVANCE) {
       s.phaseT += dt;
     } else if (s.phase === PHASE_BOSS) {
-      s.enemyHp -= bossDps(s) * dt;
+      s.enemyHp -= enemyDps(s) * dt;
       s.bossT += dt;
     } else {
-      s.enemyHp -= dps(s) * dt;
+      s.enemyHp -= enemyDps(s) * dt;
     }
   }
 
@@ -427,6 +434,7 @@
     createState: createState, clone: clone, step: step,
     atk: atk, aspd: aspd, goldMul: goldMul, dps: dps, power: power,
     effAtk: effAtk, effAspd: effAspd, bossDps: bossDps, advanceSeconds: advanceSeconds,
+    elementMultiplier: elementMultiplier, enemyDps: enemyDps,
     partyBonus: partyBonus, sanitizeParty: sanitizeParty, NO_BONUS: NO_BONUS,
     relicLv: relicLv, relicMul: relicMul, relicCost: relicCost, buyRelic: buyRelic,
     mobHp: mobHp, bossHp: bossHp, mobGold: mobGold, goldPerSec: goldPerSec,

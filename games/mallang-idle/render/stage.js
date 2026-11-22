@@ -713,10 +713,67 @@
       node.classList.toggle('frames-6', s.n === 6);
     }
 
+    // Presentation clock only: never consumes the engine RNG or writes game state.
+    var actorNodes=[el.hero,el.follower1,el.follower2], actorMoves=[null,null,null];
+    var actionClock=0, nextAction=5, actionSeed=713, celebration=[-1,-1,-1];
+    var actionSheets={};
+    function actionRandom(){actionSeed=(Math.imul(actionSeed,1664525)+1013904223)>>>0;return actionSeed/4294967296;}
+    Chars.CHARACTERS.forEach(function(c){['cheer','cute'].forEach(function(kind){
+      if(!c[kind] || !root.Image)return;
+      var entry=actionSheets[c[kind]]={ready:false}, img=new root.Image();
+      img.onload=function(){entry.ready=true;};img.onerror=function(){entry.ready=false;};img.src=c[kind];
+    });});
+    actorNodes.forEach(function(node){var bubble=document.createElement('span');bubble.className='actor-emote';bubble.hidden=true;node.appendChild(bubble);node.__emote=bubble;});
+    var companionNode=document.createElement('img');companionNode.className='field-companion';companionNode.alt='알 친구';companionNode.hidden=true;el.field.appendChild(companionNode);
+    var companionHeart=document.createElement('span');companionHeart.className='companion-heart';companionHeart.textContent='♥';companionHeart.hidden=true;el.field.appendChild(companionHeart);
+    var companionKey='',companionClock=0;
+    function endMove(i){
+      var node=actorNodes[i],c=Chars.byId(party[i]);actorMoves[i]=null;
+      node.classList.remove('friend-attack','friend-action','action-sheet','act-hop','act-spin','act-wiggle','act-look','cast');
+      node.style.backgroundPosition='';node.__emote.hidden=true;
+      if(c)applySprite(node,c,lastGait);
+    }
+    function startMove(i,kind){
+      if(reducedMotion || !party[i] || (i===0 && poseSwapped))return false;
+      if(actorMoves[i])endMove(i);
+      var node=actorNodes[i],c=Chars.byId(party[i]),img,w,n,repeat=1;
+      if(kind==='attack'){img=c.atkSheet||c.atk;w=c.atkSheet?c.atkSheetW:c.atkW;n=c.atkSheet?c.atkSheetN:1;}
+      else if(c[kind] && actionSheets[c[kind]] && actionSheets[c[kind]].ready){img=c[kind];w=c[kind+'W'];n=c[kind+'N'];repeat=actionRandom()<0.5?1:2;}
+      var duration=kind==='attack'?0.62:0.85*repeat;
+      actorMoves[i]={age:0,duration:duration,img:img,w:w,n:n||1,repeat:repeat};
+      node.classList.add(kind==='attack'?'friend-attack':'friend-action');
+      if(img){node.classList.add('action-sheet');node.style.width=w+'px';node.style.backgroundImage="url('"+img+"')";node.style.backgroundSize=(w*(n||1))+'px 220px';}
+      else node.classList.add(kind==='cheer'?'act-hop':['act-hop','act-spin','act-wiggle','act-look'][Math.floor(actionRandom()*4)]);
+      node.__emote.textContent=kind==='cheer'?'✨':['♥','♪','!','✨','💤'][Math.floor(actionRandom()*5)];node.__emote.hidden=kind==='attack';
+      return true;
+    }
+    function celebrate(){if(!reducedMotion)celebration=[0.05,0.3,0.55];}
+    function actionUpdate(dt,state){
+      actorNodes.forEach(function(node,i){
+        if(!party[i])celebration[i]=-1;
+        if(celebration[i]>=0){celebration[i]-=dt;if(celebration[i]<=0){if(startMove(i,'cheer'))celebration[i]=-1;else celebration[i]=0.1;}}
+        var m=actorMoves[i];if(!m)return;
+        m.age+=dt;if(m.age>=m.duration){endMove(i);return;}
+        if(m.img)node.style.backgroundPosition=(-(Math.floor(m.age/m.duration*m.n*m.repeat)%m.n)*m.w)+'px 0';
+      });
+      if(!reducedMotion){
+        actionClock+=dt;
+        if(actionClock>=nextAction){actionClock=0;nextAction=4+actionRandom()*4;var candidates=party.map(function(_,i){return i;}).filter(function(i){return !actorMoves[i] && !(i===0&&poseSwapped);});if(candidates.length)startMove(candidates[Math.floor(actionRandom()*candidates.length)],actionRandom()<0.5?'cheer':'cute');}
+      }
+      var companions=root.MallangIdleCompanions||[],pick=companions.filter(function(c){return c.id===state.selectedCompanion;})[0];
+      companionNode.hidden=!pick;
+      if(pick && companionKey!==pick.id){companionKey=pick.id;companionNode.src=pick.art;}
+      companionClock+=dt;
+      companionHeart.hidden=!pick || reducedMotion || companionClock%9<=7;
+      companionNode.classList.toggle('companion-love',!reducedMotion && companionClock%9>7);
+    }
+
     var lastPartyKey = '';
     function syncParty(state) {
       var key = (state.party || []).join(',');
       if (!key || key === lastPartyKey) return;
+      actorNodes.forEach(function(_,i){if(actorMoves[i])endMove(i);});
+      restoreWalkPose();
       lastPartyKey = key;
       party = state.party.slice();
       var lead = Chars.byId(party[0]);
@@ -739,10 +796,10 @@
       });
       /* 달리기 전용 시트 스왑 — 히어로가 공격 포즈 중이면 복원(restoreWalkPose) 때 반영 */
       var lead = Chars.byId(party[0]);
-      if (lead && !poseSwapped) applySprite(el.hero, lead, running);
+      if (lead && !poseSwapped && !actorMoves[0]) applySprite(el.hero, lead, running);
       [el.follower1, el.follower2].forEach(function (node, i) {
         var c = party[i + 1] ? Chars.byId(party[i + 1]) : null;
-        if (c && !node.hidden) applySprite(node, c, running);
+        if (c && !node.hidden && !actorMoves[i+1]) applySprite(node, c, running);
       });
     }
 
@@ -767,8 +824,9 @@
       view.enemyKey = key;
       view.alive = true;
       view.isBoss = !!isBoss;
+      view.enemyEl = art.el;
       el.enemyArt.src = art.art;
-      el.enemyName.textContent = art.name;
+      el.enemyName.textContent = art.name + ' ' + (Chars.elements[art.el] || '');
       el.enemy.classList.toggle('is-boss', !!isBoss);
       el.enemy.hidden = false;
       el.bossRing.hidden = !isBoss;
@@ -839,6 +897,7 @@
           break;
 
         case 'boss_clear':
+          celebrate();
           if (!collapsed) {
             if (view.alive) { var bp = enemyPoint(); killBurst(bp.x, bp.y, true); }
             if (fxReady()) { camera.shake(4.5, 0.34); camera.punch(0.13, 0.36); confettiBurst(); }  // 막타·돌파 줌 펀치 (체크리스트 2)
@@ -937,8 +996,9 @@
     function dgSpawnBoss(i) {
       var art = dgBossArt(i);
       view.alive = true; view.isBoss = true; view.enemyKey = 'DG' + i;
+      view.enemyEl = art.el;
       el.enemyArt.src = art.art;
-      el.enemyName.textContent = art.name;
+      el.enemyName.textContent = art.name + ' ' + (Chars.elements[art.el] || '');
       el.enemy.classList.add('is-boss');
       el.enemy.hidden = false;
       el.bossRing.hidden = true;      // 시련은 러시 — 본편 보스 타이머 링 없음
@@ -1178,6 +1238,7 @@
      * 기본타는 공격 시트, 둘 다 없으면 기존 단일 포즈 폴백. 플립북 재생은 CSS
      * atkFlip(각 모션 클래스에 함께 선언)이 --atk-steps/--atk-shift 로 한다. */
     function swapToAttackPose(isSkill) {
+      if(actorMoves[0])endMove(0);
       var c = Chars.byId(party[0]);
       if (!c) return;
       var sp = isSkill && c.atkSp ? { img: c.atkSp, w: c.atkSpW, n: c.atkSpN }
@@ -1298,7 +1359,9 @@
      * WAAPI(onfinish 정리) → 캔버스 탄도로 이관 (결정 5): 시계·수명 관리가 파티클로
      * 일원화되고 FX_CAP(DOM)을 먹지 않는다. 착탄은 projLand — 순수 장식. */
     function followerShot(node) {
-      if (node.hidden) return;
+      if (node.hidden || reducedMotion) return;
+      var i=node===el.follower1?1:2;
+      startMove(i,'attack');
       var cr = el.fxCanvas.getBoundingClientRect();
       var nr = node.getBoundingClientRect();
       var sc = camera.scale || 1;
@@ -1332,7 +1395,7 @@
       var rate = Math.min(4, Combat.effAspd(state));
       strikeGap += dt;
       strikeAccum += dt * rate;
-      if (strikeAccum >= 1 && strikeGap >= 0.22 && dmgObserved >= 1) {
+      if (strikeAccum >= 1 && strikeGap >= 0.22 && dmgObserved >= 1 && !actorMoves[0]) {
         strikeAccum = 0; strikeGap = 0;
         heroStrike(dmgObserved, state.enemyMaxHp);
         dmgObserved = 0;
@@ -1340,10 +1403,10 @@
 
       // 동료 지원 사격 — 서로 어긋난 주기로
       [el.follower1, el.follower2].forEach(function (node, i) {
-        if (node.hidden) return;
+        if (node.hidden || reducedMotion) return;
         followerTimers[i] += dt;
         var cycle = 1.7 + i * 0.6;
-        if (followerTimers[i] >= cycle) {
+        if (followerTimers[i] >= cycle && !actorMoves[i+1]) {
           followerTimers[i] = 0;
           followerShot(node);
         }
@@ -1357,6 +1420,10 @@
      * 연출은 dt 로 돌고, "얼마나 아팠나"만 simDt 를 따른다. */
     function update(dt, simDt, state) {
       syncParty(state);
+      actionUpdate(dt,state);
+      var favorable=view.alive && Combat.elementMultiplier(state,{el:view.enemyEl})>1;
+      el.enemyName.classList.toggle('favorable',favorable);
+      el.arena.classList.toggle('element-advantage',favorable);
       if (dungeon) {
         /* 던전 리플레이 — 본편 큐 소비·게이트·시차·전투 틱을 전부 멈추고 의식만
          * 재생한다. 엔진은 계속 돌고 있으므로(사건은 큐에 쌓인다) 끝나면 큐
@@ -1428,6 +1495,7 @@
     }
 
     return {
+      celebrate: celebrate,
       push: function (events) {
         /* 처치 확인은 엔진과 동기인 이 지점에서 본다 — 큐 지연과 무관하게
          * observeDamage 가 "이번 프레임에 정말 죽었나"를 알 수 있다 (결정 8). */

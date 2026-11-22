@@ -14,6 +14,7 @@
  * 지표가 거짓말을 하게 되므로 절대 복제하지 않는다.
  */
 'use strict';
+var Chapters = require('../data/chapters.js');
 
 var Combat = require('../engine/combat.js');
 var Bal = require('../engine/balance.js');
@@ -43,14 +44,17 @@ function combinations(arr, k) {
 function bestParty(state, stuck) {
   var slots = Chars.slotsFor(state.stage);
   var unlocked = Chars.unlockedAt(state.stage);
-  if (unlocked.length <= slots) return unlocked.slice();
+
 
   var probe = { up: state.up, stage: state.stage, relics: state.relics, friends:state.friends, trialRule:state.trialRule, party: [] };
   var best = null;
-  combinations(unlocked, slots).forEach(function (combo) {
+  combinations(unlocked, Math.min(slots,unlocked.length)).forEach(function (members) {
+    members.forEach(function(leader){
+    var combo=[leader].concat(members.filter(function(id){return id!==leader;}));
     probe.party = combo;
-    var score = stuck ? Combat.bossDps(probe) : Combat.goldPerSec(probe, state.stage);
+    var score = stuck ? Combat.bossDps(probe)*Combat.elementMultiplier(probe,Chapters.bossFor(state.stage)) : Combat.goldPerSec(probe, state.stage);
     if (!best || score > best.score) best = { score: score, combo: combo };
+  });
   });
   return best ? best.combo : unlocked.slice(0, slots);
 }
@@ -266,7 +270,7 @@ function run(opts) {
           if (wall > m.longestWall) { m.longestWall = wall; m.longestWallStage = ev.stage; }
         }
         // 보스 상대 실효 DPS(나침반·라떼 포함) 기준 — 관문을 실제로 재는 값
-        m.clearRatios.push((Combat.bossDps(s) * B.bossTimeLimit) / Combat.bossHp(ev.stage));
+        m.clearRatios.push((Combat.bossDps(s) * Combat.elementMultiplier(s,Chapters.bossFor(ev.stage)) * B.bossTimeLimit) / Combat.bossHp(ev.stage));
         stageEnteredAt = s.t;
         firstFailAt = null;
         stuck = false;

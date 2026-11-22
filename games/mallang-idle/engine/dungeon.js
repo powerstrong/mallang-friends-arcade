@@ -15,11 +15,12 @@
   var api = factory(
     typeof require === 'function' ? require('./balance.js') : root.MallangIdleBalance,
     typeof require === 'function' ? require('./combat.js') : root.MallangIdleCombat,
-    typeof require === 'function' ? require('./calendar.js') : root.MallangIdleCalendar
+    typeof require === 'function' ? require('./calendar.js') : root.MallangIdleCalendar,
+    typeof require === 'function' ? require('../data/chapters.js') : root.MallangIdleChapters
   );
   if (typeof module === 'object' && module.exports) module.exports = api;
   root.MallangIdleDungeon = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function (Bal, Combat, Calendar) {
+})(typeof globalThis !== 'undefined' ? globalThis : this, function (Bal, Combat, Calendar, Chapters) {
   'use strict';
 
   var B = Bal.BALANCE;
@@ -44,7 +45,8 @@
     var log = [];
     while (kills < B.dungeonMaxBosses) {
       var hp = Combat.bossHp(baseStage) * B.dungeonStartMul * Math.pow(B.dungeonHpGrowth, kills);
-      var need = hp / dps;
+      var enemy = Chapters.CHAPTERS[kills % Chapters.CHAPTERS.length].boss;
+      var need = hp / (dps * Combat.elementMultiplier(state, enemy));
       if (need > B.dungeonBossTime) {
         log.push({ hp: hp, time: null });          // 잡지 못한 마지막 보스
         break;
