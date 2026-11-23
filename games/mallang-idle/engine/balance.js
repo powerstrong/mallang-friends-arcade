@@ -14,11 +14,13 @@
   var BALANCE = {
     leaderMultiplier: 1.5, elementAdvantage: 1.25,
     achievements: {firstHatchCount:1,collectionCount:3,starCount:1,clearStage:30,trialBest:10},
+    pet: {dailyLimit:5, cooldownMs:1500, hearts:1},
     calendar: {kstOffsetHours:9,maxCharges:3,rechargeHours:8,ruleMultiplier:1.5,weekdayRules:[null,'bossMul','aspdMul','shardMul','bossMul','aspdMul','shardMul'],attendanceDays:7,attendanceHearts:2,questHearts:1},
     questBands: [{stage:0,targets:{kills:100,upgrades:10,bossTries:5}},{stage:30,targets:{kills:150,upgrades:15,bossTries:7}},{stage:90,targets:{kills:200,upgrades:20,bossTries:10}}],
     hourglass: {maxLevel:7,extraHours:4,perLevel:0.05},
     characters: {
       rabbit: {unlockStage:1,key:'atkMul',value:0.20}, chick:{unlockStage:5,key:'aspdMul',value:0.18},
+      penguin:{unlockStage:15,key:'atkMul',value:0.12},
       hamster:{unlockStage:22,key:'goldMul',value:0.25}, latte:{unlockStage:55,key:'bossMul',value:0.35},
       mintcat:{unlockStage:90,key:'advanceMul',value:0.40}, otter:{unlockStage:120,key:'shardMul',value:0.35}
     },
@@ -28,7 +30,8 @@
     synergies: [
       {ids:['rabbit','latte'],key:'bossMul',value:0.05,name:'용감한 앞발'},
       {ids:['hamster','mintcat'],key:'goldMul',value:0.05,name:'도시락 산책'},
-      {ids:['chick','otter'],key:'shardMul',value:0.10,name:'반짝 수색대'}
+      {ids:['chick','otter'],key:'shardMul',value:0.10,name:'반짝 수색대'},
+      {ids:['penguin','mintcat'],key:'advanceMul',value:0.05,name:'시원한 바람'}
     ],
     save: { localSec: 5, cloudSec: 30, criticalSec: 2, maxBytes: 65536, backupCount: 3, conflictBackupCount: 1, retrySec: [5,15,60,300] },
     // ── 플레이어 ──────────────────────────────────────────────

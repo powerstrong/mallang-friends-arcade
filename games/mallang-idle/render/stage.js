@@ -733,12 +733,15 @@
       node.style.backgroundPosition='';node.__emote.hidden=true;
       if(c)applySprite(node,c,lastGait);
     }
-    function startMove(i,kind){
-      if(reducedMotion || !party[i] || (i===0 && poseSwapped))return false;
+    function startMove(i,kind,pet){
+      if((reducedMotion && !pet) || !party[i] || (i===0 && poseSwapped))return false;
       if(actorMoves[i])endMove(i);
       var node=actorNodes[i],c=Chars.byId(party[i]),img,w,n,repeat=1;
       if(kind==='attack'){img=c.atkSheet||c.atk;w=c.atkSheet?c.atkSheetW:c.atkW;n=c.atkSheet?c.atkSheetN:1;}
-      else if(c[kind] && actionSheets[c[kind]] && actionSheets[c[kind]].ready){img=c[kind];w=c[kind+'W'];n=c[kind+'N'];repeat=actionRandom()<0.5?1:2;}
+      else {
+        var sheetKind=c[kind] && actionSheets[c[kind]] && actionSheets[c[kind]].ready ? kind : pet && c.cheer && actionSheets[c.cheer] && actionSheets[c.cheer].ready ? 'cheer' : null;
+        if(sheetKind){img=c[sheetKind];w=c[sheetKind+'W'];n=c[sheetKind+'N'];repeat=pet?1:actionRandom()<0.5?1:2;}
+      }
       var duration=kind==='attack'?0.62:0.85*repeat;
       actorMoves[i]={age:0,duration:duration,img:img,w:w,n:n||1,repeat:repeat};
       node.classList.add(kind==='attack'?'friend-attack':'friend-action');
@@ -747,8 +750,50 @@
       node.__emote.textContent=kind==='cheer'?'✨':['♥','♪','!','✨','💤'][Math.floor(actionRandom()*5)];node.__emote.hidden=kind==='attack';
       return true;
     }
+    var companionPetT=0;
+    function friendAt(event,state){
+      var friends=actorNodes.map(function(node,i){return {node:node,id:party[i],index:i,busy:!!(i===0 && poseSwapped || actorMoves[i] && node.classList.contains('friend-action'))};});
+      friends.push({node:companionNode,id:state.selectedCompanion,index:-1,busy:companionPetT>0});
+      var best=null,distance=Infinity;
+      friends.forEach(function(f){
+        if(!f.id || f.node.hidden)return;
+        var r=f.node.getBoundingClientRect();
+        if(!r.width || !r.height)return;
+        var dx=event.clientX-(r.left+r.width/2),dy=event.clientY-(r.top+r.height/2);
+        // Minimum 48 CSS pixels, including the small egg companion.
+        var w=Math.max(48,Math.min(96,r.width)),h=Math.max(48,Math.min(100,r.height));
+        var direct=event.detail===0 && (event.target===f.node || f.node.contains(event.target));
+        var d=direct?-1:dx*dx+dy*dy;
+        if((direct || Math.abs(dx)<=w/2 && Math.abs(dy)<=h/2) && d<distance){best=f;distance=d;}
+      });
+      return best;
+    }
+    function petFeedback(friend,result){
+      // A tap always gets a small response, including attacks, cooldowns and the daily cap.
+      // Keep this independent of the sprite animation so combat cannot erase it.
+      var node=friend.node;
+      clearTimeout(node.__petReactTimer);
+      node.classList.remove('pet-react');
+      void node.offsetWidth;
+      node.classList.add('pet-react');
+      node.__petReactTimer=setTimeout(function(){node.classList.remove('pet-react');},450);
+      var p=worldPoint(node,0.3);
+      for(var i=0;i<(reducedMotion?1:4);i++){
+        var h=spawnFx('pet-heart',p.x+(i-1.5)*12,p.y,850,'♥');
+        if(h)h.style.setProperty('--pet-dx',((i-1.5)*14)+'px');
+      }
+      if(result.reward)spawnFx('pet-reward',p.x,p.y-25,1100,'마음방울 +1 ♥');
+      if(!result.animate)return;
+      if(friend.index<0){companionPetT=.85;companionNode.classList.add('friend-action');}
+      else {
+        if(friend.index===0){clearTimeout(restoreTimer);restoreWalkPose();}
+        startMove(friend.index,'cute',true);
+      }
+    }
     function celebrate(){if(!reducedMotion)celebration=[0.05,0.3,0.55];}
     function actionUpdate(dt,state){
+      companionPetT=Math.max(0,companionPetT-dt);
+      companionNode.classList.toggle('friend-action',companionPetT>0);
       actorNodes.forEach(function(node,i){
         if(!party[i])celebration[i]=-1;
         if(celebration[i]>=0){celebration[i]-=dt;if(celebration[i]<=0){if(startMove(i,'cheer'))celebration[i]=-1;else celebration[i]=0.1;}}
@@ -1496,6 +1541,8 @@
 
     return {
       celebrate: celebrate,
+      friendAt: friendAt,
+      petFeedback: petFeedback,
       push: function (events) {
         /* 처치 확인은 엔진과 동기인 이 지점에서 본다 — 큐 지연과 무관하게
          * observeDamage 가 "이번 프레임에 정말 죽었나"를 알 수 있다 (결정 8). */

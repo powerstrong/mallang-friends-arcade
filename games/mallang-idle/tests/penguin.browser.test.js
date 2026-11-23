@@ -1,0 +1,33 @@
+'use strict';
+const H=require('./browser-harness'),assert=require('node:assert/strict'),fs=require('node:fs');
+H.withPage('/games/mallang-idle/index.html?dev=1',async pg=>{
+ for(let i=0;i<100;i++){if(await pg.eval('!!window.__mallangIdle'))break;await pg.sleep(100);}
+ await pg.eval("document.getElementById('introStart').click();document.getElementById('storySkip').click();1");
+ await pg.sleep(200);
+ await pg.eval(`(function(){var H=window.__mallangIdle,s=H.state;
+  s.storySeen=window.MallangIdleStory.SCENES.map(c=>c.id);s.stage=15;s.safeStage=14;s.progress.maxClearedStage=14;
+  s.party=['rabbit'];s.phase='fight';s.mobIndex=2;s.enemyHp=s.enemyMaxHp=10000;s.friends.hearts=20;
+  H.Stage.restoreSnapshot(s);H.advance(0);document.querySelector('.devpanel').hidden=true;document.getElementById('chapterBanner').hidden=true;
+  document.querySelector('[data-tab=party]').click();return 1;})()`);
+ assert.equal(await pg.eval("document.querySelector('.friend-pick[data-friend=penguin]').disabled"),false);
+ await pg.eval("document.querySelector('.friend-pick[data-friend=penguin]').id='penguinPick';1");
+ await pg.clickEl('penguinPick');
+ assert.deepEqual(await pg.eval('window.__mallangIdle.state.party'),['rabbit','penguin']);
+ await pg.eval("document.querySelectorAll('.party-slot')[1].id='penguinSlot';1");await pg.clickEl('penguinSlot');
+ await pg.eval("Array.from(document.querySelectorAll('#partyActions button')).find(b=>b.textContent==='대표로 정하기').id='makePenguinLeader';1");await pg.clickEl('makePenguinLeader');
+ assert.deepEqual(await pg.eval('window.__mallangIdle.state.party'),['penguin','rabbit']);
+ assert.equal(await pg.eval("document.getElementById('leaderEffect').textContent.includes('💧가 🔥적에게 강해요')"),true);
+ await pg.eval("document.querySelector('.friend-pick[data-friend=penguin]').parentElement.querySelector('.friend-grow').click();1");
+ assert.equal(await pg.eval('window.__mallangIdle.state.friends.levels.penguin'),2);
+ await pg.eval("document.querySelector('[data-tab=book]').click();1");
+ assert.equal(await pg.eval("document.querySelector('#friendBookGrid [data-friend=penguin]').textContent.includes('공격력 +12%')"),true);
+ await pg.eval("document.querySelector('[data-tab=upgrade]').click();var H=window.__mallangIdle;H.Stage.restoreSnapshot(H.state);H.Stage.update(.1,0,H.state);window.scrollTo(0,0);1");
+ await pg.sleep(250);
+ assert.equal(await pg.eval("document.getElementById('hero').style.backgroundImage.includes('penguin')"),true);
+ assert.equal(await pg.eval('innerWidth'),400);assert.equal(await pg.eval('document.documentElement.scrollWidth<=innerWidth'),true);
+ fs.mkdirSync('/data/projects/mallang_idle_v2/work/shots',{recursive:true});
+ fs.writeFileSync('/data/projects/mallang_idle_v2/work/shots/penguin_combat.png',Buffer.from(await pg.screenshot(),'base64'));
+ await pg.eval("document.querySelector('[data-tab=party]').click();document.getElementById('panelParty').scrollTop=0;window.scrollTo(0,0);1");await pg.sleep(200);
+ fs.writeFileSync('/data/projects/mallang_idle_v2/work/shots/penguin_friends.png',Buffer.from(await pg.screenshot(),'base64'));
+ console.log('penguin: 400px, coordinate selection, leader, growth, book and combat passed');
+},{viewport:{width:400,height:1200},args:['--window-size=400,1200']}).catch(e=>{console.error(e);process.exitCode=1;});

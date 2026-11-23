@@ -11,7 +11,7 @@
  * 싸우는 이유가 숫자가 아니라 구출이 된다 — 기존 적 아트가 그대로 서사가 된다.
  *
  * 화자(who)는 캐릭터 id 또는 'narr'(내레이션). 컷신 화자는 그 챕터 시작 스테이지에서
- * 이미 합류한 친구만 쓴다(피치 5 · 푸딩 15 · 라떼 30 · 민트 50 해금과 챕터 경계
+ * 이미 합류한 친구만 쓴다(피치 5 · 펭귄 15 · 푸딩 22 · 라떼 55 · 민트 90 해금과 챕터 경계
  * 31/71/131/181 을 맞춰 검증 테스트가 지킨다).
  */
 (function (root, factory) {
@@ -102,6 +102,10 @@
     {
       id: 'join-chick', trigger: { type: 'join', char: 'chick' },
       lines: [{ who: 'chick', text: '나도 갈래! 콕콕 쪼아 줄 거야!' }],
+    },
+    {
+      id: 'join-penguin', trigger: { type: 'join', char: 'penguin' },
+      lines: [{ who: 'penguin', text: '퐁당! 뜨거운 길도 시원하게 헤쳐 나가자!' }],
     },
     {
       id: 'join-hamster', trigger: { type: 'join', char: 'hamster' },

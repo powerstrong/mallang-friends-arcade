@@ -19,7 +19,7 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function (Combat, Bal, Friends, Calendar) {
   'use strict';
 
-  var CURRENT_VERSION = 10;
+  var CURRENT_VERSION = 12;
   var STORAGE_KEY = 'mallang-idle-save';
 
   /* 상태 → 저장 객체. 파생값(전투력·DPS)은 저장하지 않는다. 저장은 원본 데이터만
@@ -39,6 +39,7 @@
       friends: JSON.parse(JSON.stringify(state.friends)),
       hatch: JSON.parse(JSON.stringify(state.hatch)),
       selectedCompanion: state.selectedCompanion || null,
+      pet: {day:state.pet && state.pet.day || "", count:state.pet && state.pet.count || 0},
       party: Array.isArray(state.party) ? state.party.slice() : [],
       shards: state.shards,
       relics: {
@@ -159,7 +160,8 @@
     }
     Friends.hydrate(s, save);
     Calendar.hydrate(s,save);
-    s.tutorialSeen=Array.isArray(save.tutorialSeen)?save.tutorialSeen.filter(function(v,i,a){return ['intro','upgrade','hatch','grow','dungeon','code'].indexOf(v)>=0 && a.indexOf(v)===i;}):[];
+    s.pet={day:Calendar.normalizeDate(save.pet && save.pet.day) || "",count:int(save.pet && save.pet.count,0,0,B.pet.dailyLimit)};
+    s.tutorialSeen=Array.isArray(save.tutorialSeen)?save.tutorialSeen.filter(function(v,i,a){return ['intro','upgrade','hatch','grow','dungeon','code','petHint'].indexOf(v)>=0 && a.indexOf(v)===i;}):[];
     s.preferences={numberFormat:'ko'};
     s.relics.hourglass = Math.min(B.hourglass.maxLevel, s.relics.hourglass);
     return s;
@@ -187,6 +189,12 @@
   /* 버전별 변환 함수. v1→v2 가 생기면 여기에 2 를 추가한다. 누적 적용되므로
    * 각 함수는 "바로 앞 버전에서 자기 버전으로" 만드는 일만 하면 된다. */
   var MIGRATIONS = {
+    // v11까지의 저장에 새 친구만 채운다. 기존 레벨·마음방울·쓰다듬기는 보존한다.
+    12:function(save){
+      if(save.friends && save.friends.levels && save.friends.levels.penguin === undefined) save.friends.levels.penguin=1;
+      return save;
+    },
+    11:function(save){save.pet={day:"",count:0};return save;},
     10:function(save){
       save.tutorialSeen=[];
       if(save.playtime>0 || save.safeStage>0)save.tutorialSeen.push('intro');

@@ -102,5 +102,5 @@
       if (p.daily.targets) s.daily.targets = { kills: Math.max(1, Math.floor(p.daily.targets.kills || B.questTargets.kills)), upgrades: Math.max(1, Math.floor(p.daily.targets.upgrades || B.questTargets.upgrades)), bossTries: Math.max(1, Math.floor(p.daily.targets.bossTries || B.questTargets.bossTries)) };
     }
   }
-  return { dayKey, rule, sync, consume, rechargeSeconds, migrate, hydrate };
+  return { dayKey, normalizeDate, rule, sync, consume, rechargeSeconds, migrate, hydrate };
 });

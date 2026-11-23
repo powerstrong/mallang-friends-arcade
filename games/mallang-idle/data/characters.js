@@ -3,9 +3,9 @@
  *
  * 설계 의도: 캐릭터가 스킨이 되면 안 된다. 편성이 "정답 하나로 수렴"하지 않으려면
  * 각자가 서로 다른 축을 밀어야 한다(../ROADMAP.md P2 게이트).
- * 그래서 다섯 친구를 코어 루프의 세 긴장에 맞춰 배치했다.
+ * 그래서 친구들을 코어 루프의 세 긴장에 맞춰 배치했다.
  *
- *   DPS 계열   : 모찌(공격력) · 피치(공격속도)
+ *   DPS 계열   : 모찌(공격력) · 피치(공격속도) · 퐁당(불꽃 상대 물방울 대표)
  *   경제 계열   : 푸딩(골드) · 민트(전진 속도 = 파밍 회전율)
  *   돌파 계열   : 라떼(보스 데미지)
  *   유물 계열   : 별사탕(별조각 수입 — 나침반/망치/곳간 레벨을 앞당긴다)
@@ -51,6 +51,20 @@
 
       skillText: '공격 속도 +18%',
       desc: '빠르게 쪼아대는 속공형',
+    },
+    /* 초반 물방울 대표: 모찌보다 약한 공격 패시브, 불꽃 상대에 강한 기본기. */
+    {
+      id: 'penguin', name: '퐁당 펭귄',
+      portrait: 'assets/portrait-penguin.png',
+      walk: 'assets/hero-penguin-walk.png', frameW: 144, walkN: 6,
+      run: 'assets/hero-penguin-run.png', runW: 156, runN: 6,
+      atk: 'assets/atk-penguin.png', atkW: 212,
+      atkSheet: 'assets/atk-penguin-sheet.png', atkSheetW: 212, atkSheetN: 6,
+      atkSp: 'assets/atk-penguin-sp.png', atkSpW: 276, atkSpN: 8,
+      cheer: 'assets/hero-penguin-cheer.png', cheerW: 144, cheerN: 6,
+      cute: 'assets/hero-penguin-cute.png', cuteW: 164, cuteN: 6,
+      skillText: '공격력 +12%',
+      desc: '불꽃 앞에서 씩씩한 물방울 친구',
     },
     /* 해금 간격 재배치(codex 재미 리뷰 #2): 1/5/15/30/50 은 30분(스테이지 ~53)에
      * 전부 소진되어 첫 세션이 일주일치 해금을 다 써 버렸다. 22/55/90/120 으로
@@ -98,7 +112,7 @@
       skillText: '이동 시간 -40%',
       desc: '사뿐사뿐 빨리 도는 발바닥',
     },
-    /* 기계 전선(71~130) 한복판에서 구출되는 여섯 번째 친구.
+    /* 기계 전선(71~130) 한복판에서 구출되는 친구.
      * 별조각 축은 "벽에서 라떼(즉시 돌파력)냐 별사탕(유물 성장)이냐"라는
      * 새 갈림길을 만든다 — 코어 루프의 긴장 2번을 깊게 하는 축. */
     {
@@ -118,7 +132,7 @@
   ];
 
   /* 파티 슬롯도 진행에 따라 열린다. 처음부터 셋을 주면 편성이 선택이 아니라 나열이 된다. */
-  CHARACTERS.forEach(function(c){var def=Bal.BALANCE.characters[c.id];c.unlockStage=def.unlockStage;c.skill={key:def.key,value:def.value};c.el={rabbit:'leaf',hamster:'leaf',chick:'fire',latte:'fire',mintcat:'water',otter:'water'}[c.id];});
+  CHARACTERS.forEach(function(c){var def=Bal.BALANCE.characters[c.id];c.unlockStage=def.unlockStage;c.skill={key:def.key,value:def.value};c.el={rabbit:'leaf',hamster:'leaf',chick:'fire',latte:'fire',mintcat:'water',otter:'water',penguin:'water'}[c.id];});
   var SLOT_UNLOCKS = Bal.BALANCE.slotUnlocks;   // 슬롯 1·2·3 이 열리는 스테이지
 
   function byId(id) {

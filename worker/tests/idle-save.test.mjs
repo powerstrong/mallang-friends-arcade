@@ -97,3 +97,33 @@ test('CORS Authorization, bounded daily backups, expiry replay and IP request th
   if(i===120)assert.equal(r.status,429);
  }
 });
+test('penguin: v11 cloud snapshot upgrades with pet intact and new party roundtrips',async()=>{
+ const DB=database(),env={DB,IDLE_NAMESPACE:'test'};
+ const old=payload(95);old.version=11;delete old.friends.levels.penguin;
+ old.pet={day:'2026-11-22',count:5};old.friends.hearts=17;old.friends.levels.rabbit=9;
+ let r=await handleIdleSave(request('saves','POST',write(old,0,'penguin-create')),env,1000);assert.equal(r.status,200);
+ let data=await (await handleIdleSave(request('save'),env,1000)).json();
+ assert.equal(data.payload.version,Save.CURRENT_VERSION);assert.equal(data.payload.friends.levels.penguin,1);assert.deepEqual(data.payload.pet,old.pet);
+ assert.equal(data.payload.friends.hearts,17);assert.equal(data.payload.friends.levels.rabbit,9);
+ data.payload.party=['penguin','rabbit'];data.payload.friends.levels.penguin=7;
+ r=await handleIdleSave(request('save','POST',write(data.payload,1,'penguin-update')),env,2000);assert.equal(r.status,200);
+ data=await (await handleIdleSave(request('save'),env,2000)).json();assert.deepEqual(data.payload.party,['penguin','rabbit']);assert.equal(data.payload.friends.levels.penguin,7);assert.deepEqual(data.payload.pet,old.pet);
+});
+
+test('a pet reward earned during boot settlement wins the stale CAS without splitting its ledger',async()=>{
+ const Pet=(await import('../../games/mallang-idle/engine/pet.js')).default;
+ const DB=database(),env={DB,IDLE_NAMESPACE:'test'},now=Date.parse('2026-11-22T03:00:00Z');
+ const source=payload();
+ let r=await handleIdleSave(request('saves','POST',write(source,0,'pet-create-01')),env,now);
+ assert.equal(r.status,200);
+ r=await handleIdleSave(request('save','POST',{...write(Save.settleOffline(source,now).payload,1,'pet-settle-01'),settlement:true}),env,now);
+ assert.equal(r.status,200);
+ const live=Save.deserialize(source);assert.equal(Pet.create().tap(live,'rabbit',now).reward,1);
+ const earned=Save.serialize(live,now);
+ r=await handleIdleSave(request('save','POST',write(earned,1,'pet-upload-01')),env,now);
+ assert.equal(r.status,200);
+ const saved=await r.json();assert.equal(saved.revision,3);
+ assert.deepEqual(saved.payload.pet,earned.pet);assert.equal(saved.payload.friends.hearts,1);
+ r=await handleIdleSave(request('save','POST',write(source,2,'pet-stale-01')),env,now);
+ assert.equal(r.status,409);assert.equal((await r.json()).payload.pet.count,1);
+});

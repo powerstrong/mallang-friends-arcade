@@ -4,6 +4,16 @@ const Cloud=require('../cloud-save.js'),Save=require('../engine/save.js'),Combat
 const randomBytes=n=>new Uint8Array(n).fill(42);
 function fixture(fetch,storage){let p=Save.serialize(Combat.createState(),1000),time=1000,owner=true;const messages=[],backups=[];storage=storage||new Map();const io={storage:{getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v)},fetch,base:'',now:()=>time,randomBytes,snapshot:()=>p,apply:v=>{p=v;},owner:()=>owner,status:s=>messages.push(s),backup:p=>backups.push(p),settle:Save.settleOffline};return {io,cloud:Cloud.create(io),storage,messages,backups,payload:()=>p,time:v=>{time=v;},owner:v=>{owner=v;}};}
 const response=(payload,revision=1,status=200)=>new Response(JSON.stringify({payload,revision,serverNow:1000}),{status});
+test('cloud restore keeps pet day, daily limit and hint in the same snapshot as hearts',async()=>{
+ const s=Combat.createState(),Pet=require('../engine/pet.js'),now=Date.parse('2026-11-22T03:00:00Z');
+ const pet=Pet.create();for(let i=0;i<5;i++)pet.tap(s,'rabbit',now+i*2000);
+ s.tutorialSeen.push('petHint');const source=Save.serialize(s,now);
+ const f=fixture(async(url,opts)=>response(opts.method==='GET'?source:JSON.parse(opts.body).payload,2));
+ f.time(now);await f.cloud.restore(Cloud.generate(randomBytes));
+ assert.deepEqual(f.payload().pet,source.pet);assert.equal(f.payload().friends.hearts,5);
+ assert.ok(f.payload().tutorialSeen.includes('petHint'));
+ assert.equal(Pet.create().tap(Save.deserialize(f.payload()),'rabbit',now+20000).reward,0);
+});
 test('128-bit code roundtrip and checksum typo',()=>{const c=Cloud.generate(randomBytes);assert.equal(c.length,28);assert.equal(Cloud.normalize(Cloud.display(c)),c);assert.equal(Cloud.normalize(c.slice(0,27)+'A'),null);});
 test('registration, single in-flight request, lost response retries same id, owner guard',async()=>{
  let calls=[],fail=false;
@@ -142,4 +152,45 @@ test('boot settlement still accepts a server winner after concurrent local chang
  const f=fixture(async(url,opts)=>{if(opts.method==='GET')return response(source,2);started();await pending;return response(JSON.parse(opts.body).payload,3);},storage);
  const boot=f.cloud.tick();await posted;f.payload().stats.upgrades++;f.cloud.changed(true);release();await boot;
  assert.equal(f.payload().stage,20);assert.equal(JSON.parse(storage.get(Cloud.KEY)).baseRevision,3);
+});
+
+for(const waitAt of ['lookup','settlement'])for(const reward of ['pet','attendance','quest','achievement'])test('delayed boot '+waitAt+' preserves '+reward+' ledger and balance through the next CAS upload',async()=>{
+ const Calendar=require('../engine/calendar.js'),Pet=require('../engine/pet.js');
+ const Quests=require('../data/quests.js'),Achievements=require('../data/achievements.js');
+ const Contract=require('../engine/save-contract.js'),now=Date.parse('2026-11-22T03:00:00Z');
+ const s=Combat.createState();s.stage=31;s.safeStage=30;s.progress.maxClearedStage=30;
+ Calendar.sync(s,now);s.friends.hearts=0;
+ s.stats.kills=s.daily.targets.kills;
+ if(reward==='attendance')s.attendance={count:0,lastDayKey:''};
+ let server=Save.serialize(s,now),revision=2,release,started;
+ const pending=new Promise(r=>{release=r;}),waiting=new Promise(r=>{started=r;});
+ const storage=new Map([[Cloud.KEY,JSON.stringify({code:Cloud.generate(randomBytes),baseRevision:1})]]);
+ const f=fixture(async(url,opts)=>{
+  if(opts.method==='GET'){
+   if(waitAt==='lookup'){started();await pending;}
+   return response(server,revision);
+  }
+  const body=JSON.parse(opts.body);
+  if(body.settlement && waitAt==='settlement'){started();await pending;}
+  if(body.baseRevision!==revision && Contract.compare(body.payload,server).order<=0)return response(server,revision,409);
+  server=body.payload;return response(server,++revision);
+ },storage);
+ Object.assign(f.payload(),structuredClone(server));f.time(now);
+ const apply=f.io.apply;f.io.apply=p=>{storage.set(Save.STORAGE_KEY,JSON.stringify(p));apply(p);};
+ const boot=f.cloud.tick();await waiting;
+ const live=Save.deserialize(f.payload());
+ if(reward==='pet')assert.equal(Pet.create().tap(live,'rabbit',now).reward,1);
+ if(reward==='attendance')assert.equal(Calendar.sync(live,now),true);
+ if(reward==='quest')assert.ok(Quests.claim(Quests.QUESTS[0],live,live.daily)>0);
+ if(reward==='achievement')assert.equal(Achievements.claim(live,'thirty'),true);
+ Object.assign(f.payload(),Save.serialize(live,now));f.cloud.changed(true);
+ const earned=structuredClone(f.payload());storage.set(Save.STORAGE_KEY,JSON.stringify(earned));
+ release();await boot;
+ function check(p){
+  for(const key of ['pet','attendance','daily','achievementClaimed','friends','shards'])assert.deepEqual(p[key],earned[key],key);
+ }
+ assert.equal(f.cloud.ready(),true);check(f.payload());check(JSON.parse(storage.get(Save.STORAGE_KEY)));
+ assert.equal(JSON.parse(storage.get(Cloud.KEY)).baseRevision,1,'retain local ancestry until CAS accepts it');
+ await f.cloud.flush();check(server);check(f.payload());
+ assert.equal(JSON.parse(storage.get(Cloud.KEY)).baseRevision,revision);
 });

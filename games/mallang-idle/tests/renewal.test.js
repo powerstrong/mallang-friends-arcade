@@ -3,8 +3,8 @@ const {test}=require('node:test'),assert=require('node:assert/strict');
 const C=require('../engine/combat.js'),S=require('../engine/save.js'),K=require('../engine/save-contract.js'),F=require('../engine/friends.js'),Cal=require('../engine/calendar.js'),D=require('../engine/dungeon.js'),Q=require('../data/quests.js'),Sim=require('../tools/sim.js');
 const now=Date.UTC(2026,10,21,15);
 function fixture(){const s=C.createState(42);s.stage=81;s.safeStage=80;s.progress.maxClearedStage=80;s.up={atk:90,aspd:25,gold:20};s.gold=123456;s.shards=456;s.relics={hammer:3,barn:2,compass:4,hourglass:0};s.party=['rabbit','chick','latte'];s.collection=['meadow:acorn'];s.storySeen=['ch-meadow'];s.farmMode=true;Cal.sync(s,now);s.daily.claimed.kills=true;s.dungeon.charges=1;return s;}
-test('v0-v10 fixtures migrate, validate, dump and restore another device; v6 never loses progress',()=>{
- for(let version=0;version<=10;version++){
+test('v0-v11 fixtures migrate, validate, dump and restore another device; v6 never loses progress',()=>{
+ for(let version=0;version<=S.CURRENT_VERSION;version++){
   const p=S.serialize(fixture(),now);p.version=version;
   if(version<7){delete p.offlineThroughAt;delete p.progress;}
   if(version<8){delete p.friends;delete p.hatch;delete p.selectedCompanion;}
@@ -21,7 +21,7 @@ test('v0-v10 fixtures migrate, validate, dump and restore another device; v6 nev
 test('strict shared contract rejects bad growth, RNG, huge body and future versions',()=>{
  const p=S.serialize(fixture(),now);assert.ok(K.validate(p).ok);
  const alter=fn=>{const q=JSON.parse(JSON.stringify(p));fn(q);assert.equal(K.validate(q).ok,false);};
- alter(q=>q.friends.hearts=-1);alter(q=>q.friends.levels.rabbit=21);alter(q=>q.hatch.rngState=2**32);alter(q=>q.hatch.owned=['acorn','acorn']);alter(q=>q.up.atk=100000);alter(q=>q.version=11);alter(q=>q.dungeon.charges=4);alter(q=>q.collection=Array(501).fill('x'));alter(q=>q.gold=Infinity);alter(q=>q.stats.kills=null);alter(q=>q.calendar.lastDayKey='bad');assert.equal(S.load('null').ok,false);
+ alter(q=>q.friends.hearts=-1);alter(q=>q.friends.levels.rabbit=21);alter(q=>q.hatch.rngState=2**32);alter(q=>q.hatch.owned=['acorn','acorn']);alter(q=>q.up.atk=100000);alter(q=>q.version=S.CURRENT_VERSION+1);alter(q=>q.dungeon.charges=4);alter(q=>q.collection=Array(501).fill('x'));alter(q=>q.gold=Infinity);alter(q=>q.stats.kills=null);alter(q=>q.calendar.lastDayKey='bad');assert.equal(S.load('null').ok,false);
 });
 test('conflict comparison chooses whole snapshot without mixing RNG, currencies or claim flags',()=>{
  const a=S.serialize(fixture(),now),b=JSON.parse(JSON.stringify(a));b.gold=1;b.progress.maxClearedStage=81;assert.equal(K.compare(b,a).order,1);b.progress.maxClearedStage=80;b.friends.levels.rabbit=2;assert.equal(K.compare(b,a).reason,'친구 성장');b.friends.levels.rabbit=1;b.hatch.owned=['acorn'];assert.equal(K.compare(b,a).reason,'산책 도감');b.hatch.owned=[];b.stats.upgrades++;assert.equal(K.compare(b,a).reason,'강화 횟수');assert.equal(K.compare(a,a).order,0);

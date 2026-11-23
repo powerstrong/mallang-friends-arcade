@@ -1,0 +1,15 @@
+{
+  "walkW": 144,
+  "walkN": 6,
+  "runW": 156,
+  "runN": 6,
+  "atkSheetW": 212,
+  "atkSheetN": 6,
+  "atkW": 212,
+  "atkSpW": 276,
+  "atkSpN": 8,
+  "cheerW": 144,
+  "cheerN": 6,
+  "cuteW": 164,
+  "cuteN": 6
+}

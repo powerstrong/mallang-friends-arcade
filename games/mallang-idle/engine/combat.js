@@ -159,6 +159,7 @@
   // ── 상태 ────────────────────────────────────────────────────
   function createState(seed) {
     return {
+      pet:{day:"",count:0},
       tutorialSeen:[],preferences:{numberFormat:'ko'},
       friends: Friends.initialFriends(), hatch: Friends.initialHatch(seed), selectedCompanion: null,
       progress: {maxClearedStage:0}, offlineThroughAt:0,

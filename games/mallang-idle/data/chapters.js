@@ -29,7 +29,7 @@
       mobs: [
         { id: 'acorn',     name: '말썽 도토리', art: 'assets/mob-acorn.png', el: 'leaf' },
         { id: 'jelly',     name: '탱글 젤리',   art: 'assets/mob-jelly.png', el: 'water' },
-        { id: 'cloudpuff', name: '심술 구름',   art: 'assets/mob-cloudpuff.png', el: 'leaf' },
+        { id: 'cloudpuff', name: '심술 구름',   art: 'assets/mob-cloudpuff.png', el: 'fire' },
       ],
       boss: { id: 'cottoncandy', name: '솜사탕 대왕', art: 'assets/boss-cottoncandy.png', el: 'leaf' },
     },

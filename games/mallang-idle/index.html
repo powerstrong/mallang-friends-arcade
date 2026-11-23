@@ -23,7 +23,7 @@
 
   <div class="save-strip"><span id="saveStatus" role="status">이 기기에 저장</span><button id="saveOpen">저장 · 이어하기</button></div>
   <button class="next-goal" id="nextGoal" aria-live="polite">골드를 모아 첫 강화를 해 봐요</button>
-  <section class="arena" id="arena" aria-label="친구 응원하기. 전투 힘이나 보상은 바뀌지 않아요" tabindex="0">
+  <section class="arena" id="arena" aria-label="친구를 톡 눌러 봐요" tabindex="0">
     <!-- 카메라 — 무대(배경·액터·이펙트)만 감싼다. HUD(진행도·보스 타이머)는 밖에 두어
          화면이 흔들려도 숫자는 읽힌다. render/stage.js 가 이 요소의 transform 을 소유한다. -->
     <div class="stage-cam" id="stageCam">
@@ -146,7 +146,8 @@
       <span class="panel-title">도감 <b id="bookCount"></b></span>
     </div>
     <section class="hatch-card"><h3>말랑 알 · 산책 친구</h3><p id="heartCount"></p><p id="hatchInfo"></p><button id="hatchOpen">🥚 알 열기</button><details id="hatchAgain"><summary>알 한 번 더 열기</summary><p>모두 같은 확률이에요. 전투 힘은 바뀌지 않아요.</p></details><p id="hatchResult" role="status" aria-live="polite"></p><div id="hatchGrid"></div></section>
-      <div class="book-grid" id="bookGrid"></div>
+      <h3>함께하는 친구</h3><div class="book-grid" id="friendBookGrid"></div>
+      <h3>산책길에서 만난 친구</h3><div class="book-grid" id="bookGrid"></div>
     <div class="panel-foot">
       <span class="dps-hint" id="bookHint"></span>
       <button class="exit" id="exitBtn5">나가기</button>
@@ -277,6 +278,7 @@
 <script src="engine/combat.js"></script>
 <script src="data/quests.js"></script>
 <script src="engine/calendar.js"></script>
+<script src="engine/pet.js"></script>
 <script src="data/achievements.js"></script>
 <script src="engine/save.js"></script>
 <script src="engine/save-contract.js"></script>
@@ -289,6 +291,7 @@
 <script src="render/format.js"></script>
 <script src="render/queue.js"></script>
 <script src="render/stage.js"></script>
+<script src="render/game.js"></script>
 <script src="game.js"></script>
 </body>
 </html>

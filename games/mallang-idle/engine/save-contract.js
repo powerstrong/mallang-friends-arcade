@@ -83,6 +83,8 @@
         if(k !== "goldEarned" && !Number.isSafeInteger(p.stats[k])) throw Error("stats-counter");
       });
       function validDay(k) {return k === "" || /^\d{4}-\d{2}-\d{2}$/.test(k);}
+      if(!p.pet || !validDay(p.pet.day)) throw Error("pet");
+      integer(p.pet.count, 0, B.pet.dailyLimit);
       if(p.calendar && !validDay(p.calendar.lastDayKey)) throw Error("calendar");
       if(p.attendance && !validDay(p.attendance.lastDayKey)) throw Error("attendance");
       if(p.daily && (!validDay(p.daily.dayKey || p.daily.date) || Object.values(p.daily.claimed).some(function(v){return typeof v!=="boolean";}))) throw Error("daily-date");
@@ -95,7 +97,17 @@
       return { ok: false, note: e.message };
     }
   }
-  var REASONS = ["최고 돌파층", "친구 성장", "산책 도감", "강화 횟수", "처치 수", "산책 시간"];
+  var REASONS = ["최고 돌파층", "친구 성장", "산책 도감", "강화 횟수", "처치 수", "산책 시간", "출석 기록", "쓰다듬기 날짜", "쓰다듬기 횟수", "과제 날짜", "과제 수령", "업적 수령"];
+  // Reward ledgers break progress ties, never currency balances (which can be spent).
+  // Day-qualified entries keep a new day's claims ahead of yesterday's full ledger.
+  function rewardScore(p) {
+    function day(k) { return Number(String(k || '').replace(/-/g, '')) || 0; }
+    function claimed(v) { return Object.values(v || {}).filter(function(x) { return x === true; }).length; }
+    var pet = p.pet || {}, attendance = p.attendance || {}, daily = p.daily || {};
+    var quests = claimed(daily.claimed);
+    return [day(attendance.lastDayKey), pet.count ? day(pet.day) : 0, pet.count || 0,
+      quests ? day(daily.dayKey || daily.date) : 0, quests, claimed(p.achievementClaimed)];
+  }
   function score(p) {
     return [
       p.progress && p.progress.maxClearedStage || p.safeStage || 0,
@@ -106,7 +118,7 @@
       p.stats && p.stats.upgrades || 0,
       p.stats && p.stats.kills || 0,
       p.playtime || 0
-    ];
+    ].concat(rewardScore(p));
   }
   function compare(a, b) {
     var x = score(a), y = score(b);

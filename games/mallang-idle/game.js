@@ -311,7 +311,7 @@
     if (pb.advanceMul) parts.push('이동 -' + Math.round(pb.advanceMul * 100) + '%');
     if (pb.shardMul)   parts.push('별조각 +' + Math.round(pb.shardMul * 100) + '%');
     var pairs = B.synergies.filter(function(p){return p.ids.every(function(id){return state.party.indexOf(id)>=0;});});
-    $('synergyPreview').innerHTML=B.synergies.map(function(pair){return '<span class="synergy-chip '+(pairs.indexOf(pair)>=0?'active':'')+'">'+pair.name+'<small>'+pair.ids.map(function(id){return Chars.byId(id).name.split(' ')[0];}).join(' + ')+' · +'+Math.round(pair.value*100)+'%</small></span>';}).join('');
+    $('synergyPreview').innerHTML=B.synergies.map(function(pair){return '<span class="synergy-chip '+(pairs.indexOf(pair)>=0?'active':'')+'">'+pair.name+'<small>'+pair.ids.map(function(id){return Chars.byId(id).name.split(' ')[0];}).join(' + ')+' · '+(pair.key==='advanceMul'?'이동 -':'+')+Math.round(pair.value*100)+'%</small></span>';}).join('');
     el.partyBonusHint.textContent='마음방울 '+fmt(state.friends.hearts)+'개 · '+parts.join(' · ');
 
   }
@@ -539,6 +539,18 @@
     renderHatch();
     if (!bookDirty) return;
     bookDirty = false;
+    var friendBook = $('friendBookGrid');
+    friendBook.textContent = '';
+    Chars.CHARACTERS.forEach(function(c){
+      var unlocked = state.stage >= c.unlockStage;
+      var cell = document.createElement('div');
+      cell.className = 'book-cell' + (unlocked ? '' : ' unseen');
+      cell.dataset.friend = c.id;
+      cell.innerHTML = '<img src="' + c.portrait + '" alt="" loading="lazy" /><span>' +
+        Chars.elements[c.el] + ' ' + c.name + '</span><small>' +
+        (unlocked ? c.skillText : c.unlockStage + '층에서 만나요') + '</small>';
+      friendBook.appendChild(cell);
+    });
     if (!BOOK_ENTRIES) BOOK_ENTRIES = allBookEntries();
     var seen = 0;
     el.bookGrid.innerHTML = '';
@@ -927,6 +939,7 @@
     if (simDt > 0 && gameStarted && !storyActive) {
       /* 날짜 동기화는 반드시 step 보다 먼저 — 자정 직후의 처치·강화가 새 스냅숏에
        * 흡수되어 진행도에서 사라지는 것을 막는다(codex 리뷰). */
+      if (!suppressPersist && !saveBlocked && el.offlineModal.hidden) petUI.hint();
       dailyTimer += dt;
       if (dailyTimer > 1) { syncDaily(); dailyTimer = 0; }
       Combat.step(state, simDt);
@@ -1106,8 +1119,17 @@
   el.dungeonGo.addEventListener('click', runDungeon);
   el.dungeonOk.addEventListener('click', function () { el.dungeonModal.hidden = true; });
   // 던전 리플레이 중 무대 탭 = 스킵 (의식은 남기되 반복 피로는 스킵으로 푼다)
-  el.arena.addEventListener('click', function () {
+  var petUI = window.MallangIdlePetUI.create({
+    state:function(){return state;}, stage:Stage, now:Date.now, sfx:sfx, toast:toast,
+    markTutorial:markTutorial, persist:function(){persist(true);},
+    changed:function(){persist(true);partyDirty=true;renderParty();renderHatch();renderPanel();}
+  });
+  el.arena.addEventListener('pointerdown', function(event) { petUI.press(event); });
+  el.arena.addEventListener('pointercancel', function() { petUI.cancel(); });
+  el.arena.addEventListener('click', function (event) {
+    if (suppressPersist || saveBlocked || !gameStarted || storyActive) return;
     if (Stage.dungeonActive && Stage.dungeonActive()) { Stage.dungeonSkip(); return; }
+    if (petUI.tap(event)) return;
     Stage.heartBurst(); sfx('tap');
   });
 

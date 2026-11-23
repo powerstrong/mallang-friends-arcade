@@ -116,7 +116,7 @@ test('단계 2 — 시차 겹·전진 beat·주행 상태가 배선되어 있다
     '걷기/달리기 구분(주행 상태)이 있어야 한다');
 });
 
-/* 에셋 시트 계약 (단계 2·3 부채 해소) — 여섯 캐릭터 전원이 6프레임 걷기/달리기,
+/* 에셋 시트 계약 (단계 2·3 부채 해소) — 캐릭터 전원이 6프레임 걷기/달리기,
  * 6프레임 기본공격, 8프레임 스킬 시트를 갖고, CSS 에 프레임 수 변형 클래스가 있다.
  * (steps(var()) 는 Chrome 셔한드가 소비하지 못해 고정 클래스로 푼다 — 실측)
  * 동작(스왑·플립북·복원)은 stage.browser 의 에셋 시트 절이 검증한다. */
@@ -124,7 +124,7 @@ test('캐릭터 전원이 다중 프레임 시트 규격을 갖는다', function
   var chars = read('data/characters.js');
   ['walkN: 6', 'runN: 6', 'atkSheetN: 6', 'atkSpN: 8'].forEach(function (field) {
     var n = (chars.match(new RegExp(field.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')) || []).length;
-    assert.ok(n === 6, '캐릭터 6명 전원에 ' + field + ' 가 있어야 한다 (현재 ' + n + '명)');
+    assert.ok(n === require('../data/characters.js').CHARACTERS.length, '캐릭터 전원에 ' + field + ' 가 있어야 한다 (현재 ' + n + '명)');
   });
   assert.ok(/\.hero\.walking\.frames-6/.test(css) && /\.hero\.walking\.running\.frames-6/.test(css),
     '6프레임 걷기/달리기 CSS 변형이 있어야 한다');

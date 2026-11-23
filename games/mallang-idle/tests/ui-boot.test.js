@@ -29,7 +29,7 @@ test('actual UI handlers and pure engine action sequence commit identical hatch,
  const initial=C.createState(42);initial.stage=81;initial.safeStage=80;initial.progress.maxClearedStage=80;initial.t=100;initial.friends.hearts=80;
  const b=boot(S.dump(initial,Date.now())),live=b.context.__mallangIdle.state,expected=C.clone(live);
  const result=F.open(expected);b.ids.hatchOpen.click();assert.ok(result);assert.deepEqual(JSON.parse(JSON.stringify(live.hatch)),expected.hatch);assert.equal(live.friends.hearts,expected.friends.hearts);
- assert.ok(F.grow(expected,'rabbit'));b.ids.partyList.children[0].children[1].click();assert.equal(live.friends.levels.rabbit,expected.friends.levels.rabbit);assert.equal(live.friends.hearts,expected.friends.hearts);
+ assert.ok(F.grow(expected,'rabbit'));b.ids.partyList.children.find(card=>card.children[0].dataset.friend==='rabbit').children[1].click();assert.equal(live.friends.levels.rabbit,expected.friends.levels.rabbit);assert.equal(live.friends.hearts,expected.friends.hearts);
  const trial=D.enter(expected,Date.now());assert.ok(trial);b.ids.dungeonGo.click();assert.equal(live.gold,expected.gold);assert.equal(live.shards,expected.shards);assert.equal(live.dungeon.charges,expected.dungeon.charges);assert.equal(b.ids.dungeonModal.hidden,false);
  const disk=JSON.parse(b.saved.get(S.STORAGE_KEY));assert.equal(disk.gold,live.gold);assert.equal(disk.hatch.rngState,live.hatch.rngState);assert.equal(disk.friends.levels.rabbit,live.friends.levels.rabbit);assert.equal(disk.dungeon.charges,live.dungeon.charges);
 });
@@ -69,13 +69,13 @@ test('ordinary boss clear refreshes heart count, growth affordability and egg af
   Cal.sync(initial,Date.now());initial.friends.hearts=hearts;initial.hatch.firstGiftClaimed=true;
   const b=boot(S.dump(initial,Date.now())),live=b.context.__mallangIdle.state;
   b.ids.hatchAgain.ontoggle();
-  if(hearts===1)assert.equal(b.ids.partyList.children[0].children[1].disabled,true);
+  if(hearts===1)assert.equal(b.ids.partyList.children.find(card=>card.children[0].dataset.friend==='rabbit').children[1].disabled,true);
   if(hearts===9)assert.equal(b.ids.hatchOpen.disabled,true);
   live.phase=C.PHASE_BOSS;live.enemyHp=1;live.enemyMaxHp=1;live.attackAccum=1;
   b.context.__mallangIdle.advance(0.1);
   assert.equal(live.friends.hearts,hearts+1);
   assert.equal(b.ids.heartCount.textContent,'마음방울 '+(hearts+1)+'개');
-  assert.equal(b.ids.partyList.children[0].children[1].disabled,false);
+  assert.equal(b.ids.partyList.children.find(card=>card.children[0].dataset.friend==='rabbit').children[1].disabled,false);
   if(hearts===9)assert.equal(b.ids.hatchOpen.disabled,false);
  }
 });
@@ -84,18 +84,18 @@ test('full party waits for an explicit replacement, crown changes order, removal
  const C=require('../engine/combat.js'),S=require('../engine/save.js');
  const s=C.createState();s.stage=100;s.safeStage=99;s.party=['rabbit','chick','hamster'];s.t=1;
  const b=boot(S.dump(s,Date.now())),live=b.context.__mallangIdle.state;
- b.ids.partyList.children[3].children[0].click();
+ b.ids.partyList.children.find(card=>card.children[0].dataset.friend==='latte').children[0].click();
  assert.deepEqual(Array.from(live.party),['rabbit','chick','hamster']);
  assert.equal(b.ids.partyChoiceHint.textContent,'누구랑 바꿀까요?');
  b.ids.partyCancel.click();assert.deepEqual(Array.from(live.party),['rabbit','chick','hamster']);
- b.ids.partyList.children[3].children[0].click();b.ids.partyBar.children[2].click();
+ b.ids.partyList.children.find(card=>card.children[0].dataset.friend==='latte').children[0].click();b.ids.partyBar.children[2].click();
  assert.deepEqual(Array.from(live.party),['rabbit','chick','latte']);
  b.ids.partyBar.children[2].click();b.ids.partyActions.children[0].click();
  assert.deepEqual(Array.from(live.party),['latte','rabbit','chick']);
  b.ids.partyBar.children[1].click();b.ids.partyActions.children[1].click();
  assert.deepEqual(Array.from(live.party),['latte','chick']);
  assert.deepEqual(S.load(S.dump(live,Date.now())).state.party,['latte','chick']);
- b.ids.partyList.children[2].children[0].click();assert.deepEqual(Array.from(live.party),['latte','chick','hamster']);
+ b.ids.partyList.children.find(card=>card.children[0].dataset.friend==='hamster').children[0].click();assert.deepEqual(Array.from(live.party),['latte','chick','hamster']);
 });
 
 function partyBoot(stage=100,party=['rabbit','chick','hamster']) {
@@ -112,7 +112,7 @@ test('cloud and backup import clear both replacement and selected slot before lo
  const payload=S.serialize(s,Date.now());
  for(const source of ['cloud','file'])for(const mode of ['replace','select']){
   const b=partyBoot();
-  if(mode==='replace')b.ids.partyList.children[3].children[0].click();
+  if(mode==='replace')b.ids.partyList.children.find(card=>card.children[0].dataset.friend==='latte').children[0].click();
   else b.ids.partyBar.children[1].click();
   if(source==='cloud')b.cloudOptions.apply(payload);
   else {const text=JSON.stringify(payload);await b.ids.importSave.onchange({target:{files:[{size:text.length,text:async()=>text}]}});}
@@ -126,7 +126,7 @@ test('cloud and backup import clear both replacement and selected slot before lo
 test('leaving party tab cancels replacement and slot actions',()=>{
  for(const mode of ['replace','select']){
   const b=partyBoot();changeTab(b,'party');
-  if(mode==='replace')b.ids.partyList.children[3].children[0].click();
+  if(mode==='replace')b.ids.partyList.children.find(card=>card.children[0].dataset.friend==='latte').children[0].click();
   else b.ids.partyBar.children[1].click();
   changeTab(b,'upgrade');changeTab(b,'party');
   assert.equal(b.ids.partyCancel.hidden,true);
@@ -138,7 +138,7 @@ test('leaving party tab cancels replacement and slot actions',()=>{
 test('replacement validates current unlock and duplicates before changing or saving party',()=>{
  for(const invalid of ['locked','duplicate']){
   const b=partyBoot(),live=b.context.__mallangIdle.state;
-  b.ids.partyList.children[3].children[0].click();
+  b.ids.partyList.children.find(card=>card.children[0].dataset.friend==='latte').children[0].click();
   // Both stages have three slots: this must exercise commit-time validation.
   if(invalid==='locked')live.stage=40;
   else live.party[2]='latte';
@@ -153,7 +153,7 @@ test('9 to 10 unlock ends replacement, clears slot actions, and empty slot adds 
  const C=require('../engine/combat.js'),S=require('../engine/save.js');
  for(const mode of ['replace','select']){
   const b=partyBoot(9,['rabbit']),live=b.context.__mallangIdle.state;
-  if(mode==='replace')b.ids.partyList.children[1].children[0].click();
+  if(mode==='replace')b.ids.partyList.children.find(card=>card.children[0].dataset.friend==='chick').children[0].click();
   else b.ids.partyBar.children[0].click();
   live.phase=C.PHASE_BOSS;live.enemyHp=1;live.enemyMaxHp=1;live.attackAccum=1;
   b.context.__mallangIdle.advance(.1);
@@ -171,18 +171,18 @@ test('9 to 10 unlock ends replacement, clears slot actions, and empty slot adds 
 });
 test('a newly available empty slot never replaces the leader, and an occupied slot cannot execute the old replacement',()=>{
  const b=partyBoot(9,['rabbit']),live=b.context.__mallangIdle.state;
- b.ids.partyList.children[1].children[0].click();
+ b.ids.partyList.children.find(card=>card.children[0].dataset.friend==='chick').children[0].click();
  live.stage=10;live.safeStage=9;
  // Click without a render in between: the handler must use the current slot count.
  b.ids.partyBar.children[1].click();
  assert.deepEqual(Array.from(live.party),['rabbit','chick']);
- const c=partyBoot(9,['rabbit']);c.ids.partyList.children[1].children[0].click();
+ const c=partyBoot(9,['rabbit']);c.ids.partyList.children.find(card=>card.children[0].dataset.friend==='chick').children[0].click();
  c.context.__mallangIdle.state.stage=10;c.ids.partyBar.children[0].click();
  assert.deepEqual(Array.from(c.context.__mallangIdle.state.party),['rabbit']);
 });
 test('pending replacement adds into a vacancy created without a slot-count change',()=>{
  const b=partyBoot(),live=b.context.__mallangIdle.state;
- b.ids.partyList.children[3].children[0].click();live.party.pop();
+ b.ids.partyList.children.find(card=>card.children[0].dataset.friend==='latte').children[0].click();live.party.pop();
  b.ids.partyBar.children[2].click();
  assert.deepEqual(Array.from(live.party),['rabbit','chick','latte']);
 });
